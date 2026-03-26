@@ -1123,11 +1123,37 @@ function buildTypeFields(type, p={}) {
 
   // ── 5. CHAMBER ─────────────────────────────────────────────
   if (type === 'chamber') {
+    // Build location options from valve reports where chamberReq === 'Yes'
+    const chamProj = document.getElementById('f-project')?.value || '';
+    const chamLocs = getReports()
+      .filter(r => r.type === 'valve' && r.project === chamProj && r.chamberReq === 'Yes')
+      .map(r => `Ch:${r.chainage}m${r.location ? ' — ' + r.location : ''}`)
+      .filter((v,i,a) => a.indexOf(v) === i); // dedupe
+    const chamLocOpts = chamLocs.map(v =>
+      `<option value="${v}"${p.location===v?' selected':''}>${v}</option>`).join('');
+    const chamHasOther = p.location && !chamLocs.includes(p.location);
+
     html += `
       <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location</div>
-        <div class="field-group"><label>Chainage (m) <span class="req">*</span></label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
-        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near Dharoi village junction"></div>
+        <div class="field-group">
+          <label>Valve Location (Chamber Required = Yes) <span class="req">*</span></label>
+          <select id="f-location-sel" onchange="onChamberLocChange(this)">
+            ${chamLocs.length ? '' : '<option value="">— No valves with chamber required yet —</option>'}
+            ${chamLocOpts}
+            <option value="__other__"${chamHasOther?' selected':''}>— Other (type below) —</option>
+          </select>
+        </div>
+        <div id="f-location-other-wrap" style="display:${chamHasOther?'block':'none'}">
+          <div class="field-group mt-2">
+            <label>Custom Location</label>
+            <input type="text" id="f-location-other" value="${chamHasOther?p.location:''}" placeholder="e.g. Near Dharoi village junction" oninput="document.getElementById('f-location').value=this.value">
+          </div>
+        </div>
+        <input type="hidden" id="f-location" value="${p.location||''}">
+        <div class="field-group mt-2"><label>Chainage (m) — Auto from selection</label>
+          <input type="number" id="f-chainage" value="${p.chainage||''}" readonly style="opacity:0.6" placeholder="Auto-filled">
+        </div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏛️ Chamber Details</div>
@@ -1188,13 +1214,44 @@ function buildTypeFields(type, p={}) {
 
   // ── 7. CONCRETE WORK (structure) ───────────────────────────
   if (type === 'structure') {
+    // Build location options:
+    // (a) Fitting reports where thrustBlock === 'Yes'
+    // (b) Pipe reports where encasing !== 'Not Required'
+    const strProj = document.getElementById('f-project')?.value || '';
+    const allR    = getReports().filter(r => r.project === strProj);
+    const fittingLocs = allR
+      .filter(r => r.type === 'fitting' && r.thrustBlock === 'Yes')
+      .map(r => `Thrust Block — Ch:${r.chainage}m${r.location ? ' (' + r.location + ')' : ''}`);
+    const encasingLocs = allR
+      .filter(r => r.type === 'pipe' && r.encasing && r.encasing !== 'Not Required')
+      .map(r => `${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`);
+    const strLocs = [...fittingLocs, ...encasingLocs].filter((v,i,a) => a.indexOf(v) === i);
+    const strLocOpts = strLocs.map(v =>
+      `<option value="${v}"${p.location===v?' selected':''}>${v}</option>`).join('');
+    const strHasOther = p.location && !strLocs.includes(p.location);
+
     html += `
       <div style="background:rgba(191,90,242,0.06);border:1px solid rgba(191,90,242,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location & Type</div>
         <div class="field-group"><label>Concrete Work Type <span class="req">*</span></label>
           <select id="f-strType">${['Thrust Block','Pipe Encasing (CC)','Pipe Encasing (RCC)','Bed Concrete','Cap Concrete / Haunch','Anchor Block','Casing Pipe Grouting','Road Crossing (Jack & Bore)','Other'].map(v=>`<option${p.strType===v?' selected':''}>${v}</option>`).join('')}</select>
         </div>
-        <div class="form-row">
+        <div class="field-group">
+          <label>Location (from Fitting / Pipe Laying records)</label>
+          <select id="f-location-sel" onchange="onConcreteLocChange(this)">
+            ${strLocs.length ? '' : '<option value="">— No fitting/encasing records yet —</option>'}
+            ${strLocOpts}
+            <option value="__other__"${strHasOther?' selected':''}>— Other (type below) —</option>
+          </select>
+        </div>
+        <div id="f-location-other-wrap" style="display:${strHasOther?'block':'none'}">
+          <div class="field-group mt-2">
+            <label>Custom Location</label>
+            <input type="text" id="f-location-other" value="${strHasOther?p.location:''}" placeholder="e.g. Ch:450m near road crossing" oninput="document.getElementById('f-location').value=this.value">
+          </div>
+        </div>
+        <input type="hidden" id="f-location" value="${p.location||''}">
+        <div class="form-row mt-2">
           <div class="field-group"><label>From Ch. (m)</label><input type="number" id="f-from" value="${p.from||''}" placeholder="e.g. 0"></div>
           <div class="field-group"><label>To Ch. (m)</label><input type="number" id="f-to" value="${p.to||''}" placeholder="e.g. 50"></div>
         </div>
@@ -1320,6 +1377,37 @@ function selectRadio(fieldId, val, el) {
   if (hidden) hidden.value = val;
   el.closest('.radio-group').querySelectorAll('.radio-opt').forEach(o => o.classList.remove('selected'));
   el.classList.add('selected');
+}
+
+function onChamberLocChange(sel) {
+  const val   = sel.value;
+  const wrap  = document.getElementById('f-location-other-wrap');
+  const locH  = document.getElementById('f-location');
+  const chainEl = document.getElementById('f-chainage');
+  if (val === '__other__') {
+    if (wrap) wrap.style.display = 'block';
+    if (locH) locH.value = document.getElementById('f-location-other')?.value || '';
+    if (chainEl) { chainEl.value = ''; chainEl.readOnly = false; chainEl.style.opacity = '1'; }
+  } else {
+    if (wrap) wrap.style.display = 'none';
+    if (locH) locH.value = val;
+    // Auto-extract chainage from "Ch:XXXm" pattern
+    const m = val.match(/Ch:(\d+(?:\.\d+)?)m/);
+    if (chainEl && m) { chainEl.value = m[1]; chainEl.readOnly = true; chainEl.style.opacity = '0.6'; }
+  }
+}
+
+function onConcreteLocChange(sel) {
+  const val  = sel.value;
+  const wrap = document.getElementById('f-location-other-wrap');
+  const locH = document.getElementById('f-location');
+  if (val === '__other__') {
+    if (wrap) wrap.style.display = 'block';
+    if (locH) locH.value = document.getElementById('f-location-other')?.value || '';
+  } else {
+    if (wrap) wrap.style.display = 'none';
+    if (locH) locH.value = val;
+  }
 }
 
 function handleExcavPhotoUpload(input, zone) {
@@ -1519,7 +1607,8 @@ async function submitReport(type) {
     data.thrustBlock = g('f-thrustBlock');
   }
   if (type==='structure') {
-    data.strType=g('f-strType'); data.from=gf('f-from'); data.to=gf('f-to');
+    data.strType=g('f-strType'); data.location=g('f-location');
+    data.from=gf('f-from'); data.to=gf('f-to');
     data.concrGrade=g('f-concrGrade'); data.mixType=g('f-mixType');
     data.estConc=gf('f-estConc'); data.actualConc=gf('f-actualConc');
     data.curingStatus=g('f-curingStatus'); data.cubeSamples=g('f-cubeSamples');
