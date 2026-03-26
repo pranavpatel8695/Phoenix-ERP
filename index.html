@@ -1133,23 +1133,12 @@ function buildTypeFields(type, p={}) {
           </div>
           <div class="field-group"><label>Size (mm) <span class="req">*</span></label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
         </div>
-        <div class="form-row">
-          <div class="field-group"><label>Pressure Class / Rating</label>
-            <select id="f-pressClass">${['PN 6','PN 10','PN 16','PN 25','Class 150','Class 300','Other'].map(v=>`<option${p.pressClass===v?' selected':''}>${v}</option>`).join('')}</select>
+        <div class="field-group"><label>Chamber Required?</label>
+          <div class="radio-group">
+            <div class="radio-opt${(p.chamberReq||'No')==='No'?' selected':''}" onclick="selectRadio('f-chamberReq','No',this)">No</div>
+            <div class="radio-opt${p.chamberReq==='Yes'?' selected':''}" onclick="selectRadio('f-chamberReq','Yes',this)">Yes</div>
           </div>
-          <div class="field-group"><label>Qty</label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
-        </div>
-        <div class="form-row">
-          <div class="field-group"><label>Make / Brand</label><input type="text" id="f-make" value="${p.make||''}" placeholder="e.g. AVK, KSB, KIRLOSKAR"></div>
-          <div class="field-group"><label>IS Standard</label><input type="text" id="f-isStd" value="${p.isStd||''}" placeholder="e.g. IS 14846"></div>
-        </div>
-        <div class="form-row">
-          <div class="field-group"><label>Installation Status</label>
-            <select id="f-installStatus">${['Installed & Tested','Installed — Testing Pending','Partially Installed','Material Received'].map(v=>`<option${p.installStatus===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Chamber Required</label>
-            <select id="f-chamberReq">${['Not Required','Required — Planned','Required — Constructed'].map(v=>`<option${p.chamberReq===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
+          <input type="hidden" id="f-chamberReq" value="${p.chamberReq||'No'}">
         </div>
       </div>`;
   }
@@ -1352,6 +1341,13 @@ function selectThrustBlock(val, el) {
   el.classList.add('selected');
 }
 
+function selectRadio(fieldId, val, el) {
+  const hidden = document.getElementById(fieldId);
+  if (hidden) hidden.value = val;
+  el.closest('.radio-group').querySelectorAll('.radio-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
 function handleExcavPhotoUpload(input, zone) {
   const file = input.files[0];
   if (!file) return;
@@ -1531,10 +1527,11 @@ async function submitReport(type) {
     data.photos     = [];
   }
   if (type==='valve') {
-    data.chainage=gf('f-chainage'); data.location=g('f-location');
-    data.valType=g('f-valType'); data.size=g('f-size'); data.pressClass=g('f-pressClass');
-    data.qty=gf('f-qty')||1; data.make=g('f-make'); data.isStd=g('f-isStd');
-    data.installStatus=g('f-installStatus'); data.chamberReq=g('f-chamberReq');
+    data.chainage      = gf('f-chainage');
+    data.location      = g('f-location');
+    data.valType       = g('f-valType');
+    data.size          = g('f-size');
+    data.chamberReq    = g('f-chamberReq');
   }
   if (type==='chamber') {
     data.chainage=gf('f-chainage'); data.location=g('f-location');
