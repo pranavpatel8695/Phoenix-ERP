@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Phoenix ERP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f0f14;
+  --surface: #1a1a24;
+  --surface2: #22222e;
+  --border: rgba(255,255,255,0.08);
+  --text: #f0f0f5;
+  --muted: #888899;
+  --red: #FF453A;
+  --orange: #FF9F0A;
+  --green: #30D158;
+  --blue: #0A84FF;
+  --purple: #BF5AF2;
+  --yellow: #FFD60A;
+  --cyan: #5AC8FA;
+  --accent: #E8192C;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+/* ── UTILS ── */
+.hidden{display:none!important;}
+.flex{display:flex;} .flex-col{flex-direction:column;} .gap-2{gap:8px;} .gap-3{gap:12px;} .gap-4{gap:16px;}
+.items-center{align-items:center;} .justify-between{justify-content:space-between;} .flex-1{flex:1;}
+.w-full{width:100%;} .text-center{text-align:center;}
+.rounded{border-radius:8px;} .rounded-lg{border-radius:12px;} .rounded-xl{border-radius:16px;}
+.p-2{padding:8px;} .p-3{padding:12px;} .p-4{padding:16px;}
+.mt-2{margin-top:8px;} .mt-3{margin-top:12px;} .mt-4{margin-top:16px;}
+.mb-2{margin-bottom:8px;} .mb-3{margin-bottom:12px;}
+.text-sm{font-size:12px;} .text-xs{font-size:11px;} .font-bold{font-weight:700;}
+.text-muted{color:var(--muted);}
+.text-green{color:var(--green);} .text-red{color:var(--red);} .text-blue{color:var(--blue);}
+.text-orange{color:var(--orange);} .text-purple{color:var(--purple);}
+/* ── CARD ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;}
+.card-title{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text);}
+/* ── BUTTONS ── */
+.btn{padding:10px 16px;border-radius:10px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:opacity 0.15s;}
+.btn:hover{opacity:0.85;}
+.btn-primary{background:var(--blue);color:#fff;}
+.btn-danger{background:var(--red);color:#fff;}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+.btn-ghost{background:transparent;color:var(--blue);border:1px solid rgba(10,132,255,0.3);}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:8px;}
+/* ── FORM ── */
+.field-group{margin-bottom:14px;}
+.field-group label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
+.field-group input,.field-group select,.field-group textarea{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;}
+.field-group input:focus,.field-group select:focus,.field-group textarea:focus{outline:none;border-color:var(--blue);}
+.field-group select option{background:var(--surface2);}
+.radio-group{display:flex;gap:8px;flex-wrap:wrap;}
+.radio-opt{padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;}
+.radio-opt.selected,.radio-opt:hover{border-color:var(--blue);color:var(--blue);background:rgba(10,132,255,0.1);}
+.form-row{display:flex;gap:10px;}
+.form-row .field-group{flex:1;}
+.req{color:var(--red);}
+/* ── TOPBAR ── */
+#topbar{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surface);border-bottom:1px solid var(--border);height:56px;display:flex;align-items:center;padding:0 16px;gap:10px;}
+.topbar-logo{font-size:16px;font-weight:700;color:var(--text);}
+.topbar-logo span{color:var(--accent);}
+.topbar-sub{font-size:9px;color:var(--muted);font-weight:400;line-height:1.2;}
+.role-badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;}
+.role-badge.admin{background:rgba(255,214,10,0.15);color:var(--yellow);border:1px solid rgba(255,214,10,0.3);}
+.role-badge.pm{background:rgba(48,209,88,0.15);color:var(--green);border:1px solid rgba(48,209,88,0.3);}
+.role-badge.supervisor{background:rgba(10,132,255,0.15);color:var(--blue);border:1px solid rgba(10,132,255,0.3);}
+#syncStatus{font-size:10px;padding:3px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;}
+#syncStatus.synced{color:var(--green);background:rgba(48,209,88,0.1);border-color:rgba(48,209,88,0.2);}
+#syncStatus.syncing{color:var(--orange);background:rgba(255,159,10,0.1);border-color:rgba(255,159,10,0.2);}
+#syncStatus.offline{color:var(--red);background:rgba(255,69,58,0.1);border-color:rgba(255,69,58,0.2);}
+.avatar-btn{width:32px;height:32px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+/* ── BOTTOM NAV ── */
+#bottomNav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--surface);border-top:1px solid var(--border);display:flex;padding:8px 0 max(8px,env(safe-area-inset-bottom));}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;cursor:pointer;color:var(--muted);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;transition:color 0.15s;}
+.nav-item .nav-icon{font-size:20px;line-height:1;}
+.nav-item.active{color:var(--blue);}
+/* ── MAIN CONTENT ── */
+#main{margin-top:56px;margin-bottom:72px;padding:16px;max-width:600px;margin-left:auto;margin-right:auto;}
+/* ── LOGIN ── */
+#loginScreen{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px 24px;}
+.login-logo{text-align:center;margin-bottom:28px;}
+.login-logo h1{font-size:28px;font-weight:700;color:var(--text);}
+.login-logo h1 span{color:var(--accent);}
+.login-logo p{font-size:12px;color:var(--muted);margin-top:4px;}
+/* ── MODULE CARDS ── */
+.module-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.module-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:border-color 0.2s,transform 0.1s;}
+.module-card:hover{border-color:var(--blue);transform:translateY(-1px);}
+.module-card .icon{font-size:28px;margin-bottom:8px;}
+.module-card .name{font-size:13px;font-weight:700;color:var(--text);}
+.module-card .count{font-size:11px;color:var(--muted);margin-top:2px;}
+/* ── STAT CARDS ── */
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px;}
+.stat-card{background:var(--surface2);border-radius:12px;padding:12px;text-align:center;}
+.stat-card .val{font-size:22px;font-weight:800;line-height:1;}
+.stat-card .lbl{font-size:10px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:0.3px;}
+/* ── REPORT LIST ── */
+.report-item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;}
+.report-item-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.type-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.report-type-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}
+.report-info{font-size:12px;color:var(--muted);}
+.report-date{font-size:11px;color:var(--muted);}
+.report-actions{display:flex;gap:6px;margin-top:10px;}
+/* ── SECTION HEADER ── */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.section-title{font-size:16px;font-weight:700;}
+/* ── TOAST ── */
+#toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:#333;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;opacity:0;transition:all 0.3s;z-index:999;white-space:nowrap;pointer-events:none;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:300;display:flex;align-items:flex-end;justify-content:center;}
+.modal-sheet{background:var(--surface);border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;}
+.modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px;}
+/* ── TABS ── */
+.tab-bar{display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:16px;}
+.tab-item{flex:1;padding:7px;text-align:center;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);transition:all 0.2s;}
+.tab-item.active{background:var(--surface);color:var(--text);}
+/* ── BADGE ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;}
+.badge-green{background:rgba(48,209,88,0.15);color:var(--green);}
+.badge-orange{background:rgba(255,159,10,0.15);color:var(--orange);}
+.badge-red{background:rgba(255,69,58,0.15);color:var(--red);}
+.badge-blue{background:rgba(10,132,255,0.15);color:var(--blue);}
+.badge-purple{background:rgba(191,90,242,0.15);color:var(--purple);}
+/* ── PROGRESS BAR ── */
+.progress-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:6px;}
+.progress-fill{height:100%;border-radius:3px;transition:width 0.5s;}
+/* ── PHOTO ── */
+.photo-zone{border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;color:var(--muted);font-size:13px;transition:border-color 0.2s;}
+.photo-zone:hover{border-color:var(--blue);color:var(--blue);}
+.photo-zone .pi{font-size:28px;margin-bottom:6px;}
+.photo-prev-grid{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.photo-thumb{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;}
+.photo-thumb .rm{position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+/* ── CHAINAGE BAR ── */
+.ch-bar-wrap{margin-bottom:16px;}
+.ch-bar-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px;}
+.ch-bar{height:10px;background:var(--surface2);border-radius:5px;position:relative;overflow:hidden;}
+.ch-seg{position:absolute;height:100%;}
+/* ── LOADER ── */
+#loader{position:fixed;inset:0;background:var(--bg);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+.loader-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loader-text{font-size:13px;color:var(--muted);}
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+/* ── EMPTY STATE ── */
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted);}
+.empty-state .icon{font-size:48px;margin-bottom:12px;}
+.empty-state p{font-size:13px;}
+/* ── SETTINGS ── */
+.settings-section{margin-bottom:20px;}
+.settings-section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;}
+.settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);}
+.settings-row:last-child{border-bottom:none;}
+.settings-row-label{font-size:13px;font-weight:600;}
+.settings-row-sub{font-size:11px;color:var(--muted);}
+/* ── ACCOUNT CARD ── */
+.account-card{background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;}
+.account-avatar{width:40px;height:40px;border-radius:50%;background:var(--blue);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.account-info{flex:1;}
+.account-name{font-size:13px;font-weight:700;}
+.account-user{font-size:11px;color:var(--muted);}
+/* ── MISC ── */
+.divider{height:1px;background:var(--border);margin:16px 0;}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--surface2);color:var(--muted);border:1px solid var(--border);}
+.chip.active{background:rgba(10,132,255,0.1);color:var(--blue);border-color:rgba(10,132,255,0.3);}
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-spinner"></div>
+  <div class="loader-text">Loading Phoenix ERP…</div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen" class="hidden">
+  <div class="login-card">
+    <div class="login-logo">
+      <h1>Phoenix<span> ERP</span></h1>
+      <p>Site Reporting System</p>
+    </div>
+    <div class="field-group">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="Enter username" autocomplete="username">
+    </div>
+    <div class="field-group">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
+    <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <div style="flex:1">
+      <div class="topbar-logo">Phoenix<span> ERP</span></div>
+      <div class="topbar-sub" id="topbarSub">Site Reporting System</div>
+    </div>
+    <span id="roleBadgeEl" class="role-badge"></span>
+    <span id="syncStatus" class="synced" onclick="doSync()">☁️ Synced</span>
+    <button class="avatar-btn" id="avatarBtn" onclick="showUserMenu()">A</button>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div id="main">
+    <!-- Each tab content injected here -->
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div id="bottomNav">
+    <div class="nav-item active" data-tab="home" onclick="switchTab('home')">
+      <div class="nav-icon">📊</div>Dashboard
+    </div>
+    <div class="nav-item" data-tab="submit" onclick="switchTab('submit')" id="navSubmit">
+      <div class="nav-icon">📝</div>Submit
+    </div>
+    <div class="nav-item" data-tab="reports" onclick="switchTab('reports')">
+      <div class="nav-icon">📋</div>Reports
+    </div>
+    <div class="nav-item" data-tab="tracker" onclick="switchTab('tracker')" id="navTracker">
+      <div class="nav-icon">📏</div>Tracker
+    </div>
+    <div class="nav-item" data-tab="settings" onclick="switchTab('settings')" id="navSettings">
+      <div class="nav-icon">⚙️</div>Settings
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- USER MENU MODAL -->
+<div id="userMenuModal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal-sheet" style="max-height:50vh">
+    <div class="modal-handle"></div>
+    <div id="userMenuContent"></div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div id="confirmModal" class="modal-overlay hidden">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div id="confirmTitle" class="section-title mb-3"></div>
+    <div id="confirmMsg" class="text-sm text-muted mb-4"></div>
+    <div class="flex gap-3">
+      <button class="btn btn-secondary flex-1" onclick="document.getElementById('confirmModal').classList.add('hidden')">Cancel</button>
+      <button class="btn btn-danger flex-1" id="confirmYesBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORM MODAL -->
+<div id="formModal" class="modal-overlay hidden" onclick="if(event.target===this)closeFormModal()">
+  <div class="modal-sheet" id="formModalSheet">
+    <div class="modal-handle"></div>
+    <div id="formModalContent"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// PHOENIX ERP — Clean Architecture
+// Appwrite backend, GitHub Pages frontend
+// ============================================================
+
+// ── CONFIG ──────────────────────────────────────────────────
+const AW = {
+  endpoint: 'https://phoenixsite.duckdns.org/v1',
+  project:  '69bf775300049155a9d9',
+  database: '69bf7846002d6b0b65f6',
+  collections: {
+    reports: 'reports',
+    config:  'config'
+  }
+};
+const APP_VERSION = '3.0';
+
+// ── STATE ───────────────────────────────────────────────────
+let currentUser = null;
+let currentRole = null; // 'admin' | 'pm' | 'supervisor'
+let currentModule = 'pipeline'; // 'pipeline' | 'civil'
+let activeTab = 'home';
+let _syncing = false;
+let _editId = null;
+
+// ── LOCAL STORAGE HELPERS ───────────────────────────────────
+const LS = {
+  get: (k, def=[]) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch(e) { return def; } },
+  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+  del: (k) => localStorage.removeItem(k)
+};
+
+const getUsers       = () => LS.get('phx_users', { admin: { role:'admin', pass:'admin', name:'Admin' } });
+const saveUsers      = v => LS.set('phx_users', v);
+const getProjects    = () => LS.get('phx_projects', []);
+const saveProjects   = v => LS.set('phx_projects', v);
+const getRoutes      = () => LS.get('phx_routes', {});
+const saveRoutes     = v => LS.set('phx_routes', v);
+const getAssignments = () => LS.get('phx_assignments', {});
+const saveAssignments= v => LS.set('phx_assignments', v);
+const getSpecials    = () => LS.get('phx_specials', {});
+const saveSpecials   = v => LS.set('phx_specials', v);
+
+function getReports() {
+  return LS.get('phx_reports', []);
+}
+function saveReports(r) {
+  LS.set('phx_reports', r);
+}
+
+function getVisibleProjects() {
+  const all = getProjects();
+  if (currentRole === 'admin') return all;
+  const users = getUsers();
+  const u = users[currentUser];
+  const assignments = getAssignments();
+  const assigned = all.filter(p => (assignments[p] || []).includes(currentUser));
+  const fromRecord = (u && Array.isArray(u.projects)) ? u.projects : [];
+  const union = [...new Set([...fromRecord, ...assigned])];
+  return union.length ? union : all;
+}
+
+// ── APPWRITE API ─────────────────────────────────────────────
+async function aw(method, path, data) {
+  const url = AW.endpoint + path;
+  const opts = {
+    method,
+    headers: {
+      'X-Appwrite-Project': AW.project,
+      'Content-Type': 'application/json'
+    }
+  };
+  if (data) opts.body = JSON.stringify(data);
+  try {
+    const res = await fetch(url, opts);
+    if (res.status === 204) return true;
+    const json = await res.json();
+    if (!res.ok) return null;
+    return json;
+  } catch(e) {
+    return null;
+  }
+}
+
+// ── SYNC ─────────────────────────────────────────────────────
+setSyncStatus('synced');
+
+async function doSync() {
+  if (_syncing) return;
+  _syncing = true;
+  setSyncStatus('syncing');
+
+  try {
+    // 1. Pull config
+    await pullConfig();
+
+    // 2. Fetch all reports from Appwrite
+    let docs = [], offset = 0;
+    while (true) {
+      const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?limit=100&offset=${offset}`);
+      if (!res?.documents) break;
+      docs = docs.concat(res.documents);
+      if (res.documents.length < 100) break;
+      offset += 100;
+    }
+
+    // 3. Parse docs
+    const remote = docs.map(d => {
+      try {
+        const base = d.data_json ? JSON.parse(d.data_json) : {};
+        // Fill from individual fields
+        ['type','project','route','date','supervisor','timestamp'].forEach(f => {
+          if (d[f]) base[f] = d[f];
+        });
+        if (d.from_ch !== undefined) base.from = d.from_ch;
+        if (d.to_ch   !== undefined) base.to   = d.to_ch;
+        ['meters','volume','width','depth','qty','chainage','estConc','actualConc','netVol'].forEach(f => {
+          if (d[f] !== undefined) base[f] = d[f];
+        });
+        ['soil','size','material','encasing','road','valType','chamberReq',
+         'chamType','chamStatus','slab','slabKept','fitType','thrustBlock',
+         'special','strType','remarks'].forEach(f => {
+          if (d[f]) base[f] = d[f];
+        });
+        ['encasings','valves','connections'].forEach(f => {
+          if (d[f]) try { base[f] = JSON.parse(d[f]); } catch(e) {}
+        });
+        if (!base.id) base.id = d.$id;
+        base._awId = d.$id;
+        return base;
+      } catch(e) { return null; }
+    }).filter(r => r && r.type);
+
+    // 4. Merge: remote + local (never delete local)
+    const local = getReports();
+    const remoteIds = new Set(remote.map(r => String(r.id)));
+    const localOnly = local.filter(r => r.id && !remoteIds.has(String(r.id)));
+    const merged = Object.values(
+      [...remote, ...localOnly].reduce((m, r) => { m[String(r.id)] = r; return m; }, {})
+    );
+    saveReports(merged);
+
+    // 5. Upload local-only
+    for (const r of localOnly) {
+      try { await saveReportToAW(r); } catch(e) {}
+    }
+
+    setSyncStatus('synced');
+    renderCurrentTab();
+
+  } catch(e) {
+    console.warn('Sync failed:', e);
+    setSyncStatus('offline');
+  } finally {
+    _syncing = false;
+  }
+}
+
+async function pullConfig() {
+  const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`);
+  if (!res?.value) return;
+  try {
+    const d = JSON.parse(res.value);
+    if (d.projects?.length)                 saveProjects(d.projects);
+    if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
+    if (d.assignments)                       saveAssignments(d.assignments);
+    if (d.specials)                          saveSpecials(d.specials);
+    if (d.users) {
+      const local = getUsers();
+      const adminPass = local.admin?.pass || 'admin';
+      Object.keys(d.users).forEach(u => {
+        if (d.users[u].role !== 'admin') {
+          const localProjects = local[u]?.projects;
+          local[u] = d.users[u];
+          if (localProjects?.length && !local[u].projects?.length) local[u].projects = localProjects;
+        }
+      });
+      local.admin = { ...local.admin, pass: adminPass };
+      saveUsers(local);
+    }
+  } catch(e) {}
+}
+
+async function pushConfig() {
+  const data = {
+    projects:    getProjects(),
+    routes:      getRoutes(),
+    assignments: getAssignments(),
+    specials:    getSpecials(),
+    users:       getUsers(),
+    updatedAt:   Date.now()
+  };
+  const val = JSON.stringify(data).slice(0, 65000);
+  let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`, { data: { key: 'adminData', value: val } });
+  if (!res) await aw('POST', `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
+    documentId: 'adminData',
+    data: { key: 'adminData', value: val },
+    permissions: ['read("any")','update("any")','delete("any")']
+  });
+}
+
+async function saveReportToAW(r) {
+  const noPhotos = Object.assign({}, r, { photos: [], photosStart: [], photosEnd: [] });
+  const doc = {
+    type:       String(r.type||''),
+    project:    String(r.project||''),
+    route:      String(r.route||''),
+    date:       String(r.date||''),
+    supervisor: String(r.supervisor||''),
+    timestamp:  String(r.timestamp||''),
+    from_ch:    parseFloat(r.from)||0,
+    to_ch:      parseFloat(r.to)||0,
+    meters:     parseFloat(r.meters)||0,
+    volume:     parseFloat(r.volume)||0,
+    width:      parseFloat(r.width)||0,
+    depth:      parseFloat(r.depth)||0,
+    soil:       String(r.soil||''),
+    size:       String(r.size||''),
+    material:   String(r.material||''),
+    encasing:   String(r.encasing||''),
+    road:       String(r.road||''),
+    chainage:   parseFloat(r.chainage)||0,
+    valType:    String(r.valType||''),
+    chamberReq: String(r.chamberReq||''),
+    chamType:   String(r.chamType||''),
+    chamStatus: String(r.chamStatus||''),
+    slab:       String(r.slab||''),
+    slabKept:   String(r.slabKept||''),
+    fitType:    String(r.fitType||''),
+    thrustBlock:String(r.thrustBlock||''),
+    qty:        parseFloat(r.qty)||1,
+    special:    String(r.special||''),
+    strType:    String(r.strType||''),
+    remarks:    String(r.remarks||''),
+    estConc:    parseFloat(r.estConc)||0,
+    actualConc: parseFloat(r.actualConc)||0,
+    netVol:     parseFloat(r.netVol)||0,
+    encasings:  JSON.stringify(r.encasings||[]),
+    valves:     JSON.stringify(r.valves||[]),
+    connections:JSON.stringify(r.connections||[]),
+    data_json:  JSON.stringify(noPhotos).slice(0, 65000)
+  };
+  const docId = 'r' + String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30);
+  let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.reports}/documents/${docId}`, { data: doc });
+  if (!res) res = await aw('POST', `/databases/${AW.database}/collections/${AW.collections.reports}/documents`, {
+    documentId: docId, data: doc, permissions: ['read("any")','update("any")','delete("any")']
+  });
+  if (res) { r._awId = res.$id || docId; }
+  return !!res;
+}
+
+async function deleteReportFromAW(r) {
+  const awId = r._awId || ('r' + String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30));
+  let res = await aw('DELETE', `/databases/${AW.database}/collections/${AW.collections.reports}/documents/${awId}`);
+  if (res !== null) return true;
+  // Scan for matching doc
+  const list = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?limit=100`);
+  if (list?.documents) {
+    const match = list.documents.find(d => {
+      try { return String(JSON.parse(d.data_json||'{}').id) === String(r.id); } catch(e){ return false; }
+    });
+    if (match) return (await aw('DELETE', `/databases/${AW.database}/collections/${AW.collections.reports}/documents/${match.$id}`)) !== null;
+  }
+  return false;
+}
+
+function setSyncStatus(s) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.className = s;
+  el.textContent = s === 'synced' ? '☁️ Synced' : s === 'syncing' ? '↻ Syncing' : '📵 Offline';
+}
+
+// Auto sync every 2 min
+setInterval(() => { if (navigator.onLine && !_syncing) doSync(); }, 120000);
+window.addEventListener('online', () => setTimeout(doSync, 2000));
+
+// ── AUTH ─────────────────────────────────────────────────────
+async function doLogin() {
+  const user = document.getElementById('loginUser').value.trim().toLowerCase();
+  const pass = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+
+  if (!user || !pass) { showLoginError('Enter username and password'); return; }
+
+  let users = getUsers();
+
+  // Check local first
+  if (users[user] && users[user].pass === pass) {
+    await loginSuccess(user, users[user]);
+    return;
+  }
+
+  // Try pulling from Appwrite
+  showLoader('Checking credentials…');
+  await pullConfig();
+  users = getUsers();
+  if (users[user] && users[user].pass === pass) {
+    await loginSuccess(user, users[user]);
+  } else {
+    hideLoader();
+    showLoginError('Incorrect username or password');
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+async function loginSuccess(user, userRecord) {
+  currentUser = user;
+  currentRole = userRecord.role;
+  showLoader('Loading your data…');
+
+  // Sync on login
+  await doSync();
+
+  hideLoader();
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+
+  // Update UI
+  document.getElementById('roleBadgeEl').textContent = 
+    currentRole === 'admin' ? 'Admin' : currentRole === 'pm' ? 'Project Manager' : 'Supervisor/Eng.';
+  document.getElementById('roleBadgeEl').className = `role-badge ${currentRole}`;
+  document.getElementById('avatarBtn').textContent = userRecord.name?.[0]?.toUpperCase() || user[0].toUpperCase();
+  document.getElementById('topbarSub').textContent = userRecord.name || user;
+
+  // Show/hide nav items
+  document.getElementById('navSubmit').classList.toggle('hidden', false);
+  document.getElementById('navTracker').classList.toggle('hidden', currentRole === 'supervisor');
+  document.getElementById('navSettings').classList.toggle('hidden', currentRole === 'supervisor');
+
+  // If admin, push config
+  if (currentRole === 'admin') {
+    setTimeout(pushConfig, 2000);
+  }
+
+  switchTab('home');
+}
+
+function doLogout() {
+  currentUser = null; currentRole = null;
+  document.getElementById('userMenuModal').classList.add('hidden');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+function showUserMenu() {
+  const el = document.getElementById('userMenuContent');
+  el.innerHTML = `
+    <div class="flex items-center gap-3 mb-4">
+      <div class="avatar-btn" style="width:48px;height:48px;font-size:18px">${(getUsers()[currentUser]?.name||currentUser)[0].toUpperCase()}</div>
+      <div>
+        <div class="font-bold">${getUsers()[currentUser]?.name||currentUser}</div>
+        <div class="text-sm text-muted">${currentRole === 'admin' ? 'Administrator' : currentRole === 'pm' ? 'Project Manager' : 'Supervisor/Engineer'}</div>
+      </div>
+    </div>
+    <button class="btn btn-secondary w-full mb-2" onclick="doSync();document.getElementById('userMenuModal').classList.add('hidden')">↻ Sync Now</button>
+    <button class="btn btn-danger w-full" onclick="doLogout()">Sign Out</button>
+  `;
+  document.getElementById('userMenuModal').classList.remove('hidden');
+}
+
+// ── TABS ─────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === tab);
+  });
+  renderCurrentTab();
+}
+
+function renderCurrentTab() {
+  const main = document.getElementById('main');
+  switch(activeTab) {
+    case 'home':     main.innerHTML = renderHome(); break;
+    case 'submit':   main.innerHTML = renderSubmitTab(); break;
+    case 'reports':  main.innerHTML = renderReportsTab(); break;
+    case 'tracker':  main.innerHTML = renderTrackerTab(); break;
+    case 'settings': main.innerHTML = renderSettingsTab(); break;
+  }
+  if (activeTab === 'settings') initSettings();
+}
+
+// ── HOME / DASHBOARD ─────────────────────────────────────────
+function renderHome() {
+  const vp = getVisibleProjects();
+  const allReports = getReports().filter(r => vp.includes(r.project));
+  const today = new Date().toISOString().slice(0,10);
+  const todayR = allReports.filter(r => r.date === today);
+
+  const excM = allReports.filter(r=>r.type==='excavation').reduce((s,r)=>s+(r.meters||0),0);
+  const pipeM= allReports.filter(r=>r.type==='pipe').reduce((s,r)=>s+(r.meters||0),0);
+  const refM = allReports.filter(r=>r.type==='refill').reduce((s,r)=>s+(r.meters||0),0);
+  const valC = allReports.filter(r=>r.type==='valve').length;
+
+  const dateStr = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
+  let html = `
+    <div class="card mb-3" style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-color:rgba(10,132,255,0.2)">
+      <div class="text-xs text-muted mb-1">TODAY</div>
+      <div style="font-size:15px;font-weight:700">${dateStr}</div>
+      <div class="text-xs text-muted mt-1">${todayR.length} report${todayR.length!==1?'s':''} submitted today</div>
+    </div>`;
+
+  // Module selector
+  html += `
+    <div class="section-header">
+      <div class="section-title">Modules</div>
+    </div>
+    <div class="module-grid mb-4">
+      <div class="module-card${currentModule==='pipeline'?' selected':''}" onclick="currentModule='pipeline';renderCurrentTab()" style="${currentModule==='pipeline'?'border-color:var(--blue);background:rgba(10,132,255,0.05)':''}">
+        <div class="icon">🔩</div>
+        <div class="name">Pipeline Work</div>
+        <div class="count">${allReports.filter(r=>!r.module||r.module==='pipeline').length} reports</div>
+      </div>
+      <div class="module-card${currentModule==='civil'?' selected':''}" onclick="currentModule='civil';renderCurrentTab()" style="${currentModule==='civil'?'border-color:var(--orange);background:rgba(255,159,10,0.05)':''}">
+        <div class="icon">🏗️</div>
+        <div class="name">Civil Work</div>
+        <div class="count">${allReports.filter(r=>r.module==='civil').length} reports</div>
+      </div>
+    </div>`;
+
+  // Pipeline stats
+  if (currentModule === 'pipeline') {
+    html += `
+      <div class="section-header"><div class="section-title">Pipeline Overview</div></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val text-orange">${fmtM(excM)}</div><div class="lbl">Excavation</div></div>
+        <div class="stat-card"><div class="val text-blue">${fmtM(pipeM)}</div><div class="lbl">Pipe Laying</div></div>
+        <div class="stat-card"><div class="val text-green">${fmtM(refM)}</div><div class="lbl">Refilling</div></div>
+        <div class="stat-card"><div class="val text-red">${valC}</div><div class="lbl">Valves</div></div>
+      </div>`;
+
+    // Project progress
+    if (vp.length) {
+      html += `<div class="section-header mt-2"><div class="section-title">Project Progress</div></div>`;
+      vp.forEach(proj => {
+        const routes = (getRoutes()[proj] || []);
+        const projR = allReports.filter(r => r.project === proj && (!r.module || r.module === 'pipeline'));
+        const pipeTotal = routes.reduce((s,r) => s+(r.length||0), 0);
+        const pipeDone  = projR.filter(r=>r.type==='pipe').reduce((s,r) => s+(r.meters||0), 0);
+        const pct = pipeTotal > 0 ? Math.min(100, Math.round(pipeDone/pipeTotal*100)) : 0;
+        const color = pct >= 75 ? 'var(--green)' : pct >= 40 ? 'var(--orange)' : 'var(--blue)';
+        html += `
+          <div class="card mb-2">
+            <div class="flex justify-between items-center">
+              <div class="font-bold" style="font-size:13px">${proj}</div>
+              <div class="badge badge-blue">${pct}%</div>
+            </div>
+            <div class="progress-bar mt-2"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+            <div class="text-xs text-muted mt-2">${fmtM(pipeDone)} of ${fmtM(pipeTotal)} pipe laid · ${projR.length} reports</div>
+          </div>`;
+      });
+    }
+  } else {
+    // Civil Work
+    const civilR = allReports.filter(r => r.module === 'civil' && vp.includes(r.project));
+    html += `
+      <div class="section-header"><div class="section-title">Civil Work Overview</div></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val text-orange">${civilR.length}</div><div class="lbl">Total Reports</div></div>
+        <div class="stat-card"><div class="val text-blue">${civilR.filter(r=>r.type==='civil_dpr').length}</div><div class="lbl">DPR</div></div>
+        <div class="stat-card"><div class="val text-green">${civilR.filter(r=>r.type==='civil_drawing').length}</div><div class="lbl">Drawings</div></div>
+        <div class="stat-card"><div class="val text-purple">${civilR.filter(r=>r.type==='civil_quality').length}</div><div class="lbl">Quality</div></div>
+      </div>`;
+  }
+
+  // Recent activity
+  const recent = [...allReports].sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).slice(0,5);
+  if (recent.length) {
+    html += `<div class="section-header mt-2"><div class="section-title">Recent Activity</div></div>`;
+    recent.forEach(r => { html += reportItemHTML(r, false); });
+  }
+
+  return html;
+}
+
+function fmtM(m) {
+  if (!m) return '0m';
+  if (m >= 1000) return (m/1000).toFixed(2) + 'km';
+  return Math.round(m) + 'm';
+}
+
+// ── SUBMIT TAB ───────────────────────────────────────────────
+function renderSubmitTab() {
+  const vp = getVisibleProjects();
+  if (!vp.length) return `<div class="empty-state"><div class="icon">⚠️</div><p>No projects assigned. Contact admin.</p></div>`;
+
+  const pipeTypes = [
+    { id:'excavation', icon:'⛏️', label:'Excavation', color:'var(--orange)' },
+    { id:'pipe',       icon:'🔩', label:'Pipe Laying', color:'var(--blue)' },
+    { id:'refill',     icon:'🪣', label:'Refilling',   color:'var(--green)' },
+    { id:'valve',      icon:'🔧', label:'Valve',       color:'var(--red)' },
+    { id:'chamber',    icon:'🏛️', label:'Chamber',     color:'var(--orange)' },
+    { id:'fitting',    icon:'🔗', label:'Fitting',     color:'var(--cyan)' },
+    { id:'structure',  icon:'🏗️', label:'Concrete',    color:'var(--purple)' },
+  ];
+
+  const civilTypes = [
+    { id:'civil_dpr',     icon:'📄', label:'DPR Entry',    color:'var(--orange)' },
+    { id:'civil_drawing', icon:'📐', label:'Drawing',      color:'var(--blue)' },
+    { id:'civil_quality', icon:'✅', label:'Quality Check', color:'var(--green)' },
+    { id:'civil_material',icon:'📦', label:'Material',     color:'var(--purple)' },
+    { id:'civil_labour',  icon:'👷', label:'Labour',       color:'var(--cyan)' },
+    { id:'civil_other',   icon:'📝', label:'Other',        color:'var(--muted)' },
+  ];
+
+  const types = currentModule === 'pipeline' ? pipeTypes : civilTypes;
+  const moduleLabel = currentModule === 'pipeline' ? '🔩 Pipeline Work' : '🏗️ Civil Work';
+
+  let html = `
+    <div class="section-header">
+      <div class="section-title">Submit Report</div>
+      <div class="chip active">${moduleLabel}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">`;
+
+  types.forEach(t => {
+    html += `
+      <div onclick="openReportForm('${t.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 10px;text-align:center;cursor:pointer;transition:all 0.2s;"
+        onmouseenter="this.style.borderColor='${t.color}'" onmouseleave="this.style.borderColor='var(--border)'">
+        <div style="font-size:26px;margin-bottom:6px">${t.icon}</div>
+        <div style="font-size:11px;font-weight:700;color:${t.color}">${t.label}</div>
+      </div>`;
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+// ── REPORT FORM ───────────────────────────────────────────────
+function openReportForm(type, editData=null) {
+  _editId = editData ? editData.id : null;
+  const modal = document.getElementById('formModal');
+  const content = document.getElementById('formModalContent');
+  content.innerHTML = buildReportForm(type, editData);
+  modal.classList.remove('hidden');
+}
+
+function closeFormModal() {
+  document.getElementById('formModal').classList.add('hidden');
+  _editId = null;
+}
+
+function buildReportForm(type, prefill={}) {
+  const vp = getVisibleProjects();
+  const projOpts = vp.map(p => `<option value="${p}"${prefill.project===p?' selected':''}>${p}</option>`).join('');
+
+  const typeLabels = {
+    excavation:'⛏️ Excavation',pipe:'🔩 Pipe Laying',refill:'🪣 Refilling',
+    valve:'🔧 Valve',chamber:'🏛️ Chamber',fitting:'🔗 Fitting',structure:'🏗️ Concrete',
+    civil_dpr:'📄 DPR Entry',civil_drawing:'📐 Drawing',civil_quality:'✅ Quality Check',
+    civil_material:'📦 Material',civil_labour:'👷 Labour',civil_other:'📝 Other'
+  };
+
+  let html = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">${typeLabels[type]||type}</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕ Close</button>
+    </div>
+    <div class="field-group">
+      <label>Project <span class="req">*</span></label>
+      <select id="f-project" onchange="updateFormRoutes()">${projOpts}</select>
+    </div>
+    <div class="field-group">
+      <label>Route <span class="req">*</span></label>
+      <select id="f-route"></select>
+    </div>
+    <div class="field-group">
+      <label>Date <span class="req">*</span></label>
+      <input type="date" id="f-date" value="${prefill.date||new Date().toISOString().slice(0,10)}" max="${new Date().toISOString().slice(0,10)}">
+    </div>`;
+
+  // Type-specific fields
+  html += buildTypeFields(type, prefill);
+
+  html += `
+    <div class="field-group">
+      <label>Photo</label>
+      <div class="photo-zone" onclick="document.getElementById('f-photo').click()">
+        <div class="pi">📷</div>
+        Tap to add photo
+        <input type="file" id="f-photo" accept="image/*" style="display:none" onchange="handlePhotoUpload(this)">
+      </div>
+      <div class="photo-prev-grid" id="f-photo-prev"></div>
+    </div>
+    <div class="field-group">
+      <label>Remarks</label>
+      <textarea id="f-remarks" rows="2" placeholder="Optional notes…">${prefill.remarks||''}</textarea>
+    </div>
+    <div class="flex gap-3">
+      <button class="btn btn-secondary flex-1" onclick="closeFormModal()">Cancel</button>
+      <button class="btn btn-primary flex-1" onclick="submitReport('${type}')">${_editId?'Update':'Submit'} ✓</button>
+    </div>`;
+
+  setTimeout(() => {
+    updateFormRoutes(prefill.route);
+    if (prefill.photos?.length) {
+      prefill.photos.forEach(p => addPhotoPreview(p.src||p));
+    }
+  }, 50);
+
+  return html;
+}
+
+function buildTypeFields(type, p={}) {
+  let html = '';
+  if (['excavation','pipe','refill'].includes(type)) {
+    html += `
+      <div class="form-row">
+        <div class="field-group"><label>From (m)</label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. 0"></div>
+        <div class="field-group"><label>To (m)</label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. 490"></div>
+      </div>
+      <div class="field-group"><label>Length (m)</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.7" placeholder="Auto-calculated"></div>`;
+  }
+  if (type === 'excavation') {
+    html += `
+      <div class="form-row">
+        <div class="field-group"><label>Width (m)</label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.2"></div>
+        <div class="field-group"><label>Depth (m)</label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.5"></div>
+      </div>
+      <div class="field-group"><label>Soil Type</label>
+        <select id="f-soil">
+          ${['Soft Soil','Hard Soil','Murrum','Rock','Sandy','Mixed'].map(s=>`<option${p.soil===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>`;
+  }
+  if (type === 'pipe') {
+    html += `
+      <div class="form-row">
+        <div class="field-group"><label>Size</label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
+        <div class="field-group"><label>Material</label>
+          <select id="f-material">
+            ${['DI (Ductile Iron)','MS (Mild Steel)','HDPE','PVC','CI (Cast Iron)','Other'].map(m=>`<option${p.material===m?' selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field-group"><label>CC/RCC Encasing</label>
+        <select id="f-encasing">
+          ${['Not Required','CC Required','RCC Required'].map(e=>`<option${p.encasing===e?' selected':''}>${e}</option>`).join('')}
+        </select>
+      </div>`;
+  }
+  if (type === 'refill') {
+    html += `
+      <div class="form-row">
+        <div class="field-group"><label>Width (m)</label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.2"></div>
+        <div class="field-group"><label>Depth (m)</label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.5"></div>
+      </div>
+      <div class="field-group"><label>Road Restoration</label>
+        <select id="f-road">
+          ${['Not Required','Paver Block','Asphalt','Concrete','Soil Compaction'].map(r=>`<option${p.road===r?' selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>`;
+  }
+  if (type === 'valve') {
+    html += `
+      <div class="field-group"><label>Chainage (m)</label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
+      <div class="form-row">
+        <div class="field-group"><label>Valve Type</label>
+          <select id="f-valType">
+            ${['Air Valve','Butterfly Valve','Sluice Valve','Scour Valve','Flow Meter','NRV','ZVV','Other'].map(v=>`<option${p.valType===v?' selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group"><label>Size</label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 200mm"></div>
+      </div>
+      <div class="field-group"><label>Chamber Required</label>
+        <select id="f-chamberReq">${['Not Required','Required'].map(v=>`<option${p.chamberReq===v?' selected':''}>${v}</option>`).join('')}</select>
+      </div>`;
+  }
+  if (type === 'chamber') {
+    html += `
+      <div class="field-group"><label>Chainage (m)</label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
+      <div class="form-row">
+        <div class="field-group"><label>Type</label>
+          <select id="f-chamType">${['Valve Chamber','Air Valve Chamber','Scour Chamber','Junction Chamber','Other'].map(v=>`<option${p.chamType===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+        <div class="field-group"><label>Status</label>
+          <select id="f-chamStatus">${['In Progress','Partial','Complete'].map(v=>`<option${p.chamStatus===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="field-group"><label>Slab</label>
+        <select id="f-slab">${['Not Required','Precast','Cast-in-situ'].map(v=>`<option${p.slab===v?' selected':''}>${v}</option>`).join('')}</select>
+      </div>`;
+  }
+  if (type === 'fitting') {
+    html += `
+      <div class="field-group"><label>Chainage (m)</label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
+      <div class="form-row">
+        <div class="field-group"><label>Fitting Type</label>
+          <select id="f-fitType">${['Tee','Bend 90°','Bend 45°','Reducer','Flange Adaptor','Puddle Flange','Collar','Dismantling Joint','Other'].map(v=>`<option${p.fitType===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+        <div class="field-group"><label>Size</label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
+      </div>
+      <div class="form-row">
+        <div class="field-group"><label>Qty</label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
+        <div class="field-group"><label>Thrust Block</label>
+          <select id="f-thrustBlock">${['Not Required','Required'].map(v=>`<option${p.thrustBlock===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+      </div>`;
+  }
+  if (type === 'structure') {
+    html += `
+      <div class="field-group"><label>Concrete Type</label>
+        <select id="f-strType">${['Thrust Block','Encasing','Bed Concrete','Cap Concrete','Other'].map(v=>`<option${p.strType===v?' selected':''}>${v}</option>`).join('')}</select>
+      </div>
+      <div class="form-row">
+        <div class="field-group"><label>From (m)</label><input type="number" id="f-from" value="${p.from||''}" placeholder="e.g. 0"></div>
+        <div class="field-group"><label>To (m)</label><input type="number" id="f-to" value="${p.to||''}" placeholder="e.g. 50"></div>
+      </div>
+      <div class="form-row">
+        <div class="field-group"><label>Est. Qty (cum)</label><input type="number" id="f-estConc" step="0.01" value="${p.estConc||''}" placeholder="0.00"></div>
+        <div class="field-group"><label>Actual Qty (cum)</label><input type="number" id="f-actualConc" step="0.01" value="${p.actualConc||''}" placeholder="0.00"></div>
+      </div>`;
+  }
+  // Civil types
+  if (type.startsWith('civil_')) {
+    html += `
+      <div class="field-group"><label>Description <span class="req">*</span></label>
+        <textarea id="f-description" rows="3" placeholder="Describe the work…">${p.description||''}</textarea>
+      </div>
+      <div class="form-row">
+        <div class="field-group"><label>Location / Chainage</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Ch:1200m or Grid A3"></div>
+        <div class="field-group"><label>Status</label>
+          <select id="f-status">${['In Progress','Completed','Pending','On Hold'].map(v=>`<option${p.status===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+      </div>`;
+    if (type === 'civil_material') {
+      html += `
+        <div class="form-row">
+          <div class="field-group"><label>Material Name</label><input type="text" id="f-material" value="${p.material||''}" placeholder="e.g. Steel Bar 12mm"></div>
+          <div class="field-group"><label>Qty / Unit</label><input type="text" id="f-qty" value="${p.qty||''}" placeholder="e.g. 500 kg"></div>
+        </div>`;
+    }
+    if (type === 'civil_labour') {
+      html += `
+        <div class="form-row">
+          <div class="field-group"><label>Skilled Workers</label><input type="number" id="f-skilled" value="${p.skilled||''}" placeholder="0"></div>
+          <div class="field-group"><label>Unskilled Workers</label><input type="number" id="f-unskilled" value="${p.unskilled||''}" placeholder="0"></div>
+        </div>`;
+    }
+  }
+  return html;
+}
+
+function autoCalc() {
+  const from = parseFloat(document.getElementById('f-from')?.value) || 0;
+  const to   = parseFloat(document.getElementById('f-to')?.value)   || 0;
+  const el   = document.getElementById('f-meters');
+  if (el) el.value = to > from ? (to - from).toFixed(0) : '';
+}
+
+function updateFormRoutes(selectedRoute) {
+  const proj = document.getElementById('f-project')?.value;
+  const sel  = document.getElementById('f-route');
+  if (!sel) return;
+  const routes = getRoutes()[proj] || [];
+  sel.innerHTML = routes.map(r => `<option value="${r.id}"${(selectedRoute||'')==r.id?' selected':''}>${r.name}</option>`).join('');
+  if (!routes.length) sel.innerHTML = '<option value="">No routes — add in Settings</option>';
+}
+
+function handlePhotoUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    compressPhoto(e.target.result, 50).then(compressed => {
+      addPhotoPreview(compressed);
+    });
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function compressPhoto(dataUrl, targetKB=50) {
+  return new Promise(resolve => {
+    if (!dataUrl?.startsWith('data:image')) { resolve(dataUrl); return; }
+    const img = new Image();
+    img.onload = () => {
+      let w=img.width, h=img.height, max=640;
+      if (w>max) { h=Math.round(h*max/w); w=max; }
+      if (h>max) { w=Math.round(w*max/h); h=max; }
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      let lo=0.05,hi=0.7,res=c.toDataURL('image/jpeg',0.3);
+      for(let i=0;i<8;i++){const m=(lo+hi)/2,a=c.toDataURL('image/jpeg',m);if(a.length*0.75/1024<=targetKB){lo=m;res=a;}else hi=m;}
+      resolve(res);
+    };
+    img.onerror=()=>resolve(dataUrl);
+    img.src=dataUrl;
+  });
+}
+
+function addPhotoPreview(src) {
+  const prev = document.getElementById('f-photo-prev');
+  if (!prev) return;
+  if (prev.querySelectorAll('.photo-thumb').length >= 1) { showToast('Max 1 photo allowed'); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'photo-thumb';
+  wrap.innerHTML = `<img src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
+  prev.appendChild(wrap);
+}
+
+function getFormPhotos() {
+  const prev = document.getElementById('f-photo-prev');
+  if (!prev) return [];
+  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.src }));
+}
+
+// ── SUBMIT REPORT ─────────────────────────────────────────────
+async function submitReport(type) {
+  const project = document.getElementById('f-project')?.value;
+  const route   = document.getElementById('f-route')?.value;
+  const date    = document.getElementById('f-date')?.value;
+
+  if (!project) { showToast('⚠️ Select a project'); return; }
+  if (!date)    { showToast('⚠️ Select a date'); return; }
+  if (date > new Date().toISOString().slice(0,10)) { showToast('⚠️ Future date not allowed'); return; }
+
+  const g = id => document.getElementById(id)?.value || '';
+  const gf= id => parseFloat(document.getElementById(id)?.value) || 0;
+
+  const data = {
+    id:         _editId || Date.now(),
+    type,
+    module:     type.startsWith('civil_') ? 'civil' : 'pipeline',
+    project,
+    route:      route || '',
+    date,
+    supervisor: currentUser,
+    supervisorName: getUsers()[currentUser]?.name || currentUser,
+    timestamp:  new Date().toISOString(),
+    remarks:    g('f-remarks'),
+    photos:     getFormPhotos(),
+  };
+
+  // Type fields
+  if (['excavation','pipe','refill','structure'].includes(type)) {
+    data.from   = gf('f-from');
+    data.to     = gf('f-to');
+    data.meters = gf('f-meters') || (data.to - data.from);
+  }
+  if (type==='excavation') { data.width=gf('f-width'); data.depth=gf('f-depth'); data.soil=g('f-soil'); data.volume=data.width*data.depth*data.meters; }
+  if (type==='pipe')       { data.size=g('f-size'); data.material=g('f-material'); data.encasing=g('f-encasing'); }
+  if (type==='refill')     { data.width=gf('f-width'); data.depth=gf('f-depth'); data.road=g('f-road'); data.volume=data.width*data.depth*data.meters; }
+  if (type==='valve')      { data.chainage=gf('f-chainage'); data.valType=g('f-valType'); data.size=g('f-size'); data.chamberReq=g('f-chamberReq'); }
+  if (type==='chamber')    { data.chainage=gf('f-chainage'); data.chamType=g('f-chamType'); data.chamStatus=g('f-chamStatus'); data.slab=g('f-slab'); }
+  if (type==='fitting')    { data.chainage=gf('f-chainage'); data.fitType=g('f-fitType'); data.size=g('f-size'); data.qty=gf('f-qty')||1; data.thrustBlock=g('f-thrustBlock'); }
+  if (type==='structure')  { data.strType=g('f-strType'); data.estConc=gf('f-estConc'); data.actualConc=gf('f-actualConc'); }
+  if (type.startsWith('civil_')) {
+    const desc = g('f-description');
+    if (!desc) { showToast('⚠️ Description is required'); return; }
+    data.description = desc;
+    data.location    = g('f-location');
+    data.status      = g('f-status');
+    if (type==='civil_material') { data.material=g('f-material'); data.qty=g('f-qty'); }
+    if (type==='civil_labour')   { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
+  }
+
+  // Save locally
+  const reports = getReports();
+  if (_editId) {
+    const idx = reports.findIndex(r => String(r.id) === String(_editId));
+    if (idx > -1) { data.id = _editId; reports[idx] = data; }
+  } else {
+    reports.push(data);
+  }
+  saveReports(reports);
+
+  closeFormModal();
+  showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
+  renderCurrentTab();
+
+  // Save to Appwrite in background
+  setSyncStatus('syncing');
+  saveReportToAW(data).then(ok => {
+    setSyncStatus(ok ? 'synced' : 'offline');
+    if (!ok) showToast('⚠️ Saved locally — will sync when online');
+    else saveReports(getReports()); // update _awId
+  });
+}
+
+// ── REPORTS TAB ───────────────────────────────────────────────
+function renderReportsTab() {
+  const vp = getVisibleProjects();
+  let reports = getReports().filter(r => vp.includes(r.project));
+
+  // Filter by module
+  if (currentModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
+  else reports = reports.filter(r => r.module === 'civil');
+
+  reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
+
+  let html = `
+    <div class="section-header">
+      <div class="section-title">All Reports</div>
+      <div class="chip active">${reports.length} total</div>
+    </div>`;
+
+  // Project filter
+  if (vp.length > 1) {
+    html += `<div class="field-group"><select onchange="filterByProject(this.value)" id="rptProjFilter">
+      <option value="">All Projects</option>
+      ${vp.map(p=>`<option>${p}</option>`).join('')}
+    </select></div>`;
+  }
+
+  if (!reports.length) {
+    return html + `<div class="empty-state"><div class="icon">📋</div><p>No reports yet. Submit your first report!</p></div>`;
+  }
+
+  reports.forEach(r => { html += reportItemHTML(r, true); });
+  return html;
+}
+
+const TYPE_COLORS = {
+  excavation:'var(--orange)',pipe:'var(--blue)',refill:'var(--green)',
+  valve:'var(--red)',chamber:'var(--orange)',fitting:'var(--cyan)',structure:'var(--purple)',
+  civil_dpr:'var(--orange)',civil_drawing:'var(--blue)',civil_quality:'var(--green)',
+  civil_material:'var(--purple)',civil_labour:'var(--cyan)',civil_other:'var(--muted)'
+};
+const TYPE_ICONS = {
+  excavation:'⛏️',pipe:'🔩',refill:'🪣',valve:'🔧',chamber:'🏛️',fitting:'🔗',structure:'🏗️',
+  civil_dpr:'📄',civil_drawing:'📐',civil_quality:'✅',civil_material:'📦',civil_labour:'👷',civil_other:'📝'
+};
+const TYPE_LABELS = {
+  excavation:'Excavation',pipe:'Pipe Laying',refill:'Refilling',
+  valve:'Valve',chamber:'Chamber',fitting:'Fitting',structure:'Concrete Work',
+  civil_dpr:'DPR Entry',civil_drawing:'Drawing',civil_quality:'Quality Check',
+  civil_material:'Material',civil_labour:'Labour',civil_other:'Other'
+};
+
+function reportItemHTML(r, showActions=true) {
+  const color = TYPE_COLORS[r.type] || 'var(--muted)';
+  const icon  = TYPE_ICONS[r.type]  || '📝';
+  const label = TYPE_LABELS[r.type] || r.type;
+
+  let info = '';
+  if (r.from != null && r.to != null) info += `Ch:${r.from}–${r.to}m`;
+  if (r.meters) info += ` · ${fmtM(r.meters)}`;
+  if (r.chainage) info += `Ch:${r.chainage}m`;
+  if (r.size) info += ` · ${r.size}`;
+  if (r.valType) info += ` · ${r.valType}`;
+  if (r.description) info += ` · ${r.description.slice(0,40)}${r.description.length>40?'…':''}`;
+
+  const canEdit   = currentRole === 'admin' || currentRole === 'pm';
+  const canDelete = currentRole === 'admin' || currentRole === 'pm';
+
+  let actions = '';
+  if (showActions && (canEdit || canDelete)) {
+    actions = `<div class="report-actions">
+      ${canEdit   ? `<button class="btn btn-secondary btn-sm" onclick="editReport('${r.id}')">✏️ Edit</button>` : ''}
+      ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="deleteReport('${r.id}')">🗑️ Delete</button>` : ''}
+    </div>`;
+  }
+
+  return `
+    <div class="report-item">
+      <div class="report-item-header">
+        <div class="type-dot" style="background:${color}"></div>
+        <div class="report-type-label" style="color:${color}">${icon} ${label}</div>
+        <div class="text-xs text-muted" style="margin-left:auto">${r.date||''}</div>
+      </div>
+      <div class="report-info">${info}</div>
+      <div class="report-date">by ${r.supervisorName||r.supervisor||'—'} · ${r.project||''}</div>
+      ${r.photos?.length ? `<div class="text-xs text-muted mt-1">📷 ${r.photos.length} photo${r.photos.length>1?'s':''}</div>` : ''}
+      ${actions}
+    </div>`;
+}
+
+function editReport(id) {
+  const r = getReports().find(r => String(r.id) === String(id));
+  if (!r) return;
+  openReportForm(r.type, r);
+}
+
+function deleteReport(id) {
+  showConfirm('Delete Report', 'Delete this report? This cannot be undone.', async () => {
+    const reports = getReports();
+    const r = reports.find(r => String(r.id) === String(id));
+    const updated = reports.filter(r => String(r.id) !== String(id));
+    saveReports(updated);
+    renderCurrentTab();
+    showToast('🗑️ Deleted');
+    if (r) {
+      setSyncStatus('syncing');
+      const ok = await deleteReportFromAW(r);
+      setSyncStatus(ok ? 'synced' : 'offline');
+    }
+  });
+}
+
+// ── TRACKER TAB ───────────────────────────────────────────────
+function renderTrackerTab() {
+  if (currentModule !== 'pipeline') {
+    return `<div class="empty-state"><div class="icon">📏</div><p>Tracker available for Pipeline Work only.</p></div>`;
+  }
+
+  const vp = getVisibleProjects();
+  const reports = getReports().filter(r => vp.includes(r.project) && (!r.module || r.module==='pipeline'));
+
+  let html = `<div class="section-title mb-4">Chainage Tracker</div>`;
+
+  vp.forEach(proj => {
+    const routes = getRoutes()[proj] || [];
+    if (!routes.length) return;
+    html += `<div class="card mb-3"><div class="card-title">📍 ${proj}</div>`;
+    routes.forEach(rt => {
+      const reps = reports.filter(r => r.route === rt.id);
+      const excM  = reps.filter(r=>r.type==='excavation').reduce((s,r)=>s+(r.meters||0),0);
+      const pipeM = reps.filter(r=>r.type==='pipe').reduce((s,r)=>s+(r.meters||0),0);
+      const refM  = reps.filter(r=>r.type==='refill').reduce((s,r)=>s+(r.meters||0),0);
+      const len   = rt.length || 1;
+      const excPct  = Math.min(100, Math.round(excM/len*100));
+      const pipePct = Math.min(100, Math.round(pipeM/len*100));
+      const refPct  = Math.min(100, Math.round(refM/len*100));
+      html += `
+        <div class="mb-3">
+          <div class="flex justify-between items-center mb-1">
+            <div style="font-size:12px;font-weight:700">${rt.name}</div>
+            <div class="text-xs text-muted">${fmtM(len)}</div>
+          </div>
+          <div class="ch-bar-label"><span>⛏️ Exc: ${excPct}%</span><span>${fmtM(excM)}</span></div>
+          <div class="ch-bar mb-1"><div class="ch-seg" style="width:${excPct}%;background:var(--orange)"></div></div>
+          <div class="ch-bar-label"><span>🔩 Pipe: ${pipePct}%</span><span>${fmtM(pipeM)}</span></div>
+          <div class="ch-bar mb-1"><div class="ch-seg" style="width:${pipePct}%;background:var(--blue)"></div></div>
+          <div class="ch-bar-label"><span>🪣 Refill: ${refPct}%</span><span>${fmtM(refM)}</span></div>
+          <div class="ch-bar"><div class="ch-seg" style="width:${refPct}%;background:var(--green)"></div></div>
+        </div>`;
+    });
+    html += `</div>`;
+  });
+
+  if (!vp.some(p => (getRoutes()[p]||[]).length)) {
+    html += `<div class="empty-state"><div class="icon">🛣️</div><p>No routes configured. Add routes in Settings.</p></div>`;
+  }
+  return html;
+}
+
+// ── SETTINGS TAB ─────────────────────────────────────────────
+function renderSettingsTab() {
+  if (currentRole === 'supervisor') return `<div class="empty-state"><div class="icon">🔒</div><p>Settings not available.</p></div>`;
+
+  let tabs = '';
+  let content = '';
+
+  if (currentRole === 'admin') {
+    tabs = `
+      <div class="tab-bar" id="settingsTabs">
+        <div class="tab-item active" onclick="showSettingsTab('projects',this)">Projects</div>
+        <div class="tab-item" onclick="showSettingsTab('accounts',this)">Accounts</div>
+        <div class="tab-item" onclick="showSettingsTab('specials',this)">Specials</div>
+      </div>`;
+    content = renderSettingsProjects();
+  } else {
+    // PM only sees specials
+    content = renderSettingsSpecials();
+    return `<div class="section-title mb-4">⚙️ Settings</div>${content}`;
+  }
+
+  return `<div class="section-title mb-4">⚙️ Settings</div>${tabs}<div id="settingsContent">${content}</div>`;
+}
+
+function showSettingsTab(tab, el) {
+  document.querySelectorAll('#settingsTabs .tab-item').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const c = document.getElementById('settingsContent');
+  if (tab === 'projects') c.innerHTML = renderSettingsProjects();
+  if (tab === 'accounts') c.innerHTML = renderSettingsAccounts();
+  if (tab === 'specials') c.innerHTML = renderSettingsSpecials();
+}
+
+function renderSettingsProjects() {
+  const projects = getProjects();
+  let html = `
+    <div class="settings-section">
+      <div class="settings-section-title">Projects</div>
+      ${projects.map(p => `
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">📁 ${p}</div>
+            <div class="settings-row-sub">${(getRoutes()[p]||[]).length} routes · ${getReports().filter(r=>r.project===p).length} reports</div>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-secondary btn-sm" onclick="manageRoutes('${p}')">Routes</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteProject('${p}')">✕</button>
+          </div>
+        </div>`).join('')}
+      ${!projects.length ? '<div class="text-sm text-muted">No projects yet.</div>' : ''}
+    </div>
+    <div class="flex gap-2">
+      <input type="text" id="newProjName" placeholder="New project name" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit">
+      <button class="btn btn-primary" onclick="addProject()">+ Add</button>
+    </div>`;
+  return html;
+}
+
+function addProject() {
+  const name = document.getElementById('newProjName').value.trim();
+  if (!name) return;
+  const projects = getProjects();
+  if (projects.includes(name)) { showToast('Project already exists'); return; }
+  projects.push(name);
+  saveProjects(projects);
+  pushConfig();
+  document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
+  showToast('✅ Project added');
+}
+
+function deleteProject(name) {
+  showConfirm('Delete Project', `Delete "${name}"? All routes will be removed.`, () => {
+    const p = getProjects().filter(x => x !== name);
+    saveProjects(p);
+    const r = getRoutes(); delete r[name]; saveRoutes(r);
+    pushConfig();
+    document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
+    showToast('🗑️ Project deleted');
+  });
+}
+
+function manageRoutes(proj) {
+  const routes = getRoutes()[proj] || [];
+  let html = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">🛣️ Routes — ${proj}</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    ${routes.map((rt,i) => `
+      <div class="card mb-2 flex justify-between items-center">
+        <div>
+          <div class="font-bold" style="font-size:13px">${rt.name}</div>
+          <div class="text-xs text-muted">${rt.pipe||'—'} · ${fmtM(rt.length)}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="deleteRoute('${proj}',${i})">✕</button>
+      </div>`).join('')}
+    ${!routes.length ? '<div class="text-sm text-muted mb-3">No routes yet.</div>' : ''}
+    <div class="divider"></div>
+    <div class="card-title">+ Add Route</div>
+    <div class="field-group"><label>Route Name</label><input type="text" id="rt-name" placeholder="e.g. WTP to ESR"></div>
+    <div class="form-row">
+      <div class="field-group"><label>Length (m)</label><input type="number" id="rt-len" placeholder="e.g. 6898"></div>
+      <div class="field-group"><label>Pipe Spec</label><input type="text" id="rt-pipe" placeholder="e.g. 600mm DI"></div>
+    </div>
+    <button class="btn btn-primary w-full" onclick="addRoute('${proj}')">Add Route</button>`;
+  document.getElementById('formModalContent').innerHTML = html;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function addRoute(proj) {
+  const name = document.getElementById('rt-name').value.trim();
+  const len  = parseFloat(document.getElementById('rt-len').value) || 0;
+  const pipe = document.getElementById('rt-pipe').value.trim();
+  if (!name || !len) { showToast('Enter route name and length'); return; }
+  const routes = getRoutes();
+  if (!routes[proj]) routes[proj] = [];
+  routes[proj].push({ id: 'R' + Date.now(), name, length: len, pipe });
+  saveRoutes(routes);
+  pushConfig();
+  manageRoutes(proj);
+  showToast('✅ Route added');
+}
+
+function deleteRoute(proj, idx) {
+  const routes = getRoutes();
+  routes[proj].splice(idx, 1);
+  saveRoutes(routes);
+  pushConfig();
+  manageRoutes(proj);
+}
+
+function renderSettingsAccounts() {
+  const users = getUsers();
+  let html = `<div class="settings-section"><div class="settings-section-title">Accounts</div>`;
+  Object.keys(users).forEach(u => {
+    if (users[u].role === 'admin') return;
+    const r = users[u];
+    const roleColor = r.role === 'pm' ? 'var(--green)' : 'var(--blue)';
+    html += `
+      <div class="account-card">
+        <div class="account-avatar" style="background:${roleColor}">${(r.name||u)[0].toUpperCase()}</div>
+        <div class="account-info">
+          <div class="account-name">${r.name||u}</div>
+          <div class="account-user">@${u} · <span style="color:${roleColor}">${r.role==='pm'?'Project Manager':'Supervisor/Eng.'}</span></div>
+          <div class="text-xs text-muted">${(r.projects||[]).join(', ')||'All projects'}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">✕</button>
+      </div>`;
+  });
+  html += `</div>
+    <button class="btn btn-primary w-full" onclick="openAddAccount()">+ Add Account</button>`;
+  return html;
+}
+
+function openAddAccount() {
+  const projects = getProjects();
+  const html = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">Add Account</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Full Name</label><input type="text" id="ac-name" placeholder="e.g. Rahul Patel"></div>
+    <div class="field-group"><label>Username</label><input type="text" id="ac-user" placeholder="e.g. rahul"></div>
+    <div class="field-group"><label>Password</label><input type="password" id="ac-pass" placeholder="Set password"></div>
+    <div class="field-group"><label>Role</label>
+      <select id="ac-role">
+        <option value="supervisor">Supervisor / Engineer</option>
+        <option value="pm">Project Manager</option>
+      </select>
+    </div>
+    <div class="field-group"><label>Assign Projects</label>
+      ${projects.map(p=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer">
+          <input type="checkbox" class="ac-proj" value="${p}"> ${p}
+        </label>`).join('')}
+    </div>
+    <button class="btn btn-primary w-full" onclick="saveAccount()">Create Account</button>`;
+  document.getElementById('formModalContent').innerHTML = html;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveAccount() {
+  const name = document.getElementById('ac-name').value.trim();
+  const user = document.getElementById('ac-user').value.trim().toLowerCase();
+  const pass = document.getElementById('ac-pass').value;
+  const role = document.getElementById('ac-role').value;
+  const projs= Array.from(document.querySelectorAll('.ac-proj:checked')).map(c=>c.value);
+
+  if (!name||!user||!pass) { showToast('Fill all fields'); return; }
+  const users = getUsers();
+  if (users[user]) { showToast('Username already exists'); return; }
+  users[user] = { role, pass, name, projects: projs };
+  saveUsers(users);
+  pushConfig();
+  closeFormModal();
+  document.getElementById('settingsContent').innerHTML = renderSettingsAccounts();
+  showToast('✅ Account created');
+}
+
+function deleteAccount(u) {
+  showConfirm('Delete Account', `Delete account "@${u}"?`, () => {
+    const users = getUsers();
+    delete users[u];
+    saveUsers(users);
+    pushConfig();
+    document.getElementById('settingsContent').innerHTML = renderSettingsAccounts();
+    showToast('🗑️ Account deleted');
+  });
+}
+
+function renderSettingsSpecials() {
+  const vp = getVisibleProjects();
+  const specials = getSpecials();
+  const proj = vp[0] || '';
+  const items = specials[proj] || [];
+  const reports = getReports().filter(r => r.project === proj && r.type === 'fitting');
+
+  let html = `
+    <div class="settings-section">
+      <div class="settings-section-title">⭐ Fitting Specials</div>
+      <div class="field-group"><select id="specialsProjSel" onchange="renderSpecialsList()">${vp.map(p=>`<option>${p}</option>`).join('')}</select></div>
+      <div id="specialsList"></div>
+      <div class="flex gap-2 mt-3">
+        <input type="text" id="sp-name" placeholder="Special name" style="flex:2;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit">
+        <input type="number" id="sp-total" placeholder="Nos" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;text-align:center">
+        <button class="btn btn-primary btn-sm" onclick="addSpecial()">+</button>
+      </div>
+    </div>`;
+  setTimeout(renderSpecialsList, 50);
+  return html;
+}
+
+function renderSpecialsList() {
+  const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
+  const specials = getSpecials();
+  const items = specials[proj] || [];
+  const el = document.getElementById('specialsList');
+  if (!el) return;
+  if (!items.length) { el.innerHTML = '<div class="text-sm text-muted">No specials yet.</div>'; return; }
+  const reports = getReports().filter(r => r.project === proj && r.type === 'fitting');
+  el.innerHTML = items.map((s,i) => {
+    const used = reports.reduce((sum,r) => r.special===s.name ? sum+(parseInt(r.qty)||1) : sum, 0);
+    const left = (s.total||0) - used;
+    const pct  = s.total ? Math.min(100, Math.round(used/s.total*100)) : 0;
+    const color= pct>=100?'var(--red)':pct>=75?'var(--orange)':'var(--green)';
+    return `
+      <div class="card mb-2">
+        <div class="flex justify-between items-center">
+          <div class="font-bold" style="font-size:13px">⭐ ${s.name}</div>
+          <button class="btn btn-danger btn-sm" onclick="deleteSpecial(${i})">✕</button>
+        </div>
+        <div class="text-xs text-muted mt-1">Total: ${s.total} · Used: ${used} · Left: <span style="color:${color};font-weight:700">${left}</span></div>
+        <div class="progress-bar mt-1"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+  }).join('');
+}
+
+function addSpecial() {
+  const name = document.getElementById('sp-name').value.trim();
+  const total= parseInt(document.getElementById('sp-total').value) || 0;
+  const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
+  if (!name) { showToast('Enter special name'); return; }
+  const specials = getSpecials();
+  if (!specials[proj]) specials[proj] = [];
+  specials[proj].push({ name, total });
+  saveSpecials(specials);
+  pushConfig();
+  document.getElementById('sp-name').value = '';
+  document.getElementById('sp-total').value = '';
+  renderSpecialsList();
+  showToast('✅ Special added');
+}
+
+function deleteSpecial(idx) {
+  const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
+  const specials = getSpecials();
+  specials[proj].splice(idx, 1);
+  saveSpecials(specials);
+  pushConfig();
+  renderSpecialsList();
+}
+
+function initSettings() {
+  // Called after settings tab renders
+}
+
+// ── UTILITY ───────────────────────────────────────────────────
+function showConfirm(title, msg, onYes) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmYesBtn').onclick = () => {
+    document.getElementById('confirmModal').classList.add('hidden');
+    onYes();
+  };
+  document.getElementById('confirmModal').classList.remove('hidden');
+}
+
+let _toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function showLoader(msg='Loading…') {
+  const el = document.getElementById('loader');
+  el.querySelector('.loader-text').textContent = msg;
+  el.style.display = 'flex';
+}
+
+function hideLoader() {
+  document.getElementById('loader').style.display = 'none';
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+async function init() {
+  // Migrate old data keys if any
+  const oldReports = localStorage.getItem('aquatrack_reports');
+  if (oldReports && !localStorage.getItem('phx_reports')) {
+    LS.set('phx_reports', JSON.parse(oldReports));
+  }
+  const oldUsers = localStorage.getItem('aquatrack_users');
+  if (oldUsers && !localStorage.getItem('phx_users')) {
+    const u = JSON.parse(oldUsers);
+    // Ensure admin exists
+    if (!u.admin) u.admin = { role:'admin', pass:'admin', name:'Admin' };
+    LS.set('phx_users', u);
+  }
+  ['aquatrack_projects','aquatrack_routes','aquatrack_assignments','aquatrack_specials'].forEach(k => {
+    const newKey = k.replace('aquatrack_','phx_').replace('projects','projects').replace('routes','routes').replace('assignments','assignments').replace('specials','specials');
+    const newMap = {'aquatrack_projects':'phx_projects','aquatrack_routes':'phx_routes','aquatrack_assignments':'phx_assignments','aquatrack_specials':'phx_specials'};
+    if (localStorage.getItem(k) && !localStorage.getItem(newMap[k])) {
+      localStorage.setItem(newMap[k], localStorage.getItem(k));
+    }
+  });
+
+  hideLoader();
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+init();
+</script>
+</body>
+</html>
