@@ -869,7 +869,7 @@ function buildReportForm(type, prefill={}) {
   html += buildTypeFields(type, prefill);
 
   html += `
-    ${(type !== 'excavation' && type !== 'pipe') ? `
+    ${(type !== 'excavation' && type !== 'pipe' && type !== 'refill') ? `
     <div class="field-group">
       <label>Photo</label>
       <div class="photo-zone" onclick="document.getElementById('f-photo').click()">
