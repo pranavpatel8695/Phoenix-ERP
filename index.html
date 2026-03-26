@@ -897,6 +897,10 @@ function buildReportForm(type, prefill={}) {
     } else if (type === 'pipe') {
       if (prefill.photosStart?.length) prefill.photosStart.forEach(p => addExcavPhotoPreview(p.src||p, 'start'));
       if (prefill.photosEnd?.length)   prefill.photosEnd.forEach(p => addExcavPhotoPreview(p.src||p, 'end'));
+    } else if (type === 'refill') {
+      if (prefill.photosStart?.length) prefill.photosStart.forEach(p => addExcavPhotoPreview(p.src||p, 'start'));
+      if (prefill.photosEnd?.length)   prefill.photosEnd.forEach(p => addExcavPhotoPreview(p.src||p, 'end'));
+      autoCalcRefillVol();
     } else if (prefill.photos?.length) {
       prefill.photos.forEach(p => addPhotoPreview(p.src||p));
     }
@@ -1018,8 +1022,7 @@ function buildTypeFields(type, p={}) {
           <div class="field-group"><label>Thrust Block Required?</label>
             <div class="radio-group">
               <div class="radio-opt${(p.thrustBlock||'Not Required')==='Not Required'?' selected':''}" onclick="selectThrustBlock('Not Required',this)">Not Required</div>
-              <div class="radio-opt${p.thrustBlock==='Required — Pending'?' selected':''}" onclick="selectThrustBlock('Required — Pending',this)">Required — Pending</div>
-              <div class="radio-opt${p.thrustBlock==='Cast & Cured'?' selected':''}" onclick="selectThrustBlock('Cast & Cured',this)">Cast & Cured</div>
+              <div class="radio-opt${p.thrustBlock==='Required'?' selected':''}" onclick="selectThrustBlock('Required',this)">Required</div>
             </div>
             <input type="hidden" id="f-thrustBlock" value="${p.thrustBlock||'Not Required'}">
           </div>
@@ -1061,24 +1064,55 @@ function buildTypeFields(type, p={}) {
         </div>
         <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
         <div class="form-row">
-          <div class="field-group"><label>Width (m)</label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.20"></div>
-          <div class="field-group"><label>Depth (m)</label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.80"></div>
+          <div class="field-group"><label>Width (m) <span class="req">*</span></label><input type="number" id="f-width" step="0.01" value="${p.width||''}" oninput="autoCalcRefillVol()" placeholder="e.g. 1.20"></div>
+          <div class="field-group"><label>Depth (m) <span class="req">*</span></label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" oninput="autoCalcRefillVol()" placeholder="e.g. 1.80"></div>
         </div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🪣 Refill Method & Restoration</div>
-        <div class="field-group"><label>Refill Material</label>
-          <select id="f-refillMat">${['Excavated Earth','Murrum','Sand','Granular Fill','Imported Fill'].map(v=>`<option${p.refillMat===v?' selected':''}>${v}</option>`).join('')}</select>
-        </div>
-        <div class="field-group"><label>Compaction Method</label>
-          <select id="f-compaction">${['Manual Ramming','Plate Compactor','Roller Compaction','Not Done Yet'].map(v=>`<option${p.compaction===v?' selected':''}>${v}</option>`).join('')}</select>
-        </div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🧮 Volume Calculation — Auto</div>
         <div class="form-row">
-          <div class="field-group"><label>No. of Layers</label><input type="number" id="f-layers" value="${p.layers||''}" placeholder="e.g. 3" min="1"></div>
-          <div class="field-group"><label>Layer Thickness (mm)</label><input type="number" id="f-layerThk" value="${p.layerThk||''}" placeholder="e.g. 300"></div>
+          <div class="field-group"><label>Trench Vol. (m³) — L×B×H</label>
+            <input type="number" id="f-trenchVol" value="${p.trenchVol||''}" readonly style="opacity:0.6;background:rgba(48,209,88,0.06);border-color:rgba(48,209,88,0.3)" placeholder="Auto">
+          </div>
+          <div class="field-group"><label>Pipe Vol. (m³) — 0.785×D²×L</label>
+            <input type="number" id="f-pipeVol" value="${p.pipeVol||''}" readonly style="opacity:0.6;background:rgba(255,69,58,0.06);border-color:rgba(255,69,58,0.2)" placeholder="Auto">
+          </div>
         </div>
-        <div class="field-group"><label>Road Restoration</label>
+        <div class="field-group"><label>Pipe Dia. (m) — for pipe vol.</label>
+          <input type="number" id="f-pipeDia" step="0.001" value="${p.pipeDia||''}" oninput="autoCalcRefillVol()" placeholder="e.g. 0.600 for 600mm">
+        </div>
+        <div class="field-group">
+          <label>Net Refill Volume (m³) — Auto</label>
+          <input type="number" id="f-volume" value="${p.volume||''}" readonly style="opacity:0.6;background:rgba(48,209,88,0.1);border-color:rgba(48,209,88,0.4);font-weight:700" placeholder="Trench Vol − Pipe Vol">
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🛣️ Road Restoration</div>
+        <div class="field-group"><label>Restoration Type</label>
           <select id="f-road">${['Not Required','Paver Block Restoration','Asphalt Restoration','Concrete Restoration','Murrum & Soil','Temporary Restoration'].map(r=>`<option${p.road===r?' selected':''}>${r}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📷 Site Photos</div>
+        <div class="form-row" style="gap:12px">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">📍 Starting Chainage</div>
+            <div class="photo-zone" style="padding:14px 8px" onclick="document.getElementById('f-photo-refill-start').click()">
+              <div class="pi" style="font-size:22px">📷</div>
+              <div style="font-size:11px">Tap to add</div>
+              <input type="file" id="f-photo-refill-start" accept="image/*" style="display:none" onchange="handleExcavPhotoUpload(this,'start')">
+            </div>
+            <div class="photo-prev-grid" id="f-photo-prev-start" style="margin-top:6px"></div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:700;color:var(--blue);margin-bottom:6px">🏁 Ending Chainage</div>
+            <div class="photo-zone" style="padding:14px 8px" onclick="document.getElementById('f-photo-refill-end').click()">
+              <div class="pi" style="font-size:22px">📷</div>
+              <div style="font-size:11px">Tap to add</div>
+              <input type="file" id="f-photo-refill-end" accept="image/*" style="display:none" onchange="handleExcavPhotoUpload(this,'end')">
+            </div>
+            <div class="photo-prev-grid" id="f-photo-prev-end" style="margin-top:6px"></div>
+          </div>
         </div>
       </div>`;
   }
@@ -1263,6 +1297,7 @@ function autoCalc() {
   const el   = document.getElementById('f-meters');
   if (el) el.value = to > from ? (to - from).toFixed(0) : '';
   autoCalcVolume();
+  autoCalcRefillVol();
 }
 
 function autoCalcVolume() {
@@ -1271,6 +1306,22 @@ function autoCalcVolume() {
   const depth  = parseFloat(document.getElementById('f-depth')?.value)  || 0;
   const el     = document.getElementById('f-volume');
   if (el) el.value = (meters > 0 && width > 0 && depth > 0) ? (meters * width * depth).toFixed(2) : '';
+}
+
+function autoCalcRefillVol() {
+  const meters  = parseFloat(document.getElementById('f-meters')?.value)  || 0;
+  const width   = parseFloat(document.getElementById('f-width')?.value)   || 0;
+  const depth   = parseFloat(document.getElementById('f-depth')?.value)   || 0;
+  const pipeDia = parseFloat(document.getElementById('f-pipeDia')?.value) || 0;
+  const trenchVol = meters * width * depth;
+  const pipeVol   = 0.785 * pipeDia * pipeDia * meters;
+  const netVol    = trenchVol - pipeVol;
+  const tEl = document.getElementById('f-trenchVol');
+  const pEl = document.getElementById('f-pipeVol');
+  const vEl = document.getElementById('f-volume');
+  if (tEl) tEl.value = trenchVol > 0 ? trenchVol.toFixed(3) : '';
+  if (pEl) pEl.value = pipeVol   > 0 ? pipeVol.toFixed(3)   : '';
+  if (vEl) vEl.value = netVol    > 0 ? netVol.toFixed(3)    : '';
 }
 
 function selectEncasing(val, el) {
@@ -1440,9 +1491,9 @@ async function submitReport(type) {
     supervisorName: getUsers()[currentUser]?.name || currentUser,
     timestamp:  new Date().toISOString(),
     remarks:    g('f-remarks'),
-    photos:     (type === 'excavation' || type === 'pipe') ? [] : getFormPhotos(),
-    photosStart: (type === 'excavation' || type === 'pipe') ? getExcavPhotos('start') : [],
-    photosEnd:   (type === 'excavation' || type === 'pipe') ? getExcavPhotos('end')   : [],
+    photos:     (type === 'excavation' || type === 'pipe' || type === 'refill') ? [] : getFormPhotos(),
+    photosStart: (type === 'excavation' || type === 'pipe' || type === 'refill') ? getExcavPhotos('start') : [],
+    photosEnd:   (type === 'excavation' || type === 'pipe' || type === 'refill') ? getExcavPhotos('end')   : [],
   };
 
   // Type fields
@@ -1468,10 +1519,16 @@ async function submitReport(type) {
     data.photos         = [];
   }
   if (type==='refill') {
-    data.width=gf('f-width'); data.depth=gf('f-depth'); data.road=g('f-road');
-    data.refillMat=g('f-refillMat'); data.compaction=g('f-compaction');
-    data.layers=gf('f-layers'); data.layerThk=gf('f-layerThk');
-    data.volume=data.width*data.depth*data.meters;
+    data.width      = gf('f-width');
+    data.depth      = gf('f-depth');
+    data.road       = g('f-road');
+    data.pipeDia    = gf('f-pipeDia');
+    data.trenchVol  = gf('f-trenchVol');
+    data.pipeVol    = gf('f-pipeVol');
+    data.volume     = gf('f-volume');
+    data.photosStart= getExcavPhotos('start');
+    data.photosEnd  = getExcavPhotos('end');
+    data.photos     = [];
   }
   if (type==='valve') {
     data.chainage=gf('f-chainage'); data.location=g('f-location');
