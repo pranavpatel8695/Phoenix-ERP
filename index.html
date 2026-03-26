@@ -1007,28 +1007,6 @@ function buildTypeFields(type, p={}) {
         </div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔗 Fittings</div>
-        <div class="field-group"><label>Any Fittings in this stretch?</label>
-          <div class="radio-group">
-            <div class="radio-opt${(p.hasFittings||'No')==='No'?' selected':''}" onclick="selectPipeFittings('No',this)">No</div>
-            <div class="radio-opt${p.hasFittings==='Yes'?' selected':''}" onclick="selectPipeFittings('Yes',this)">Yes</div>
-          </div>
-          <input type="hidden" id="f-hasFittings" value="${p.hasFittings||'No'}">
-        </div>
-        <div id="f-fittings-wrap" style="display:${p.hasFittings==='Yes'?'block':'none'}">
-          <div class="field-group mt-2"><label>Fitting Chainage (m)</label>
-            <input type="number" id="f-fittingChainage" value="${p.fittingChainage||''}" placeholder="e.g. 340">
-          </div>
-          <div class="field-group"><label>Thrust Block Required?</label>
-            <div class="radio-group">
-              <div class="radio-opt${(p.thrustBlock||'Not Required')==='Not Required'?' selected':''}" onclick="selectThrustBlock('Not Required',this)">Not Required</div>
-              <div class="radio-opt${p.thrustBlock==='Required'?' selected':''}" onclick="selectThrustBlock('Required',this)">Required</div>
-            </div>
-            <input type="hidden" id="f-thrustBlock" value="${p.thrustBlock||'Not Required'}">
-          </div>
-        </div>
-      </div>
-      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📷 Site Photos</div>
         <div class="form-row" style="gap:12px">
           <div style="flex:1">
@@ -1189,24 +1167,20 @@ function buildTypeFields(type, p={}) {
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔗 Fitting Details</div>
-        <div class="form-row">
-          <div class="field-group"><label>Fitting Type <span class="req">*</span></label>
-            <select id="f-fitType">${['Tee (Equal)','Tee (Reducer)','Bend 90°','Bend 45°','Bend 22.5°','Bend 11.25°','Reducer (Concentric)','Reducer (Eccentric)','Flange Adaptor','Puddle Flange','Collar','Dismantling Joint','Blank Flange','Sleeve Coupling','Other'].map(v=>`<option${p.fitType===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Size (mm) <span class="req">*</span></label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
+        <div class="field-group"><label>Fitting Type <span class="req">*</span></label>
+          <select id="f-fitType">${['Tee (Equal)','Tee (Reducer)','Bend 90°','Bend 45°','Bend 22.5°','Bend 11.25°','Reducer (Concentric)','Reducer (Eccentric)','Flange Adaptor','Puddle Flange','Collar','Dismantling Joint','Blank Flange','Sleeve Coupling','Other'].map(v=>`<option${p.fitType===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+        <div class="field-group"><label>Size (mm) <span class="req">*</span></label>
+          <input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm">
         </div>
         <div class="form-row">
-          <div class="field-group"><label>Material</label>
-            <select id="f-material">${['DI (Ductile Iron)','MS (Mild Steel)','CI (Cast Iron)','HDPE','Other'].map(v=>`<option${p.material===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
           <div class="field-group"><label>Qty <span class="req">*</span></label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
-        </div>
-        <div class="form-row">
-          <div class="field-group"><label>Thrust Block</label>
-            <select id="f-thrustBlock">${['Not Required','Required — Pending','Cast & Cured'].map(v=>`<option${p.thrustBlock===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Special Item</label>
-            <select id="f-special">${['None',...(getSpecials()[document.getElementById('f-project')?.value]||[]).map(s=>s.name)].map(v=>`<option${p.special===v?' selected':''}>${v}</option>`).join('')}</select>
+          <div class="field-group"><label>Thrust Block Required?</label>
+            <div class="radio-group">
+              <div class="radio-opt${(p.thrustBlock||'No')==='No'?' selected':''}" onclick="selectRadio('f-thrustBlock','No',this)">No</div>
+              <div class="radio-opt${p.thrustBlock==='Yes'?' selected':''}" onclick="selectRadio('f-thrustBlock','Yes',this)">Yes</div>
+            </div>
+            <input type="hidden" id="f-thrustBlock" value="${p.thrustBlock||'No'}">
           </div>
         </div>
       </div>`;
@@ -1507,9 +1481,6 @@ async function submitReport(type) {
     data.encasing       = g('f-encasing');
     data.encasingFrom   = gf('f-encasing-from');
     data.encasingTo     = gf('f-encasing-to');
-    data.hasFittings    = g('f-hasFittings');
-    data.fittingChainage= gf('f-fittingChainage');
-    data.thrustBlock    = g('f-thrustBlock');
     data.photosStart    = getExcavPhotos('start');
     data.photosEnd      = getExcavPhotos('end');
     data.photos         = [];
@@ -1540,9 +1511,12 @@ async function submitReport(type) {
     data.wallMat=g('f-wallMat'); data.slab=g('f-slab'); data.plaster=g('f-plaster');
   }
   if (type==='fitting') {
-    data.chainage=gf('f-chainage'); data.location=g('f-location');
-    data.fitType=g('f-fitType'); data.size=g('f-size'); data.material=g('f-material');
-    data.qty=gf('f-qty')||1; data.thrustBlock=g('f-thrustBlock'); data.special=g('f-special');
+    data.chainage    = gf('f-chainage');
+    data.location    = g('f-location');
+    data.fitType     = g('f-fitType');
+    data.size        = g('f-size');
+    data.qty         = gf('f-qty') || 1;
+    data.thrustBlock = g('f-thrustBlock');
   }
   if (type==='structure') {
     data.strType=g('f-strType'); data.from=gf('f-from'); data.to=gf('f-to');
