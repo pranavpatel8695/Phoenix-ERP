@@ -1003,6 +1003,29 @@ function buildTypeFields(type, p={}) {
         </div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔗 Fittings</div>
+        <div class="field-group"><label>Any Fittings in this stretch?</label>
+          <div class="radio-group">
+            <div class="radio-opt${(p.hasFittings||'No')==='No'?' selected':''}" onclick="selectPipeFittings('No',this)">No</div>
+            <div class="radio-opt${p.hasFittings==='Yes'?' selected':''}" onclick="selectPipeFittings('Yes',this)">Yes</div>
+          </div>
+          <input type="hidden" id="f-hasFittings" value="${p.hasFittings||'No'}">
+        </div>
+        <div id="f-fittings-wrap" style="display:${p.hasFittings==='Yes'?'block':'none'}">
+          <div class="field-group mt-2"><label>Fitting Chainage (m)</label>
+            <input type="number" id="f-fittingChainage" value="${p.fittingChainage||''}" placeholder="e.g. 340">
+          </div>
+          <div class="field-group"><label>Thrust Block Required?</label>
+            <div class="radio-group">
+              <div class="radio-opt${(p.thrustBlock||'Not Required')==='Not Required'?' selected':''}" onclick="selectThrustBlock('Not Required',this)">Not Required</div>
+              <div class="radio-opt${p.thrustBlock==='Required — Pending'?' selected':''}" onclick="selectThrustBlock('Required — Pending',this)">Required — Pending</div>
+              <div class="radio-opt${p.thrustBlock==='Cast & Cured'?' selected':''}" onclick="selectThrustBlock('Cast & Cured',this)">Cast & Cured</div>
+            </div>
+            <input type="hidden" id="f-thrustBlock" value="${p.thrustBlock||'Not Required'}">
+          </div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📷 Site Photos</div>
         <div class="form-row" style="gap:12px">
           <div style="flex:1">
@@ -1262,6 +1285,22 @@ function selectEncasing(val, el) {
   if (wrap) wrap.style.display = val !== 'Not Required' ? 'block' : 'none';
 }
 
+function selectPipeFittings(val, el) {
+  const hidden = document.getElementById('f-hasFittings');
+  if (hidden) hidden.value = val;
+  el.closest('.radio-group').querySelectorAll('.radio-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  const wrap = document.getElementById('f-fittings-wrap');
+  if (wrap) wrap.style.display = val === 'Yes' ? 'block' : 'none';
+}
+
+function selectThrustBlock(val, el) {
+  const hidden = document.getElementById('f-thrustBlock');
+  if (hidden) hidden.value = val;
+  el.closest('.radio-group').querySelectorAll('.radio-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
 function handleExcavPhotoUpload(input, zone) {
   const file = input.files[0];
   if (!file) return;
@@ -1417,13 +1456,16 @@ async function submitReport(type) {
     data.volume=gf('f-volume') || (data.width * data.depth * data.meters);
   }
   if (type==='pipe') {
-    data.pipeSpec    = g('f-pipeSpec');
-    data.encasing    = g('f-encasing');
-    data.encasingFrom= gf('f-encasing-from');
-    data.encasingTo  = gf('f-encasing-to');
-    data.photosStart = getExcavPhotos('start');
-    data.photosEnd   = getExcavPhotos('end');
-    data.photos      = [];
+    data.pipeSpec       = g('f-pipeSpec');
+    data.encasing       = g('f-encasing');
+    data.encasingFrom   = gf('f-encasing-from');
+    data.encasingTo     = gf('f-encasing-to');
+    data.hasFittings    = g('f-hasFittings');
+    data.fittingChainage= gf('f-fittingChainage');
+    data.thrustBlock    = g('f-thrustBlock');
+    data.photosStart    = getExcavPhotos('start');
+    data.photosEnd      = getExcavPhotos('end');
+    data.photos         = [];
   }
   if (type==='refill') {
     data.width=gf('f-width'); data.depth=gf('f-depth'); data.road=g('f-road');
