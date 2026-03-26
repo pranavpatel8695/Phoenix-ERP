@@ -858,7 +858,7 @@ function buildReportForm(type, prefill={}) {
     </div>
     <div class="field-group">
       <label>Route <span class="req">*</span></label>
-      <select id="f-route"></select>
+      <select id="f-route" onchange="updatePipeSpecDisplay()"></select>
     </div>
     <div class="field-group">
       <label>Date <span class="req">*</span></label>
@@ -869,7 +869,7 @@ function buildReportForm(type, prefill={}) {
   html += buildTypeFields(type, prefill);
 
   html += `
-    ${type !== 'excavation' ? `
+    ${(type !== 'excavation' && type !== 'pipe') ? `
     <div class="field-group">
       <label>Photo</label>
       <div class="photo-zone" onclick="document.getElementById('f-photo').click()">
@@ -894,6 +894,9 @@ function buildReportForm(type, prefill={}) {
       if (prefill.photosStart?.length) prefill.photosStart.forEach(p => addExcavPhotoPreview(p.src||p, 'start'));
       if (prefill.photosEnd?.length)   prefill.photosEnd.forEach(p => addExcavPhotoPreview(p.src||p, 'end'));
       autoCalcVolume();
+    } else if (type === 'pipe') {
+      if (prefill.photosStart?.length) prefill.photosStart.forEach(p => addExcavPhotoPreview(p.src||p, 'start'));
+      if (prefill.photosEnd?.length)   prefill.photosEnd.forEach(p => addExcavPhotoPreview(p.src||p, 'end'));
     } else if (prefill.photos?.length) {
       prefill.photos.forEach(p => addPhotoPreview(p.src||p));
     }
@@ -959,6 +962,13 @@ function buildTypeFields(type, p={}) {
 
   // ── 2. PIPE LAYING ─────────────────────────────────────────
   if (type === 'pipe') {
+    // Get current route's pipe spec for prefill display
+    const proj = document.getElementById('f-project')?.value || '';
+    const routeId = p.route || '';
+    const routeList = getRoutes()[proj] || [];
+    const matchedRoute = routeList.find(r => r.id === routeId);
+    const pipeSpec = matchedRoute?.pipe || p.pipeSpec || '';
+
     html += `
       <div style="background:rgba(10,132,255,0.06);border:1px solid rgba(10,132,255,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage</div>
@@ -969,30 +979,50 @@ function buildTypeFields(type, p={}) {
         <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔩 Pipe Specification</div>
-        <div class="form-row">
-          <div class="field-group"><label>Pipe Size (mm) <span class="req">*</span></label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
-          <div class="field-group"><label>Material <span class="req">*</span></label>
-            <select id="f-material">${['DI (Ductile Iron)','MS (Mild Steel)','HDPE','PVC','CI (Cast Iron)','PSC','RCC','Other'].map(m=>`<option${p.material===m?' selected':''}>${m}</option>`).join('')}</select>
-          </div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔩 Pipe Specification (from Route)</div>
+        <div id="f-pipespec-display" style="padding:11px 14px;border-radius:10px;border:1px solid ${pipeSpec ? 'rgba(10,132,255,0.4)' : 'var(--border)'};background:${pipeSpec ? 'rgba(10,132,255,0.08)' : 'var(--surface2)'};font-size:13px;font-weight:${pipeSpec ? '700' : '400'};color:${pipeSpec ? 'var(--blue)' : 'var(--muted)'};margin-bottom:0">
+          ${pipeSpec ? '🔩 ' + pipeSpec : '⚠️ No pipe spec set for this route — add in Settings → Projects → Routes'}
         </div>
-        <div class="form-row">
-          <div class="field-group"><label>Pressure Class</label>
-            <select id="f-pressClass">${['K7','K9','K12','PN6','PN10','PN16','Not Applicable'].map(v=>`<option${p.pressClass===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Joint Type</label>
-            <select id="f-jointType">${['Push-on (Rubber Ring)','Mechanical Joint','Flanged Joint','Butt Welded','Electrofusion','Other'].map(v=>`<option${p.jointType===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-        </div>
-        <div class="field-group"><label>No. of Pipes Laid</label><input type="number" id="f-pipeCount" value="${p.pipeCount||''}" placeholder="e.g. 12" min="0"></div>
+        <input type="hidden" id="f-pipeSpec" value="${pipeSpec}">
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏗️ Bedding & Protection</div>
-        <div class="field-group"><label>Bedding Type</label>
-          <select id="f-bedding">${['Sand Bedding','Granular Bedding','Concrete Cradle','Ordinary Earth','Other'].map(v=>`<option${p.bedding===v?' selected':''}>${v}</option>`).join('')}</select>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏗️ CC/RCC Encasing</div>
+        <div class="field-group"><label>Encasing Required?</label>
+          <div class="radio-group">
+            <div class="radio-opt${(p.encasing||'Not Required')==='Not Required'?' selected':''}" onclick="selectEncasing('Not Required',this)">Not Required</div>
+            <div class="radio-opt${p.encasing==='CC Encasing'?' selected':''}" onclick="selectEncasing('CC Encasing',this)">CC Encasing</div>
+            <div class="radio-opt${p.encasing==='RCC Encasing'?' selected':''}" onclick="selectEncasing('RCC Encasing',this)">RCC Encasing</div>
+          </div>
+          <input type="hidden" id="f-encasing" value="${p.encasing||'Not Required'}">
         </div>
-        <div class="field-group"><label>CC/RCC Encasing</label>
-          <select id="f-encasing">${['Not Required','CC Encasing','RCC Encasing','Pipe Sleeve','Casing Pipe'].map(e=>`<option${p.encasing===e?' selected':''}>${e}</option>`).join('')}</select>
+        <div id="f-encasing-ch-wrap" style="display:${(p.encasing && p.encasing!=='Not Required')?'block':'none'}">
+          <div class="form-row mt-2">
+            <div class="field-group"><label>Encasing From Ch. (m)</label><input type="number" id="f-encasing-from" value="${p.encasingFrom||''}" placeholder="e.g. 120"></div>
+            <div class="field-group"><label>Encasing To Ch. (m)</label><input type="number" id="f-encasing-to" value="${p.encasingTo||''}" placeholder="e.g. 180"></div>
+          </div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📷 Site Photos</div>
+        <div class="form-row" style="gap:12px">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:700;color:var(--blue);margin-bottom:6px">📍 Starting Chainage</div>
+            <div class="photo-zone" style="padding:14px 8px" onclick="document.getElementById('f-photo-pipe-start').click()">
+              <div class="pi" style="font-size:22px">📷</div>
+              <div style="font-size:11px">Tap to add</div>
+              <input type="file" id="f-photo-pipe-start" accept="image/*" style="display:none" onchange="handleExcavPhotoUpload(this,'start')">
+            </div>
+            <div class="photo-prev-grid" id="f-photo-prev-start" style="margin-top:6px"></div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">🏁 Ending Chainage</div>
+            <div class="photo-zone" style="padding:14px 8px" onclick="document.getElementById('f-photo-pipe-end').click()">
+              <div class="pi" style="font-size:22px">📷</div>
+              <div style="font-size:11px">Tap to add</div>
+              <input type="file" id="f-photo-pipe-end" accept="image/*" style="display:none" onchange="handleExcavPhotoUpload(this,'end')">
+            </div>
+            <div class="photo-prev-grid" id="f-photo-prev-end" style="margin-top:6px"></div>
+          </div>
         </div>
       </div>`;
   }
@@ -1220,6 +1250,18 @@ function autoCalcVolume() {
   if (el) el.value = (meters > 0 && width > 0 && depth > 0) ? (meters * width * depth).toFixed(2) : '';
 }
 
+function selectEncasing(val, el) {
+  // Update hidden input
+  const hidden = document.getElementById('f-encasing');
+  if (hidden) hidden.value = val;
+  // Update radio button styles
+  el.closest('.radio-group').querySelectorAll('.radio-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  // Show/hide chainage fields
+  const wrap = document.getElementById('f-encasing-ch-wrap');
+  if (wrap) wrap.style.display = val !== 'Not Required' ? 'block' : 'none';
+}
+
 function handleExcavPhotoUpload(input, zone) {
   const file = input.files[0];
   if (!file) return;
@@ -1251,6 +1293,33 @@ function updateFormRoutes(selectedRoute) {
   const routes = getRoutes()[proj] || [];
   sel.innerHTML = routes.map(r => `<option value="${r.id}"${(selectedRoute||'')==r.id?' selected':''}>${r.name}</option>`).join('');
   if (!routes.length) sel.innerHTML = '<option value="">No routes — add in Settings</option>';
+  // Refresh pipe spec display if on pipe form
+  updatePipeSpecDisplay();
+}
+
+function updatePipeSpecDisplay() {
+  const proj    = document.getElementById('f-project')?.value;
+  const routeId = document.getElementById('f-route')?.value;
+  const display = document.getElementById('f-pipespec-display');
+  const hidden  = document.getElementById('f-pipeSpec');
+  if (!display) return;
+  const routes = getRoutes()[proj] || [];
+  const rt = routes.find(r => r.id === routeId);
+  const spec = rt?.pipe || '';
+  hidden && (hidden.value = spec);
+  if (spec) {
+    display.style.borderColor = 'rgba(10,132,255,0.4)';
+    display.style.background  = 'rgba(10,132,255,0.08)';
+    display.style.color       = 'var(--blue)';
+    display.style.fontWeight  = '700';
+    display.textContent       = '🔩 ' + spec;
+  } else {
+    display.style.borderColor = 'var(--border)';
+    display.style.background  = 'var(--surface2)';
+    display.style.color       = 'var(--muted)';
+    display.style.fontWeight  = '400';
+    display.textContent       = '⚠️ No pipe spec set for this route — add in Settings → Projects → Routes';
+  }
 }
 
 function handlePhotoUpload(input) {
@@ -1332,9 +1401,9 @@ async function submitReport(type) {
     supervisorName: getUsers()[currentUser]?.name || currentUser,
     timestamp:  new Date().toISOString(),
     remarks:    g('f-remarks'),
-    photos:     type === 'excavation' ? [] : getFormPhotos(),
-    photosStart: type === 'excavation' ? getExcavPhotos('start') : [],
-    photosEnd:   type === 'excavation' ? getExcavPhotos('end')   : [],
+    photos:     (type === 'excavation' || type === 'pipe') ? [] : getFormPhotos(),
+    photosStart: (type === 'excavation' || type === 'pipe') ? getExcavPhotos('start') : [],
+    photosEnd:   (type === 'excavation' || type === 'pipe') ? getExcavPhotos('end')   : [],
   };
 
   // Type fields
@@ -1348,9 +1417,13 @@ async function submitReport(type) {
     data.volume=gf('f-volume') || (data.width * data.depth * data.meters);
   }
   if (type==='pipe') {
-    data.size=g('f-size'); data.material=g('f-material'); data.encasing=g('f-encasing');
-    data.pressClass=g('f-pressClass'); data.jointType=g('f-jointType');
-    data.pipeCount=gf('f-pipeCount'); data.bedding=g('f-bedding');
+    data.pipeSpec    = g('f-pipeSpec');
+    data.encasing    = g('f-encasing');
+    data.encasingFrom= gf('f-encasing-from');
+    data.encasingTo  = gf('f-encasing-to');
+    data.photosStart = getExcavPhotos('start');
+    data.photosEnd   = getExcavPhotos('end');
+    data.photos      = [];
   }
   if (type==='refill') {
     data.width=gf('f-width'); data.depth=gf('f-depth'); data.road=g('f-road');
