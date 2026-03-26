@@ -827,7 +827,7 @@ function openReportForm(type, editData=null) {
   _editId = editData ? editData.id : null;
   const modal = document.getElementById('formModal');
   const content = document.getElementById('formModalContent');
-  content.innerHTML = buildReportForm(type, editData);
+  content.innerHTML = buildReportForm(type, editData || {});
   modal.classList.remove('hidden');
 }
 
@@ -898,116 +898,262 @@ function buildReportForm(type, prefill={}) {
 }
 
 function buildTypeFields(type, p={}) {
+  // guard against null
+  if (!p) p = {};
   let html = '';
-  if (['excavation','pipe','refill'].includes(type)) {
-    html += `
-      <div class="form-row">
-        <div class="field-group"><label>From (m)</label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. 0"></div>
-        <div class="field-group"><label>To (m)</label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. 490"></div>
-      </div>
-      <div class="field-group"><label>Length (m)</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.7" placeholder="Auto-calculated"></div>`;
-  }
+
+  // ── 1. EXCAVATION ──────────────────────────────────────────
   if (type === 'excavation') {
     html += `
-      <div class="form-row">
-        <div class="field-group"><label>Width (m)</label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.2"></div>
-        <div class="field-group"><label>Depth (m)</label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.5"></div>
+      <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage & Dimensions</div>
+        <div class="form-row">
+          <div class="field-group"><label>From Ch. (m) <span class="req">*</span></label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. 0"></div>
+          <div class="field-group"><label>To Ch. (m) <span class="req">*</span></label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. 490"></div>
+        </div>
+        <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
+        <div class="form-row">
+          <div class="field-group"><label>Width (m) <span class="req">*</span></label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.20"></div>
+          <div class="field-group"><label>Depth (m) <span class="req">*</span></label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.80"></div>
+        </div>
       </div>
-      <div class="field-group"><label>Soil Type</label>
-        <select id="f-soil">
-          ${['Soft Soil','Hard Soil','Murrum','Rock','Sandy','Mixed'].map(s=>`<option${p.soil===s?' selected':''}>${s}</option>`).join('')}
-        </select>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🪨 Soil & Site Conditions</div>
+        <div class="field-group"><label>Soil Strata</label>
+          <select id="f-soil">${['Soft Soil','Hard Soil','Murrum','Rock (Soft)','Rock (Hard)','Sandy','Black Cotton','Mixed'].map(s=>`<option${p.soil===s?' selected':''}>${s}</option>`).join('')}</select>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Dewatering Required</label>
+            <select id="f-dewater">${['No','Yes — Mild','Yes — Heavy'].map(v=>`<option${p.dewater===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Road / Surface Type</label>
+            <select id="f-surface">${['Open Land','Kaccha Road','Paved Road','Concrete Road','Railway Crossing','Canal Crossing'].map(v=>`<option${p.surface===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field-group"><label>Shoring / Strutting</label>
+          <select id="f-shoring">${['Not Required','Timber Shoring','Steel Sheet Piling','Other'].map(v=>`<option${p.shoring===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
       </div>`;
   }
+
+  // ── 2. PIPE LAYING ─────────────────────────────────────────
   if (type === 'pipe') {
     html += `
-      <div class="form-row">
-        <div class="field-group"><label>Size</label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
-        <div class="field-group"><label>Material</label>
-          <select id="f-material">
-            ${['DI (Ductile Iron)','MS (Mild Steel)','HDPE','PVC','CI (Cast Iron)','Other'].map(m=>`<option${p.material===m?' selected':''}>${m}</option>`).join('')}
-          </select>
+      <div style="background:rgba(10,132,255,0.06);border:1px solid rgba(10,132,255,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage</div>
+        <div class="form-row">
+          <div class="field-group"><label>From Ch. (m) <span class="req">*</span></label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. 0"></div>
+          <div class="field-group"><label>To Ch. (m) <span class="req">*</span></label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. 490"></div>
         </div>
+        <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
       </div>
-      <div class="field-group"><label>CC/RCC Encasing</label>
-        <select id="f-encasing">
-          ${['Not Required','CC Required','RCC Required'].map(e=>`<option${p.encasing===e?' selected':''}>${e}</option>`).join('')}
-        </select>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔩 Pipe Specification</div>
+        <div class="form-row">
+          <div class="field-group"><label>Pipe Size (mm) <span class="req">*</span></label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
+          <div class="field-group"><label>Material <span class="req">*</span></label>
+            <select id="f-material">${['DI (Ductile Iron)','MS (Mild Steel)','HDPE','PVC','CI (Cast Iron)','PSC','RCC','Other'].map(m=>`<option${p.material===m?' selected':''}>${m}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Pressure Class</label>
+            <select id="f-pressClass">${['K7','K9','K12','PN6','PN10','PN16','Not Applicable'].map(v=>`<option${p.pressClass===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Joint Type</label>
+            <select id="f-jointType">${['Push-on (Rubber Ring)','Mechanical Joint','Flanged Joint','Butt Welded','Electrofusion','Other'].map(v=>`<option${p.jointType===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field-group"><label>No. of Pipes Laid</label><input type="number" id="f-pipeCount" value="${p.pipeCount||''}" placeholder="e.g. 12" min="0"></div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏗️ Bedding & Protection</div>
+        <div class="field-group"><label>Bedding Type</label>
+          <select id="f-bedding">${['Sand Bedding','Granular Bedding','Concrete Cradle','Ordinary Earth','Other'].map(v=>`<option${p.bedding===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+        <div class="field-group"><label>CC/RCC Encasing</label>
+          <select id="f-encasing">${['Not Required','CC Encasing','RCC Encasing','Pipe Sleeve','Casing Pipe'].map(e=>`<option${p.encasing===e?' selected':''}>${e}</option>`).join('')}</select>
+        </div>
       </div>`;
   }
+
+  // ── 3. REFILLING ───────────────────────────────────────────
   if (type === 'refill') {
     html += `
-      <div class="form-row">
-        <div class="field-group"><label>Width (m)</label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.2"></div>
-        <div class="field-group"><label>Depth (m)</label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.5"></div>
+      <div style="background:rgba(48,209,88,0.06);border:1px solid rgba(48,209,88,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage & Dimensions</div>
+        <div class="form-row">
+          <div class="field-group"><label>From Ch. (m) <span class="req">*</span></label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. 0"></div>
+          <div class="field-group"><label>To Ch. (m) <span class="req">*</span></label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. 490"></div>
+        </div>
+        <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
+        <div class="form-row">
+          <div class="field-group"><label>Width (m)</label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.20"></div>
+          <div class="field-group"><label>Depth (m)</label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.80"></div>
+        </div>
       </div>
-      <div class="field-group"><label>Road Restoration</label>
-        <select id="f-road">
-          ${['Not Required','Paver Block','Asphalt','Concrete','Soil Compaction'].map(r=>`<option${p.road===r?' selected':''}>${r}</option>`).join('')}
-        </select>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🪣 Refill Method & Restoration</div>
+        <div class="field-group"><label>Refill Material</label>
+          <select id="f-refillMat">${['Excavated Earth','Murrum','Sand','Granular Fill','Imported Fill'].map(v=>`<option${p.refillMat===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+        <div class="field-group"><label>Compaction Method</label>
+          <select id="f-compaction">${['Manual Ramming','Plate Compactor','Roller Compaction','Not Done Yet'].map(v=>`<option${p.compaction===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>No. of Layers</label><input type="number" id="f-layers" value="${p.layers||''}" placeholder="e.g. 3" min="1"></div>
+          <div class="field-group"><label>Layer Thickness (mm)</label><input type="number" id="f-layerThk" value="${p.layerThk||''}" placeholder="e.g. 300"></div>
+        </div>
+        <div class="field-group"><label>Road Restoration</label>
+          <select id="f-road">${['Not Required','Paver Block Restoration','Asphalt Restoration','Concrete Restoration','Murrum & Soil','Temporary Restoration'].map(r=>`<option${p.road===r?' selected':''}>${r}</option>`).join('')}</select>
+        </div>
       </div>`;
   }
+
+  // ── 4. VALVE ───────────────────────────────────────────────
   if (type === 'valve') {
     html += `
-      <div class="field-group"><label>Chainage (m)</label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
-      <div class="form-row">
-        <div class="field-group"><label>Valve Type</label>
-          <select id="f-valType">
-            ${['Air Valve','Butterfly Valve','Sluice Valve','Scour Valve','Flow Meter','NRV','ZVV','Other'].map(v=>`<option${p.valType===v?' selected':''}>${v}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-group"><label>Size</label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 200mm"></div>
+      <div style="background:rgba(255,69,58,0.06);border:1px solid rgba(255,69,58,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location</div>
+        <div class="field-group"><label>Chainage (m) <span class="req">*</span></label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
+        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near Dabhoda Village crossroad"></div>
       </div>
-      <div class="field-group"><label>Chamber Required</label>
-        <select id="f-chamberReq">${['Not Required','Required'].map(v=>`<option${p.chamberReq===v?' selected':''}>${v}</option>`).join('')}</select>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔧 Valve Details</div>
+        <div class="form-row">
+          <div class="field-group"><label>Valve Type <span class="req">*</span></label>
+            <select id="f-valType">${['Sluice Valve (SW)','Butterfly Valve (BFV)','Air Valve (AV)','Scour Valve (ScV)','Non-Return Valve (NRV)','Pressure Reducing Valve (PRV)','Flow Control Valve (FCV)','Altitude Valve','Gate Valve','Other'].map(v=>`<option${p.valType===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Size (mm) <span class="req">*</span></label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Pressure Class / Rating</label>
+            <select id="f-pressClass">${['PN 6','PN 10','PN 16','PN 25','Class 150','Class 300','Other'].map(v=>`<option${p.pressClass===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Qty</label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Make / Brand</label><input type="text" id="f-make" value="${p.make||''}" placeholder="e.g. AVK, KSB, KIRLOSKAR"></div>
+          <div class="field-group"><label>IS Standard</label><input type="text" id="f-isStd" value="${p.isStd||''}" placeholder="e.g. IS 14846"></div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Installation Status</label>
+            <select id="f-installStatus">${['Installed & Tested','Installed — Testing Pending','Partially Installed','Material Received'].map(v=>`<option${p.installStatus===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Chamber Required</label>
+            <select id="f-chamberReq">${['Not Required','Required — Planned','Required — Constructed'].map(v=>`<option${p.chamberReq===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
       </div>`;
   }
+
+  // ── 5. CHAMBER ─────────────────────────────────────────────
   if (type === 'chamber') {
     html += `
-      <div class="field-group"><label>Chainage (m)</label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
-      <div class="form-row">
-        <div class="field-group"><label>Type</label>
-          <select id="f-chamType">${['Valve Chamber','Air Valve Chamber','Scour Chamber','Junction Chamber','Other'].map(v=>`<option${p.chamType===v?' selected':''}>${v}</option>`).join('')}</select>
-        </div>
-        <div class="field-group"><label>Status</label>
-          <select id="f-chamStatus">${['In Progress','Partial','Complete'].map(v=>`<option${p.chamStatus===v?' selected':''}>${v}</option>`).join('')}</select>
-        </div>
+      <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location</div>
+        <div class="field-group"><label>Chainage (m) <span class="req">*</span></label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
+        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near Dharoi village junction"></div>
       </div>
-      <div class="field-group"><label>Slab</label>
-        <select id="f-slab">${['Not Required','Precast','Cast-in-situ'].map(v=>`<option${p.slab===v?' selected':''}>${v}</option>`).join('')}</select>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏛️ Chamber Details</div>
+        <div class="form-row">
+          <div class="field-group"><label>Chamber Type <span class="req">*</span></label>
+            <select id="f-chamType">${['Valve Chamber','Air Valve Chamber','Scour Chamber','Junction Chamber','Meter Chamber','Inspection Chamber','Other'].map(v=>`<option${p.chamType===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Construction Status</label>
+            <select id="f-chamStatus">${['Foundation Done','Walls In Progress','Walls Complete','Plastering Done','Fully Complete'].map(v=>`<option${p.chamStatus===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Inner Size (L×B mm)</label><input type="text" id="f-chamSize" value="${p.chamSize||''}" placeholder="e.g. 1200×900"></div>
+          <div class="field-group"><label>Depth (mm)</label><input type="number" id="f-chamDepth" value="${p.chamDepth||''}" placeholder="e.g. 1500"></div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Wall Material</label>
+            <select id="f-wallMat">${['Brick Masonry','RCC','Stone Masonry','Precast RCC'].map(v=>`<option${p.wallMat===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Slab / Cover</label>
+            <select id="f-slab">${['Not Required','Precast RCC Slab','Cast-in-situ RCC','CI Cover','MS Cover'].map(v=>`<option${p.slab===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field-group"><label>Plastering / Waterproofing</label>
+          <select id="f-plaster">${['Not Done','Internal Plaster Done','Waterproofing Done','Both Done'].map(v=>`<option${p.plaster===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
       </div>`;
   }
+
+  // ── 6. FITTING ─────────────────────────────────────────────
   if (type === 'fitting') {
     html += `
-      <div class="field-group"><label>Chainage (m)</label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
-      <div class="form-row">
-        <div class="field-group"><label>Fitting Type</label>
-          <select id="f-fitType">${['Tee','Bend 90°','Bend 45°','Reducer','Flange Adaptor','Puddle Flange','Collar','Dismantling Joint','Other'].map(v=>`<option${p.fitType===v?' selected':''}>${v}</option>`).join('')}</select>
-        </div>
-        <div class="field-group"><label>Size</label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
+      <div style="background:rgba(90,200,250,0.06);border:1px solid rgba(90,200,250,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location</div>
+        <div class="field-group"><label>Chainage (m) <span class="req">*</span></label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
+        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near road crossing Ch:450m"></div>
       </div>
-      <div class="form-row">
-        <div class="field-group"><label>Qty</label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
-        <div class="field-group"><label>Thrust Block</label>
-          <select id="f-thrustBlock">${['Not Required','Required'].map(v=>`<option${p.thrustBlock===v?' selected':''}>${v}</option>`).join('')}</select>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔗 Fitting Details</div>
+        <div class="form-row">
+          <div class="field-group"><label>Fitting Type <span class="req">*</span></label>
+            <select id="f-fitType">${['Tee (Equal)','Tee (Reducer)','Bend 90°','Bend 45°','Bend 22.5°','Bend 11.25°','Reducer (Concentric)','Reducer (Eccentric)','Flange Adaptor','Puddle Flange','Collar','Dismantling Joint','Blank Flange','Sleeve Coupling','Other'].map(v=>`<option${p.fitType===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Size (mm) <span class="req">*</span></label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Material</label>
+            <select id="f-material">${['DI (Ductile Iron)','MS (Mild Steel)','CI (Cast Iron)','HDPE','Other'].map(v=>`<option${p.material===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Qty <span class="req">*</span></label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Thrust Block</label>
+            <select id="f-thrustBlock">${['Not Required','Required — Pending','Cast & Cured'].map(v=>`<option${p.thrustBlock===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Special Item</label>
+            <select id="f-special">${['None',...(getSpecials()[document.getElementById('f-project')?.value]||[]).map(s=>s.name)].map(v=>`<option${p.special===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
         </div>
       </div>`;
   }
+
+  // ── 7. CONCRETE WORK (structure) ───────────────────────────
   if (type === 'structure') {
     html += `
-      <div class="field-group"><label>Concrete Type</label>
-        <select id="f-strType">${['Thrust Block','Encasing','Bed Concrete','Cap Concrete','Other'].map(v=>`<option${p.strType===v?' selected':''}>${v}</option>`).join('')}</select>
+      <div style="background:rgba(191,90,242,0.06);border:1px solid rgba(191,90,242,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location & Type</div>
+        <div class="field-group"><label>Concrete Work Type <span class="req">*</span></label>
+          <select id="f-strType">${['Thrust Block','Pipe Encasing (CC)','Pipe Encasing (RCC)','Bed Concrete','Cap Concrete / Haunch','Anchor Block','Casing Pipe Grouting','Road Crossing (Jack & Bore)','Other'].map(v=>`<option${p.strType===v?' selected':''}>${v}</option>`).join('')}</select>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>From Ch. (m)</label><input type="number" id="f-from" value="${p.from||''}" placeholder="e.g. 0"></div>
+          <div class="field-group"><label>To Ch. (m)</label><input type="number" id="f-to" value="${p.to||''}" placeholder="e.g. 50"></div>
+        </div>
       </div>
-      <div class="form-row">
-        <div class="field-group"><label>From (m)</label><input type="number" id="f-from" value="${p.from||''}" placeholder="e.g. 0"></div>
-        <div class="field-group"><label>To (m)</label><input type="number" id="f-to" value="${p.to||''}" placeholder="e.g. 50"></div>
-      </div>
-      <div class="form-row">
-        <div class="field-group"><label>Est. Qty (cum)</label><input type="number" id="f-estConc" step="0.01" value="${p.estConc||''}" placeholder="0.00"></div>
-        <div class="field-group"><label>Actual Qty (cum)</label><input type="number" id="f-actualConc" step="0.01" value="${p.actualConc||''}" placeholder="0.00"></div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏗️ Concrete Specification</div>
+        <div class="form-row">
+          <div class="field-group"><label>Grade of Concrete</label>
+            <select id="f-concrGrade">${['M10','M15','M20','M25','M30','PCC (1:3:6)','PCC (1:4:8)','Other'].map(v=>`<option${p.concrGrade===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Mix Type</label>
+            <select id="f-mixType">${['Design Mix','Nominal Mix','Ready Mix (RMC)'].map(v=>`<option${p.mixType===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Est. Qty (cum)</label><input type="number" id="f-estConc" step="0.01" value="${p.estConc||''}" placeholder="0.00"></div>
+          <div class="field-group"><label>Actual Qty (cum)</label><input type="number" id="f-actualConc" step="0.01" value="${p.actualConc||''}" placeholder="0.00"></div>
+        </div>
+        <div class="form-row">
+          <div class="field-group"><label>Curing Status</label>
+            <select id="f-curingStatus">${['Not Started','In Progress','Completed (7 days)','Completed (14 days)','Completed (28 days)'].map(v=>`<option${p.curingStatus===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="field-group"><label>Cube Samples Taken</label>
+            <select id="f-cubeSamples">${['No','Yes — 3 Cubes','Yes — 6 Cubes','Yes — 9 Cubes'].map(v=>`<option${p.cubeSamples===v?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
       </div>`;
   }
-  // Civil types
+
+  // ── CIVIL TYPES (unchanged) ─────────────────────────────────
   if (type.startsWith('civil_')) {
     html += `
       <div class="field-group"><label>Description <span class="req">*</span></label>
@@ -1134,13 +1280,45 @@ async function submitReport(type) {
     data.to     = gf('f-to');
     data.meters = gf('f-meters') || (data.to - data.from);
   }
-  if (type==='excavation') { data.width=gf('f-width'); data.depth=gf('f-depth'); data.soil=g('f-soil'); data.volume=data.width*data.depth*data.meters; }
-  if (type==='pipe')       { data.size=g('f-size'); data.material=g('f-material'); data.encasing=g('f-encasing'); }
-  if (type==='refill')     { data.width=gf('f-width'); data.depth=gf('f-depth'); data.road=g('f-road'); data.volume=data.width*data.depth*data.meters; }
-  if (type==='valve')      { data.chainage=gf('f-chainage'); data.valType=g('f-valType'); data.size=g('f-size'); data.chamberReq=g('f-chamberReq'); }
-  if (type==='chamber')    { data.chainage=gf('f-chainage'); data.chamType=g('f-chamType'); data.chamStatus=g('f-chamStatus'); data.slab=g('f-slab'); }
-  if (type==='fitting')    { data.chainage=gf('f-chainage'); data.fitType=g('f-fitType'); data.size=g('f-size'); data.qty=gf('f-qty')||1; data.thrustBlock=g('f-thrustBlock'); }
-  if (type==='structure')  { data.strType=g('f-strType'); data.estConc=gf('f-estConc'); data.actualConc=gf('f-actualConc'); }
+  if (type==='excavation') {
+    data.width=gf('f-width'); data.depth=gf('f-depth'); data.soil=g('f-soil');
+    data.dewater=g('f-dewater'); data.surface=g('f-surface'); data.shoring=g('f-shoring');
+    data.volume=data.width*data.depth*data.meters;
+  }
+  if (type==='pipe') {
+    data.size=g('f-size'); data.material=g('f-material'); data.encasing=g('f-encasing');
+    data.pressClass=g('f-pressClass'); data.jointType=g('f-jointType');
+    data.pipeCount=gf('f-pipeCount'); data.bedding=g('f-bedding');
+  }
+  if (type==='refill') {
+    data.width=gf('f-width'); data.depth=gf('f-depth'); data.road=g('f-road');
+    data.refillMat=g('f-refillMat'); data.compaction=g('f-compaction');
+    data.layers=gf('f-layers'); data.layerThk=gf('f-layerThk');
+    data.volume=data.width*data.depth*data.meters;
+  }
+  if (type==='valve') {
+    data.chainage=gf('f-chainage'); data.location=g('f-location');
+    data.valType=g('f-valType'); data.size=g('f-size'); data.pressClass=g('f-pressClass');
+    data.qty=gf('f-qty')||1; data.make=g('f-make'); data.isStd=g('f-isStd');
+    data.installStatus=g('f-installStatus'); data.chamberReq=g('f-chamberReq');
+  }
+  if (type==='chamber') {
+    data.chainage=gf('f-chainage'); data.location=g('f-location');
+    data.chamType=g('f-chamType'); data.chamStatus=g('f-chamStatus');
+    data.chamSize=g('f-chamSize'); data.chamDepth=gf('f-chamDepth');
+    data.wallMat=g('f-wallMat'); data.slab=g('f-slab'); data.plaster=g('f-plaster');
+  }
+  if (type==='fitting') {
+    data.chainage=gf('f-chainage'); data.location=g('f-location');
+    data.fitType=g('f-fitType'); data.size=g('f-size'); data.material=g('f-material');
+    data.qty=gf('f-qty')||1; data.thrustBlock=g('f-thrustBlock'); data.special=g('f-special');
+  }
+  if (type==='structure') {
+    data.strType=g('f-strType'); data.from=gf('f-from'); data.to=gf('f-to');
+    data.concrGrade=g('f-concrGrade'); data.mixType=g('f-mixType');
+    data.estConc=gf('f-estConc'); data.actualConc=gf('f-actualConc');
+    data.curingStatus=g('f-curingStatus'); data.cubeSamples=g('f-cubeSamples');
+  }
   if (type.startsWith('civil_')) {
     const desc = g('f-description');
     if (!desc) { showToast('⚠️ Description is required'); return; }
