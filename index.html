@@ -869,6 +869,7 @@ function buildReportForm(type, prefill={}) {
   html += buildTypeFields(type, prefill);
 
   html += `
+    ${type !== 'excavation' ? `
     <div class="field-group">
       <label>Photo</label>
       <div class="photo-zone" onclick="document.getElementById('f-photo').click()">
@@ -877,7 +878,7 @@ function buildReportForm(type, prefill={}) {
         <input type="file" id="f-photo" accept="image/*" style="display:none" onchange="handlePhotoUpload(this)">
       </div>
       <div class="photo-prev-grid" id="f-photo-prev"></div>
-    </div>
+    </div>` : ''}
     <div class="field-group">
       <label>Remarks</label>
       <textarea id="f-remarks" rows="2" placeholder="Optional notes…">${prefill.remarks||''}</textarea>
@@ -889,7 +890,11 @@ function buildReportForm(type, prefill={}) {
 
   setTimeout(() => {
     updateFormRoutes(prefill.route);
-    if (prefill.photos?.length) {
+    if (type === 'excavation') {
+      if (prefill.photosStart?.length) prefill.photosStart.forEach(p => addExcavPhotoPreview(p.src||p, 'start'));
+      if (prefill.photosEnd?.length)   prefill.photosEnd.forEach(p => addExcavPhotoPreview(p.src||p, 'end'));
+      autoCalcVolume();
+    } else if (prefill.photos?.length) {
       prefill.photos.forEach(p => addPhotoPreview(p.src||p));
     }
   }, 50);
@@ -913,25 +918,41 @@ function buildTypeFields(type, p={}) {
         </div>
         <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
         <div class="form-row">
-          <div class="field-group"><label>Width (m) <span class="req">*</span></label><input type="number" id="f-width" step="0.01" value="${p.width||''}" placeholder="e.g. 1.20"></div>
-          <div class="field-group"><label>Depth (m) <span class="req">*</span></label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" placeholder="e.g. 1.80"></div>
+          <div class="field-group"><label>Width (m) <span class="req">*</span></label><input type="number" id="f-width" step="0.01" value="${p.width||''}" oninput="autoCalcVolume()" placeholder="e.g. 1.20"></div>
+          <div class="field-group"><label>Depth (m) <span class="req">*</span></label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" oninput="autoCalcVolume()" placeholder="e.g. 1.80"></div>
+        </div>
+        <div class="field-group">
+          <label>Volume of Excavation (m³) — Auto</label>
+          <input type="number" id="f-volume" value="${p.volume||''}" readonly style="opacity:0.6;background:rgba(255,159,10,0.08);border-color:rgba(255,159,10,0.3)" placeholder="Auto-calculated (L × W × D)">
         </div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🪨 Soil & Site Conditions</div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🪨 Soil Conditions</div>
         <div class="field-group"><label>Soil Strata</label>
           <select id="f-soil">${['Soft Soil','Hard Soil','Murrum','Rock (Soft)','Rock (Hard)','Sandy','Black Cotton','Mixed'].map(s=>`<option${p.soil===s?' selected':''}>${s}</option>`).join('')}</select>
         </div>
-        <div class="form-row">
-          <div class="field-group"><label>Dewatering Required</label>
-            <select id="f-dewater">${['No','Yes — Mild','Yes — Heavy'].map(v=>`<option${p.dewater===v?' selected':''}>${v}</option>`).join('')}</select>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📷 Site Photos</div>
+        <div class="form-row" style="gap:12px">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:6px">📍 Starting Chainage</div>
+            <div class="photo-zone" style="padding:14px 8px" onclick="document.getElementById('f-photo-start').click()">
+              <div class="pi" style="font-size:22px">📷</div>
+              <div style="font-size:11px">Tap to add</div>
+              <input type="file" id="f-photo-start" accept="image/*" style="display:none" onchange="handleExcavPhotoUpload(this,'start')">
+            </div>
+            <div class="photo-prev-grid" id="f-photo-prev-start" style="margin-top:6px"></div>
           </div>
-          <div class="field-group"><label>Road / Surface Type</label>
-            <select id="f-surface">${['Open Land','Kaccha Road','Paved Road','Concrete Road','Railway Crossing','Canal Crossing'].map(v=>`<option${p.surface===v?' selected':''}>${v}</option>`).join('')}</select>
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">🏁 Ending Chainage</div>
+            <div class="photo-zone" style="padding:14px 8px" onclick="document.getElementById('f-photo-end').click()">
+              <div class="pi" style="font-size:22px">📷</div>
+              <div style="font-size:11px">Tap to add</div>
+              <input type="file" id="f-photo-end" accept="image/*" style="display:none" onchange="handleExcavPhotoUpload(this,'end')">
+            </div>
+            <div class="photo-prev-grid" id="f-photo-prev-end" style="margin-top:6px"></div>
           </div>
-        </div>
-        <div class="field-group"><label>Shoring / Strutting</label>
-          <select id="f-shoring">${['Not Required','Timber Shoring','Steel Sheet Piling','Other'].map(v=>`<option${p.shoring===v?' selected':''}>${v}</option>`).join('')}</select>
         </div>
       </div>`;
   }
@@ -1188,6 +1209,39 @@ function autoCalc() {
   const to   = parseFloat(document.getElementById('f-to')?.value)   || 0;
   const el   = document.getElementById('f-meters');
   if (el) el.value = to > from ? (to - from).toFixed(0) : '';
+  autoCalcVolume();
+}
+
+function autoCalcVolume() {
+  const meters = parseFloat(document.getElementById('f-meters')?.value) || 0;
+  const width  = parseFloat(document.getElementById('f-width')?.value)  || 0;
+  const depth  = parseFloat(document.getElementById('f-depth')?.value)  || 0;
+  const el     = document.getElementById('f-volume');
+  if (el) el.value = (meters > 0 && width > 0 && depth > 0) ? (meters * width * depth).toFixed(2) : '';
+}
+
+function handleExcavPhotoUpload(input, zone) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    compressPhoto(e.target.result, 50).then(compressed => {
+      addExcavPhotoPreview(compressed, zone);
+    });
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function addExcavPhotoPreview(src, zone) {
+  const prevId = zone === 'start' ? 'f-photo-prev-start' : 'f-photo-prev-end';
+  const prev = document.getElementById(prevId);
+  if (!prev) return;
+  if (prev.querySelectorAll('.photo-thumb').length >= 1) { showToast('Max 1 photo per zone'); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'photo-thumb';
+  wrap.innerHTML = `<img src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
+  prev.appendChild(wrap);
 }
 
 function updateFormRoutes(selectedRoute) {
@@ -1247,6 +1301,13 @@ function getFormPhotos() {
   return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.src }));
 }
 
+function getExcavPhotos(zone) {
+  const prevId = zone === 'start' ? 'f-photo-prev-start' : 'f-photo-prev-end';
+  const prev = document.getElementById(prevId);
+  if (!prev) return [];
+  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.src }));
+}
+
 // ── SUBMIT REPORT ─────────────────────────────────────────────
 async function submitReport(type) {
   const project = document.getElementById('f-project')?.value;
@@ -1271,7 +1332,9 @@ async function submitReport(type) {
     supervisorName: getUsers()[currentUser]?.name || currentUser,
     timestamp:  new Date().toISOString(),
     remarks:    g('f-remarks'),
-    photos:     getFormPhotos(),
+    photos:     type === 'excavation' ? [] : getFormPhotos(),
+    photosStart: type === 'excavation' ? getExcavPhotos('start') : [],
+    photosEnd:   type === 'excavation' ? getExcavPhotos('end')   : [],
   };
 
   // Type fields
@@ -1282,8 +1345,7 @@ async function submitReport(type) {
   }
   if (type==='excavation') {
     data.width=gf('f-width'); data.depth=gf('f-depth'); data.soil=g('f-soil');
-    data.dewater=g('f-dewater'); data.surface=g('f-surface'); data.shoring=g('f-shoring');
-    data.volume=data.width*data.depth*data.meters;
+    data.volume=gf('f-volume') || (data.width * data.depth * data.meters);
   }
   if (type==='pipe') {
     data.size=g('f-size'); data.material=g('f-material'); data.encasing=g('f-encasing');
