@@ -1130,14 +1130,15 @@ function buildTypeFields(type, p={}) {
 
   // ── 5. CHAMBER ─────────────────────────────────────────────
   if (type === 'chamber') {
-    // Build location options from valve reports where chamberReq === 'Yes'
     const chamProj = document.getElementById('f-project')?.value || '';
-    const chamLocs = getReports()
-      .filter(r => r.type === 'valve' && r.project === chamProj && r.chamberReq === 'Yes')
-      .map(r => `Ch:${r.chainage}m${r.location ? ' — ' + r.location : ''}`)
-      .filter((v,i,a) => a.indexOf(v) === i); // dedupe
-    const chamLocOpts = chamLocs.map(v =>
-      `<option value="${v}"${p.location===v?' selected':''}>${v}</option>`).join('');
+    const valveReps = getReports()
+      .filter(r => r.type === 'valve' && r.project === chamProj && r.chamberReq === 'Yes');
+    // Store date in option data attribute for dependency check
+    const chamLocOpts = valveReps.map(r => {
+      const label = `Ch:${r.chainage}m${r.location ? ' — ' + r.location : ''}`;
+      return `<option value="${label}" data-date="${r.date||''}"${p.location===label?' selected':''}>${label}</option>`;
+    }).join('');
+    const chamLocs = valveReps.map(r => `Ch:${r.chainage}m${r.location ? ' — ' + r.location : ''}`);
     const chamHasOther = p.location && !chamLocs.includes(p.location);
 
     html += `
@@ -1151,6 +1152,7 @@ function buildTypeFields(type, p={}) {
             <option value="__other__"${chamHasOther?' selected':''}>— Other (type below) —</option>
           </select>
         </div>
+        <input type="hidden" id="f-valve-date" value="${p.valveDate||''}">
         <div id="f-location-other-wrap" style="display:${chamHasOther?'block':'none'}">
           <div class="field-group mt-2">
             <label>Custom Location</label>
@@ -1241,9 +1243,6 @@ function buildTypeFields(type, p={}) {
     html += `
       <div style="background:rgba(191,90,242,0.06);border:1px solid rgba(191,90,242,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location & Type</div>
-        <div class="field-group"><label>Concrete Work Type <span class="req">*</span></label>
-          <select id="f-strType">${['Thrust Block','Pipe Encasing (CC)','Pipe Encasing (RCC)','Bed Concrete','Cap Concrete / Haunch','Anchor Block','Other'].map(v=>`<option${p.strType===v?' selected':''}>${v}</option>`).join('')}</select>
-        </div>
         <div class="field-group">
           <label>Location (from Fitting / Pipe Laying records)</label>
           <select id="f-location-sel" onchange="onConcreteLocChange(this)">
@@ -1433,16 +1432,20 @@ function onChamberLocChange(sel) {
   const wrap  = document.getElementById('f-location-other-wrap');
   const locH  = document.getElementById('f-location');
   const chainEl = document.getElementById('f-chainage');
+  const vDateEl = document.getElementById('f-valve-date');
   if (val === '__other__') {
     if (wrap) wrap.style.display = 'block';
     if (locH) locH.value = document.getElementById('f-location-other')?.value || '';
     if (chainEl) { chainEl.value = ''; chainEl.readOnly = false; chainEl.style.opacity = '1'; }
+    if (vDateEl) vDateEl.value = '';
   } else {
     if (wrap) wrap.style.display = 'none';
     if (locH) locH.value = val;
-    // Auto-extract chainage from "Ch:XXXm" pattern
     const m = val.match(/Ch:(\d+(?:\.\d+)?)m/);
     if (chainEl && m) { chainEl.value = m[1]; chainEl.readOnly = true; chainEl.style.opacity = '0.6'; }
+    // Store valve date from selected option's data-date attribute
+    const opt = sel.options[sel.selectedIndex];
+    if (vDateEl) vDateEl.value = opt?.dataset?.date || '';
   }
 }
 
@@ -1794,6 +1797,20 @@ async function submitReport(type) {
     const err = checkChainageDependency(type, project, route, ch, ch, date, _editId);
     if (err) { showDependencyError(err); return; }
   }
+  if (type === 'chamber') {
+    const loc = g('f-location');
+    if (!loc) { showToast('⚠️ Select a valve location'); return; }
+    const valveDate = g('f-valve-date');
+    if (valveDate && date < valveDate) {
+      showDependencyError({
+        title: 'Date Before Valve Installation',
+        msg: `Chamber date (${fmtDate(date)}) cannot be before the valve installation date (${fmtDate(valveDate)}).`,
+        prereq: 'Valve Installation',
+        missing: `Valve fitted on ${fmtDate(valveDate)}`
+      });
+      return;
+    }
+  }
 
   // ── DOWNSTREAM EDIT CHECKS (editing excav/pipe must not break dependents) ──
   if (_editId && (type === 'excavation' || type === 'pipe')) {
@@ -1867,6 +1884,7 @@ async function submitReport(type) {
   if (type==='chamber') {
     data.chainage   = gf('f-chainage');
     data.location   = g('f-location');
+    data.valveDate  = g('f-valve-date');
     data.chamType   = g('f-chamType');
     data.chamL      = gf('f-chamL');
     data.chamW      = gf('f-chamW');
