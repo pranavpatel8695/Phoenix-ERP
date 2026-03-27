@@ -992,20 +992,19 @@ function buildTypeFields(type, p={}) {
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏗️ CC/RCC Encasing</div>
-        <div class="field-group"><label>Encasing Required?</label>
-          <div class="radio-group">
-            <div class="radio-opt${(p.encasing||'Not Required')==='Not Required'?' selected':''}" onclick="selectEncasing('Not Required',this)">Not Required</div>
-            <div class="radio-opt${p.encasing==='CC Encasing'?' selected':''}" onclick="selectEncasing('CC Encasing',this)">CC Encasing</div>
-            <div class="radio-opt${p.encasing==='RCC Encasing'?' selected':''}" onclick="selectEncasing('RCC Encasing',this)">RCC Encasing</div>
-          </div>
-          <input type="hidden" id="f-encasing" value="${p.encasing||'Not Required'}">
+        <div id="f-encasing-list">
+          ${(p.encasings||[]).map((e,i)=>`
+            <div class="flex items-center gap-2 mb-2" id="enc-row-${i}">
+              <select id="enc-type-${i}" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+                <option${e.type==='CC Encasing'?' selected':''}>CC Encasing</option>
+                <option${e.type==='RCC Encasing'?' selected':''}>RCC Encasing</option>
+              </select>
+              <input type="number" id="enc-from-${i}" value="${e.from||''}" placeholder="From (m)" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+              <input type="number" id="enc-to-${i}" value="${e.to||''}" placeholder="To (m)" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+              <button class="btn btn-danger btn-sm" onclick="removeEncasingRow(${i})" style="padding:6px 10px">✕</button>
+            </div>`).join('')}
         </div>
-        <div id="f-encasing-ch-wrap" style="display:${(p.encasing && p.encasing!=='Not Required')?'block':'none'}">
-          <div class="form-row mt-2">
-            <div class="field-group"><label>Encasing From Ch. (m)</label><input type="number" id="f-encasing-from" value="${p.encasingFrom||''}" placeholder="e.g. 120"></div>
-            <div class="field-group"><label>Encasing To Ch. (m)</label><input type="number" id="f-encasing-to" value="${p.encasingTo||''}" placeholder="e.g. 180"></div>
-          </div>
-        </div>
+        <button class="btn btn-ghost btn-sm w-full mt-2" onclick="addEncasingRow()">+ Add Encasing</button>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📷 Site Photos</div>
@@ -1224,8 +1223,11 @@ function buildTypeFields(type, p={}) {
       .filter(r => r.type === 'fitting' && r.thrustBlock === 'Yes')
       .map(r => `Thrust Block — Ch:${r.chainage}m${r.location ? ' (' + r.location + ')' : ''}`);
     const encasingLocs = allR
-      .filter(r => r.type === 'pipe' && r.encasing && r.encasing !== 'Not Required')
-      .map(r => `${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`);
+      .filter(r => r.type === 'pipe')
+      .flatMap(r => (r.encasings||[]).length
+        ? r.encasings.map(e=>`${e.type} — Ch:${e.from}–${e.to}m`)
+        : (r.encasing&&r.encasing!=='Not Required'?[`${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`]:[])
+      );
     const strLocs = [...fittingLocs, ...encasingLocs].filter((v,i,a) => a.indexOf(v) === i);
     const strLocOpts = strLocs.map(v =>
       `<option value="${v}"${p.location===v?' selected':''}>${v}</option>`).join('');
@@ -1346,15 +1348,42 @@ function autoCalcRefillVol() {
 }
 
 function selectEncasing(val, el) {
-  // Update hidden input
   const hidden = document.getElementById('f-encasing');
   if (hidden) hidden.value = val;
-  // Update radio button styles
   el.closest('.radio-group').querySelectorAll('.radio-opt').forEach(o => o.classList.remove('selected'));
   el.classList.add('selected');
-  // Show/hide chainage fields
   const wrap = document.getElementById('f-encasing-ch-wrap');
   if (wrap) wrap.style.display = val !== 'Not Required' ? 'block' : 'none';
+}
+
+function addEncasingRow() {
+  const list = document.getElementById('f-encasing-list');
+  if (!list) return;
+  const i = Date.now();
+  const div = document.createElement('div');
+  div.className = 'flex items-center gap-2 mb-2';
+  div.id = 'enc-row-' + i;
+  div.innerHTML = `
+    <select id="enc-type-${i}" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+      <option>CC Encasing</option><option>RCC Encasing</option>
+    </select>
+    <input type="number" id="enc-from-${i}" placeholder="From (m)" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+    <input type="number" id="enc-to-${i}" placeholder="To (m)" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+    <button class="btn btn-danger btn-sm" onclick="this.closest('[id^=enc-row]').remove()" style="padding:6px 10px">✕</button>`;
+  list.appendChild(div);
+}
+
+function getEncasings() {
+  const list = document.getElementById('f-encasing-list');
+  if (!list) return [];
+  return Array.from(list.querySelectorAll('[id^="enc-row-"]')).map(row => {
+    const idx = row.id.replace('enc-row-','');
+    return {
+      type: document.getElementById('enc-type-' + idx)?.value || 'CC Encasing',
+      from: parseFloat(document.getElementById('enc-from-' + idx)?.value) || 0,
+      to:   parseFloat(document.getElementById('enc-to-'   + idx)?.value) || 0,
+    };
+  }).filter(e => e.to > e.from);
 }
 
 function selectPipeFittings(val, el) {
@@ -1745,13 +1774,14 @@ async function submitReport(type) {
     data.volume=gf('f-volume') || (data.width * data.depth * data.meters);
   }
   if (type==='pipe') {
-    data.pipeSpec       = g('f-pipeSpec');
-    data.encasing       = g('f-encasing');
-    data.encasingFrom   = gf('f-encasing-from');
-    data.encasingTo     = gf('f-encasing-to');
-    data.photosStart    = getExcavPhotos('start');
-    data.photosEnd      = getExcavPhotos('end');
-    data.photos         = [];
+    data.pipeSpec    = g('f-pipeSpec');
+    data.encasings   = getEncasings();
+    data.encasing    = data.encasings.length ? data.encasings.map(e=>e.type).join(', ') : 'Not Required';
+    data.encasingFrom= data.encasings[0]?.from || 0;
+    data.encasingTo  = data.encasings[0]?.to   || 0;
+    data.photosStart = getExcavPhotos('start');
+    data.photosEnd   = getExcavPhotos('end');
+    data.photos      = [];
   }
   if (type==='refill') {
     data.width      = gf('f-width');
@@ -2205,7 +2235,7 @@ function renderTrackerTab() {
       const valveC    = reps.filter(r=>r.type==='valve').length;
       const chamberC  = reps.filter(r=>r.type==='chamber').length;
       const fittingC  = reps.filter(r=>r.type==='fitting').length;
-      const encasingC = pipeReps.filter(r=>r.encasing && r.encasing!=='Not Required').length;
+      const encasingC = pipeReps.reduce((s,r)=>s+((r.encasings||[]).length||(r.encasing&&r.encasing!=='Not Required'?1:0)),0);
 
       // Pending = pipes not yet done on top of excavation
       const pendingPipeM = Math.max(0, excM - pipeM);
@@ -2323,11 +2353,14 @@ function renderTrackerTab() {
                 </div>`;
               }).join('')}
               <!-- Encasing ticks -->
-              ${pipeReps.filter(r=>r.encasing&&r.encasing!=='Not Required').map(r=>{
-                const mid=((parseFloat(r.encasingFrom)||parseFloat(r.from)||0)+(parseFloat(r.encasingTo)||parseFloat(r.to)||0))/2;
+              ${pipeReps.flatMap(r=>(r.encasings||[]).length
+                ? r.encasings.map(e=>({...e, label:e.type}))
+                : (r.encasing&&r.encasing!=='Not Required'?[{type:r.encasing,from:r.encasingFrom||r.from,to:r.encasingTo||r.to,label:r.encasing}]:[])
+              ).map(e=>{
+                const mid=(parseFloat(e.from||0)+parseFloat(e.to||0))/2;
                 const left=Math.round(mid/len*100);
-                return `<div title="🏗️ Encasing Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
-                  onmouseenter="showMarkerTip(this,'🏗️ ${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m')"
+                return `<div style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
+                  onmouseenter="showMarkerTip(this,'🏗️ ${e.label} — Ch:${e.from}–${e.to}m')"
                   onmouseleave="hideMarkerTip(this)">
                   <div style="width:2px;height:12px;background:var(--purple);margin:0 auto"></div>
                   <div style="font-size:8px;color:var(--purple);margin-top:1px">E</div>
