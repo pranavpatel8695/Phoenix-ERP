@@ -1557,10 +1557,12 @@ function getExcavPhotos(zone) {
 
 // ── DEPENDENCY VALIDATION ─────────────────────────────────────
 function checkChainageDependency(type, project, route, from, to, date, excludeId) {
-  // Guard: invalid range
-  if (to <= from) return null;
-
   const allReports = getReports().filter(r => String(r.id) !== String(excludeId||''));
+
+  // Range guard — only for range-based types
+  if (type === 'pipe' || type === 'refill') {
+    if (to <= from) return null;
+  }
 
   // For pipe laying: check excavation covers from–to and date is valid
   if (type === 'pipe') {
@@ -1634,6 +1636,44 @@ function checkChainageDependency(type, project, route, from, to, date, excludeId
         msg: `Refilling date (${fmtDate(date)}) cannot be before the pipe laying date (${fmtDate(latestPipeDate)}) for this stretch.`,
         prereq: 'Pipe Laying',
         missing: `Pipe laid on ${fmtDate(latestPipeDate)}`
+      };
+    }
+  }
+
+  // For valve: check pipe laying exists at chainage and date is valid
+  if (type === 'valve' || type === 'fitting') {
+    const ch = from; // chainage passed as 'from'
+    if (!ch) return null;
+    const pipeReports = allReports.filter(r =>
+      r.type === 'pipe' &&
+      r.project === project &&
+      (route ? r.route === route : true)
+    );
+    if (!pipeReports.length) {
+      return {
+        title: 'Pipe Laying Not Done',
+        msg: `No pipe laying found on this route. Pipe must be laid before ${type === 'valve' ? 'valve installation' : 'fitting'}.`,
+        prereq: 'Pipe Laying',
+        missing: `Ch:${ch}m`
+      };
+    }
+    const coveringPipe = pipeReports.find(r =>
+      (parseFloat(r.from)||0) <= ch && (parseFloat(r.to)||0) >= ch
+    );
+    if (!coveringPipe) {
+      return {
+        title: `Pipe Not Laid at Ch:${ch}m`,
+        msg: `No pipe laying covers Ch:${ch}m. Pipe must be laid at this chainage before ${type === 'valve' ? 'valve installation' : 'fitting'}.`,
+        prereq: 'Pipe Laying',
+        missing: `Ch:${ch}m not covered`
+      };
+    }
+    if (date < coveringPipe.date) {
+      return {
+        title: 'Date Before Pipe Laying',
+        msg: `${type === 'valve' ? 'Valve' : 'Fitting'} date (${fmtDate(date)}) cannot be before pipe laying date (${fmtDate(coveringPipe.date)}) at Ch:${ch}m.`,
+        prereq: 'Pipe Laying',
+        missing: `Pipe laid on ${fmtDate(coveringPipe.date)}`
       };
     }
   }
@@ -1727,10 +1767,13 @@ async function submitReport(type) {
     const to   = gf('f-to');
     if (to <= from) { showToast('⚠️ Enter valid chainage range (To > From)'); return; }
     const err = checkChainageDependency(type, project, route, from, to, date, _editId);
-    if (err) {
-      showDependencyError(err);
-      return;
-    }
+    if (err) { showDependencyError(err); return; }
+  }
+  if (type === 'valve' || type === 'fitting') {
+    const ch = gf('f-chainage');
+    if (!ch) { showToast('⚠️ Enter chainage first'); return; }
+    const err = checkChainageDependency(type, project, route, ch, ch, date, _editId);
+    if (err) { showDependencyError(err); return; }
   }
 
   // ── DOWNSTREAM EDIT CHECKS (editing excav/pipe must not break dependents) ──
@@ -2004,6 +2047,29 @@ function checkDeleteDependency(r) {
           dependent: 'Refilling',
           hint: 'Delete the refilling report first, then delete this pipe laying report.'
         };
+      }
+    }
+    // Check valve/fitting at this chainage
+    const depCh = allReports.filter(d =>
+      (d.type === 'valve' || d.type === 'fitting') &&
+      d.project === r.project &&
+      d.route === r.route
+    );
+    const rFrom = parseFloat(r.from)||0, rTo = parseFloat(r.to)||0;
+    for (const d of depCh) {
+      const ch = parseFloat(d.chainage)||0;
+      if (ch >= rFrom && ch <= rTo) {
+        const stillCovered = remainingPipe.some(p =>
+          (parseFloat(p.from)||0) <= ch && (parseFloat(p.to)||0) >= ch
+        );
+        if (!stillCovered) {
+          return {
+            title: `Cannot Delete — ${d.type==='valve'?'Valve':'Fitting'} Depends on This`,
+            msg: `A ${d.type} at Ch:${ch}m depends on this pipe laying. Delete the ${d.type} report first.`,
+            dependent: d.type==='valve'?'Valve':'Fitting',
+            hint: `Delete the ${d.type} at Ch:${ch}m first.`
+          };
+        }
       }
     }
   }
