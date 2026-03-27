@@ -2113,43 +2113,156 @@ function renderTrackerTab() {
 
   const vp = getVisibleProjects();
   const reports = getReports().filter(r => vp.includes(r.project) && (!r.module || r.module==='pipeline'));
-
-  let html = `<div class="section-title mb-4">Chainage Tracker</div>`;
+  let html = `<div class="section-title mb-4">📏 Chainage Tracker</div>`;
 
   vp.forEach(proj => {
     const routes = getRoutes()[proj] || [];
     if (!routes.length) return;
-    html += `<div class="card mb-3"><div class="card-title">📍 ${proj}</div>`;
+
     routes.forEach(rt => {
-      const reps = reports.filter(r => r.route === rt.id);
-      const excM  = reps.filter(r=>r.type==='excavation').reduce((s,r)=>s+(r.meters||0),0);
-      const pipeM = reps.filter(r=>r.type==='pipe').reduce((s,r)=>s+(r.meters||0),0);
-      const refM  = reps.filter(r=>r.type==='refill').reduce((s,r)=>s+(r.meters||0),0);
+      const reps  = reports.filter(r => r.project === proj && r.route === rt.id);
       const len   = rt.length || 1;
+
+      const excReps  = reps.filter(r => r.type==='excavation');
+      const pipeReps = reps.filter(r => r.type==='pipe');
+      const refReps  = reps.filter(r => r.type==='refill');
+
+      const excM  = excReps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+      const pipeM = pipeReps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+      const refM  = refReps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+
       const excPct  = Math.min(100, Math.round(excM/len*100));
       const pipePct = Math.min(100, Math.round(pipeM/len*100));
       const refPct  = Math.min(100, Math.round(refM/len*100));
+
+      // Counts
+      const valveC    = reps.filter(r=>r.type==='valve').length;
+      const chamberC  = reps.filter(r=>r.type==='chamber').length;
+      const fittingC  = reps.filter(r=>r.type==='fitting').length;
+      const encasingC = pipeReps.filter(r=>r.encasing && r.encasing!=='Not Required').length;
+
+      // Pending = pipes not yet done on top of excavation
+      const pendingPipeM = Math.max(0, excM - pipeM);
+      const pendingCount = pendingPipeM > 0 ? 1 : 0; // simplified — gaps calc below
+
+      // Gap analysis: find uncovered pipe stretches where excavation exists
+      const pipeGaps = findAllGaps(excReps, pipeReps, len);
+      const refGaps  = findAllGaps(pipeReps, refReps, len);
+
+      const totalGaps = pipeGaps.length + refGaps.length;
+
       html += `
-        <div class="mb-3">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">
+          <!-- Header -->
           <div class="flex justify-between items-center mb-1">
-            <div style="font-size:12px;font-weight:700">${rt.name}</div>
-            <div class="text-xs text-muted">${fmtM(len)}</div>
+            <div>
+              <div style="font-size:15px;font-weight:700">🔩 ${rt.name}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${rt.pipe||'—'} · Total ${fmtM(len)}</div>
+            </div>
+            <div class="flex gap-2">
+              <div style="background:rgba(10,132,255,0.15);border:1px solid rgba(10,132,255,0.3);border-radius:10px;padding:6px 12px;text-align:center">
+                <div style="font-size:18px;font-weight:800;color:var(--blue)">${pipePct}%</div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase">Pipe Done</div>
+              </div>
+              ${totalGaps > 0 ? `
+              <div style="background:rgba(255,69,58,0.15);border:1px solid rgba(255,69,58,0.3);border-radius:10px;padding:6px 12px;text-align:center">
+                <div style="font-size:18px;font-weight:800;color:var(--red)">${totalGaps}</div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase">Pending</div>
+              </div>` : `
+              <div style="background:rgba(48,209,88,0.15);border:1px solid rgba(48,209,88,0.3);border-radius:10px;padding:6px 12px;text-align:center">
+                <div style="font-size:18px;font-weight:800;color:var(--green)">✓</div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase">On Track</div>
+              </div>`}
+            </div>
           </div>
-          <div class="ch-bar-label"><span>⛏️ Exc: ${excPct}%</span><span>${fmtM(excM)}</span></div>
-          <div class="ch-bar mb-1"><div class="ch-seg" style="width:${excPct}%;background:var(--orange)"></div></div>
-          <div class="ch-bar-label"><span>🔩 Pipe: ${pipePct}%</span><span>${fmtM(pipeM)}</span></div>
-          <div class="ch-bar mb-1"><div class="ch-seg" style="width:${pipePct}%;background:var(--blue)"></div></div>
-          <div class="ch-bar-label"><span>🪣 Refill: ${refPct}%</span><span>${fmtM(refM)}</span></div>
-          <div class="ch-bar"><div class="ch-seg" style="width:${refPct}%;background:var(--green)"></div></div>
+
+          <!-- Progress bars -->
+          <div style="background:var(--surface2);border-radius:10px;padding:12px;margin:12px 0">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px">PROGRESS</div>
+            ${[
+              {icon:'⛏️',label:'Excavation', pct:excPct, done:excM, color:'var(--orange)'},
+              {icon:'🔩',label:'Pipe Laying', pct:pipePct, done:pipeM, color:'var(--blue)'},
+              {icon:'🪣',label:'Refilling',  pct:refPct,  done:refM,  color:'var(--green)'},
+            ].map(row => `
+              <div class="flex items-center gap-2 mb-2">
+                <div style="font-size:14px;width:20px;text-align:center">${row.icon}</div>
+                <div style="font-size:11px;color:var(--muted);width:72px">${row.label}</div>
+                <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+                  <div style="width:${row.pct}%;height:100%;background:${row.color};border-radius:4px;transition:width 0.5s"></div>
+                </div>
+                <div style="font-size:11px;font-weight:700;color:${row.color};width:36px;text-align:right">${row.pct}%</div>
+                <div style="font-size:11px;color:var(--muted);width:44px;text-align:right">${fmtM(row.done)}</div>
+              </div>`).join('')}
+          </div>
+
+          <!-- Count badges -->
+          <div class="flex gap-2 mb-3" style="flex-wrap:wrap">
+            ${[
+              {icon:'🔧',label:'Valves',   val:valveC,   color:'var(--red)'},
+              {icon:'🏛️',label:'Chambers', val:chamberC,  color:'var(--orange)'},
+              {icon:'🔗',label:'Fittings', val:fittingC,  color:'var(--cyan)'},
+              {icon:'🏗️',label:'Encasing', val:encasingC, color:'var(--purple)'},
+            ].map(b => `
+              <div style="flex:1;min-width:60px;background:var(--surface2);border-radius:10px;padding:8px 6px;text-align:center">
+                <div style="font-size:18px;font-weight:800;color:${b.val>0?b.color:'var(--muted)'}${b.val===0?';opacity:0.4':''}">${b.val}</div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-top:2px">${b.label}</div>
+              </div>`).join('')}
+          </div>
+
+          <!-- Action Required gaps -->
+          ${totalGaps > 0 ? `
+          <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px">
+            <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">⚠️ ACTION REQUIRED (${totalGaps})</div>
+            ${pipeGaps.map(g=>`
+              <div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,69,58,0.08);border-left:3px solid var(--red);border-radius:6px;margin-bottom:6px">
+                <div style="font-size:20px">🔩</div>
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:var(--red)">Pipe Laying Gap — ${fmtM(g.to-g.from)} missing</div>
+                  <div style="font-size:11px;color:var(--muted)">Ch: ${g.from}m → ${g.to}m · ${fmtM(g.to-g.from)} not yet laid</div>
+                </div>
+              </div>`).join('')}
+            ${refGaps.map(g=>`
+              <div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);border-radius:6px;margin-bottom:6px">
+                <div style="font-size:20px">🪣</div>
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:var(--orange)">Refilling Gap — ${fmtM(g.to-g.from)} missing</div>
+                  <div style="font-size:11px;color:var(--muted)">Ch: ${g.from}m → ${g.to}m · ${fmtM(g.to-g.from)} not yet refilled</div>
+                </div>
+              </div>`).join('')}
+          </div>` : `
+          <div style="background:rgba(48,209,88,0.06);border:1px solid rgba(48,209,88,0.2);border-radius:10px;padding:10px;text-align:center;font-size:12px;color:var(--green);font-weight:700">
+            ✅ All activities on track for this route
+          </div>`}
         </div>`;
     });
-    html += `</div>`;
   });
 
   if (!vp.some(p => (getRoutes()[p]||[]).length)) {
     html += `<div class="empty-state"><div class="icon">🛣️</div><p>No routes configured. Add routes in Settings.</p></div>`;
   }
   return html;
+}
+
+// Returns all gap segments in [0, len] where prereqReps cover but targetReps don't
+function findAllGaps(prereqReps, targetReps, len) {
+  const gaps = [];
+  if (!prereqReps.length) return gaps;
+  // Build covered by prereq
+  const prereqSegs = prereqReps
+    .map(r=>({f:parseFloat(r.from)||0, t:parseFloat(r.to)||0}))
+    .filter(s=>s.t>s.f).sort((a,b)=>a.f-b.f);
+  // Merge prereq into contiguous segments
+  const merged = [];
+  for (const s of prereqSegs) {
+    if (!merged.length || s.f > merged[merged.length-1].t + 0.001) merged.push({...s});
+    else merged[merged.length-1].t = Math.max(merged[merged.length-1].t, s.t);
+  }
+  // For each prereq segment find gaps in target coverage
+  for (const seg of merged) {
+    const gap = findUncoveredRange(seg.f, seg.t, targetReps);
+    if (gap) gaps.push({from: Math.round(gap.from), to: Math.round(gap.to)});
+  }
+  return gaps;
 }
 
 // ── SETTINGS TAB ─────────────────────────────────────────────
