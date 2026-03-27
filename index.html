@@ -902,6 +902,12 @@ function buildReportForm(type, prefill={}) {
       if (prefill.photosStart?.length) prefill.photosStart.forEach(p => addExcavPhotoPreview(p.src||p, 'start'));
       if (prefill.photosEnd?.length)   prefill.photosEnd.forEach(p => addExcavPhotoPreview(p.src||p, 'end'));
       autoCalcRefillVol();
+    } else if (type === 'chamber') {
+      const sel = document.getElementById('f-location-sel');
+      if (sel) onChamberLocChange(sel);
+    } else if (type === 'structure') {
+      const sel = document.getElementById('f-location-sel');
+      if (sel) onConcreteLocChange(sel);
     } else if (prefill.photos?.length) {
       prefill.photos.forEach(p => addPhotoPreview(p.src||p));
     }
