@@ -2106,6 +2106,54 @@ function deleteReport(id) {
 }
 
 // ── TRACKER TAB ───────────────────────────────────────────────
+function showTrackerTip(e, key, len) {
+  const bar = e.currentTarget;
+  const rect = bar.getBoundingClientRect();
+  const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const ch   = Math.round(pct * len);
+  const tip  = document.getElementById('tip_' + key);
+  if (!tip) return;
+
+  // Determine what's covered at this chainage from bar fill divs
+  const fills = bar.querySelectorAll('div[style*="position:absolute"][style*="background"]');
+  let covered = false;
+  fills.forEach(f => {
+    const left  = parseFloat(f.style.left)  || 0;
+    const width = parseFloat(f.style.width) || 0;
+    if (pct * 100 >= left && pct * 100 <= left + width) covered = true;
+  });
+
+  tip.style.display = 'block';
+  tip.style.left = Math.round(pct * 100) + '%';
+  tip.innerHTML =
+    `<div style="font-weight:700;color:var(--text)">Ch: ${ch}m</div>` +
+    `<div style="color:${covered?'var(--green)':'var(--red)'};">${covered ? '✅ Done' : '⬜ Not Done'}</div>` +
+    `<div style="color:var(--muted);font-size:10px">${fmtM(ch)} of ${fmtM(len)}</div>`;
+}
+
+function hideTrackerTip(key) {
+  const tip = document.getElementById('tip_' + key);
+  if (tip) tip.style.display = 'none';
+}
+
+function showMarkerTip(el, text) {
+  let tip = el.querySelector('.mtip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.className = 'mtip';
+    tip.style.cssText = 'position:absolute;bottom:28px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none';
+    el.style.position = 'relative';
+    el.appendChild(tip);
+  }
+  tip.textContent = text;
+  tip.style.display = 'block';
+}
+
+function hideMarkerTip(el) {
+  const tip = el.querySelector('.mtip');
+  if (tip) tip.style.display = 'none';
+}
+
 function renderTrackerTab() {
   if (currentModule !== 'pipeline') {
     return `<div class="empty-state"><div class="icon">📏</div><p>Tracker available for Pipeline Work only.</p></div>`;
@@ -2176,23 +2224,93 @@ function renderTrackerTab() {
             </div>
           </div>
 
-          <!-- Progress bars -->
+          <!-- Interactive Progress bars -->
           <div style="background:var(--surface2);border-radius:10px;padding:12px;margin:12px 0">
             <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px">PROGRESS</div>
             ${[
-              {icon:'⛏️',label:'Excavation', pct:excPct, done:excM, color:'var(--orange)'},
-              {icon:'🔩',label:'Pipe Laying', pct:pipePct, done:pipeM, color:'var(--blue)'},
-              {icon:'🪣',label:'Refilling',  pct:refPct,  done:refM,  color:'var(--green)'},
-            ].map(row => `
+              {icon:'⛏️', label:'Excavation', reps:excReps,  color:'var(--orange)', key:'exc_'+rt.id},
+              {icon:'🔩', label:'Pipe Laying', reps:pipeReps, color:'var(--blue)',   key:'pipe_'+rt.id},
+              {icon:'🪣', label:'Refilling',   reps:refReps,  color:'var(--green)',  key:'ref_'+rt.id},
+            ].map(row => {
+              const pct = Math.min(100, Math.round(row.reps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0)/len*100));
+              const done = row.reps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+              // Build segment data as JSON for hover
+              const segs = JSON.stringify(row.reps.map(r=>({f:parseFloat(r.from)||0,t:parseFloat(r.to)||0})));
+              return `
               <div class="flex items-center gap-2 mb-2">
                 <div style="font-size:14px;width:20px;text-align:center">${row.icon}</div>
                 <div style="font-size:11px;color:var(--muted);width:72px">${row.label}</div>
-                <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-                  <div style="width:${row.pct}%;height:100%;background:${row.color};border-radius:4px;transition:width 0.5s"></div>
+                <div style="flex:1;position:relative;height:14px;background:var(--border);border-radius:4px;cursor:crosshair"
+                  onmouseenter="showTrackerTip(event,'${row.key}',${len})"
+                  onmousemove="showTrackerTip(event,'${row.key}',${len})"
+                  onmouseleave="hideTrackerTip('${row.key}')">
+                  <!-- Filled segments -->
+                  ${row.reps.map(r=>{
+                    const f=parseFloat(r.from)||0, t=parseFloat(r.to)||0;
+                    const left=Math.round(f/len*100), width=Math.max(0.5,Math.round((t-f)/len*100));
+                    return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:${row.color};border-radius:2px"></div>`;
+                  }).join('')}
+                  <!-- Tooltip div -->
+                  <div id="tip_${row.key}" style="display:none;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none;min-width:120px"></div>
                 </div>
-                <div style="font-size:11px;font-weight:700;color:${row.color};width:36px;text-align:right">${row.pct}%</div>
-                <div style="font-size:11px;color:var(--muted);width:44px;text-align:right">${fmtM(row.done)}</div>
-              </div>`).join('')}
+                <div style="font-size:11px;font-weight:700;color:${row.color};width:36px;text-align:right">${pct}%</div>
+                <div style="font-size:11px;color:var(--muted);width:44px;text-align:right">${fmtM(done)}</div>
+              </div>`;
+            }).join('')}
+
+            <!-- Marker bar: valves, chambers, fittings, encasing on a shared axis -->
+            <div style="position:relative;height:22px;margin-top:4px;margin-left:96px;margin-right:96px">
+              <!-- Valve ticks -->
+              ${reps.filter(r=>r.type==='valve').map(r=>{
+                const ch=parseFloat(r.chainage)||0;
+                const left=Math.round(ch/len*100);
+                return `<div title="🔧 Valve: ${r.valType||''} Ch:${ch}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
+                  onmouseenter="showMarkerTip(this,'🔧 ${r.valType||'Valve'} — Ch:${ch}m')"
+                  onmouseleave="hideMarkerTip(this)">
+                  <div style="width:2px;height:12px;background:var(--red);margin:0 auto"></div>
+                  <div style="font-size:8px;color:var(--red);margin-top:1px">V</div>
+                </div>`;
+              }).join('')}
+              <!-- Chamber ticks -->
+              ${reps.filter(r=>r.type==='chamber').map(r=>{
+                const ch=parseFloat(r.chainage)||0;
+                const left=Math.round(ch/len*100);
+                return `<div title="🏛️ Chamber Ch:${ch}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
+                  onmouseenter="showMarkerTip(this,'🏛️ Chamber — Ch:${ch}m')"
+                  onmouseleave="hideMarkerTip(this)">
+                  <div style="width:2px;height:12px;background:var(--orange);margin:0 auto"></div>
+                  <div style="font-size:8px;color:var(--orange);margin-top:1px">C</div>
+                </div>`;
+              }).join('')}
+              <!-- Fitting ticks -->
+              ${reps.filter(r=>r.type==='fitting').map(r=>{
+                const ch=parseFloat(r.chainage)||0;
+                const left=Math.round(ch/len*100);
+                return `<div title="🔗 Fitting Ch:${ch}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
+                  onmouseenter="showMarkerTip(this,'🔗 ${r.fitType||'Fitting'} — Ch:${ch}m')"
+                  onmouseleave="hideMarkerTip(this)">
+                  <div style="width:2px;height:12px;background:var(--cyan);margin:0 auto"></div>
+                  <div style="font-size:8px;color:var(--cyan);margin-top:1px">F</div>
+                </div>`;
+              }).join('')}
+              <!-- Encasing ticks -->
+              ${pipeReps.filter(r=>r.encasing&&r.encasing!=='Not Required').map(r=>{
+                const mid=((parseFloat(r.encasingFrom)||parseFloat(r.from)||0)+(parseFloat(r.encasingTo)||parseFloat(r.to)||0))/2;
+                const left=Math.round(mid/len*100);
+                return `<div title="🏗️ Encasing Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
+                  onmouseenter="showMarkerTip(this,'🏗️ ${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m')"
+                  onmouseleave="hideMarkerTip(this)">
+                  <div style="width:2px;height:12px;background:var(--purple);margin:0 auto"></div>
+                  <div style="font-size:8px;color:var(--purple);margin-top:1px">E</div>
+                </div>`;
+              }).join('')}
+            </div>
+            <!-- Legend -->
+            <div class="flex gap-3 mt-1" style="margin-left:96px;flex-wrap:wrap">
+              ${[['V','var(--red)','Valve'],['C','var(--orange)','Chamber'],['F','var(--cyan)','Fitting'],['E','var(--purple)','Encasing']].map(([l,c,n])=>
+                `<div style="font-size:10px;color:${c}"><span style="font-weight:700">${l}</span> ${n}</div>`
+              ).join('')}
+            </div>
           </div>
 
           <!-- Count badges -->
