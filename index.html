@@ -909,6 +909,11 @@ function buildReportForm(type, prefill={}) {
       const sel = document.getElementById('f-location-sel');
       if (sel) onConcreteLocChange(sel);
       autoCalcConcrVol();
+      // Restore prereq date if editing
+      if (prefill.prereqDate) {
+        const h = document.getElementById('f-prereq-date');
+        if (h) h.value = prefill.prereqDate;
+      }
     } else if (prefill.photos?.length) {
       prefill.photos.forEach(p => addPhotoPreview(p.src||p));
     }
@@ -1226,28 +1231,40 @@ function buildTypeFields(type, p={}) {
   if (type === 'structure') {
     const strProj = document.getElementById('f-project')?.value || '';
     const allR    = getReports().filter(r => r.project === strProj);
-    const fittingLocs = allR
+
+    // Build options with source date embedded
+    const fittingOpts = allR
       .filter(r => r.type === 'fitting' && r.thrustBlock === 'Yes')
-      .map(r => `Thrust Block — Ch:${r.chainage}m${r.location ? ' (' + r.location + ')' : ''}`);
-    const encasingLocs = allR
+      .map(r => {
+        const label = `Thrust Block — Ch:${r.chainage}m${r.location ? ' (' + r.location + ')' : ''}`;
+        return `<option value="${label}" data-date="${r.date||''}"${p.location===label?' selected':''}>${label}</option>`;
+      }).join('');
+    const encasingOpts = allR
       .filter(r => r.type === 'pipe')
       .flatMap(r => (r.encasings||[]).length
-        ? r.encasings.map(e=>`${e.type} — Ch:${e.from}–${e.to}m`)
-        : (r.encasing&&r.encasing!=='Not Required'?[`${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`]:[])
-      );
-    const strLocs = [...fittingLocs, ...encasingLocs].filter((v,i,a) => a.indexOf(v) === i);
-    const strLocOpts = strLocs.map(v =>
-      `<option value="${v}"${p.location===v?' selected':''}>${v}</option>`).join('');
+        ? r.encasings.map(e => {
+            const label = `${e.type} — Ch:${e.from}–${e.to}m`;
+            return `<option value="${label}" data-date="${r.date||''}"${p.location===label?' selected':''}>${label}</option>`;
+          })
+        : (r.encasing&&r.encasing!=='Not Required' ? [{
+            label: `${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`,
+            date: r.date||''
+          }] : []).map(({label,date}) =>
+            `<option value="${label}" data-date="${date}"${p.location===label?' selected':''}>${label}</option>`)
+      ).join('');
+
+    const strLocs = [...allR.filter(r=>r.type==='fitting'&&r.thrustBlock==='Yes').map(r=>`Thrust Block — Ch:${r.chainage}m${r.location?' ('+r.location+')':''}`),
+      ...allR.filter(r=>r.type==='pipe').flatMap(r=>(r.encasings||[]).length?r.encasings.map(e=>`${e.type} — Ch:${e.from}–${e.to}m`):(r.encasing&&r.encasing!=='Not Required'?[`${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`]:[])) ];
     const strHasOther = p.location && !strLocs.includes(p.location);
 
     html += `
       <div style="background:rgba(191,90,242,0.06);border:1px solid rgba(191,90,242,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location & Type</div>
         <div class="field-group">
-          <label>Location (from Fitting / Pipe Laying records)</label>
+          <label>Location (from Fitting / Pipe Laying records) <span class="req">*</span></label>
           <select id="f-location-sel" onchange="onConcreteLocChange(this)">
-            ${strLocs.length ? '' : '<option value="">— No fitting/encasing records yet —</option>'}
-            ${strLocOpts}
+            ${strLocs.length ? '' : '<option value="">— No thrust block / encasing records yet —</option>'}
+            ${fittingOpts}${encasingOpts}
             <option value="__other__"${strHasOther?' selected':''}>— Other (type below) —</option>
           </select>
         </div>
@@ -1257,6 +1274,7 @@ function buildTypeFields(type, p={}) {
           </div>
         </div>
         <input type="hidden" id="f-location" value="${p.location||''}">
+        <input type="hidden" id="f-prereq-date" value="${p.prereqDate||''}">
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Concrete Dimensions</div>
@@ -1453,12 +1471,16 @@ function onConcreteLocChange(sel) {
   const val  = sel.value;
   const wrap = document.getElementById('f-location-other-wrap');
   const locH = document.getElementById('f-location');
+  const prereqEl = document.getElementById('f-prereq-date');
   if (val === '__other__') {
     if (wrap) wrap.style.display = 'block';
     if (locH) locH.value = document.getElementById('f-location-other')?.value || '';
+    if (prereqEl) prereqEl.value = '';
   } else {
     if (wrap) wrap.style.display = 'none';
     if (locH) locH.value = val;
+    const opt = sel.options[sel.selectedIndex];
+    if (prereqEl) prereqEl.value = opt?.dataset?.date || '';
   }
 }
 
@@ -1811,6 +1833,21 @@ async function submitReport(type) {
       return;
     }
   }
+  if (type === 'structure') {
+    const loc = g('f-location');
+    if (!loc || loc === '') { showToast('⚠️ Select a location'); return; }
+    const prereqDate = g('f-prereq-date');
+    if (prereqDate && date < prereqDate) {
+      const isFitting = loc.startsWith('Thrust Block');
+      showDependencyError({
+        title: `Date Before ${isFitting ? 'Fitting' : 'Pipe Laying'}`,
+        msg: `Concrete date (${fmtDate(date)}) cannot be before the ${isFitting ? 'fitting' : 'pipe laying'} date (${fmtDate(prereqDate)}) at this location.`,
+        prereq: isFitting ? 'Fitting (Thrust Block)' : 'Pipe Laying (Encasing)',
+        missing: `${isFitting ? 'Fitting' : 'Pipe laying'} done on ${fmtDate(prereqDate)}`
+      });
+      return;
+    }
+  }
 
   // ── DOWNSTREAM EDIT CHECKS (editing excav/pipe must not break dependents) ──
   if (_editId && (type === 'excavation' || type === 'pipe')) {
@@ -1903,6 +1940,7 @@ async function submitReport(type) {
   if (type==='structure') {
     data.strType      = g('f-strType');
     data.location     = g('f-location');
+    data.prereqDate   = g('f-prereq-date');
     data.concrL       = gf('f-concrL');
     data.concrW       = gf('f-concrW');
     data.concrH       = gf('f-concrH');
