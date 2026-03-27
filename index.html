@@ -1001,7 +1001,7 @@ function buildTypeFields(type, p={}) {
               </select>
               <input type="number" id="enc-from-${i}" value="${e.from||''}" placeholder="From (m)" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
               <input type="number" id="enc-to-${i}" value="${e.to||''}" placeholder="To (m)" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-              <button class="btn btn-danger btn-sm" onclick="removeEncasingRow(${i})" style="padding:6px 10px">✕</button>
+              <button class="btn btn-danger btn-sm" onclick="this.closest('.flex').remove()" style="padding:6px 10px">✕</button>
             </div>`).join('')}
         </div>
         <button class="btn btn-ghost btn-sm w-full mt-2" onclick="addEncasingRow()">+ Add Encasing</button>
