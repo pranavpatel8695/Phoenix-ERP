@@ -2037,13 +2037,78 @@ function reportItemHTML(r, showActions=true) {
   const icon  = TYPE_ICONS[r.type]  || '📝';
   const label = TYPE_LABELS[r.type] || r.type;
 
-  let info = '';
-  if (r.from != null && r.to != null) info += `Ch:${r.from}–${r.to}m`;
-  if (r.meters) info += ` · ${fmtM(r.meters)}`;
-  if (r.chainage) info += `Ch:${r.chainage}m`;
-  if (r.size) info += ` · ${r.size}`;
-  if (r.valType) info += ` · ${r.valType}`;
-  if (r.description) info += ` · ${r.description.slice(0,40)}${r.description.length>40?'…':''}`;
+  // Build detail rows based on type
+  const row = (lbl, val) => val ? `<div style="display:flex;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="font-size:10px;color:var(--muted);min-width:110px;flex-shrink:0">${lbl}</span><span style="font-size:11px;color:var(--text);font-weight:600">${val}</span></div>` : '';
+
+  let details = '';
+
+  if (r.type === 'excavation') {
+    details += row('Chainage', `Ch:${r.from}–${r.to}m`);
+    details += row('Length', fmtM(r.meters));
+    details += row('Width × Depth', r.width && r.depth ? `${r.width}m × ${r.depth}m` : '');
+    details += row('Volume', r.volume ? `${parseFloat(r.volume).toFixed(2)} m³` : '');
+    details += row('Soil Type', r.soil);
+  }
+  if (r.type === 'pipe') {
+    details += row('Chainage', `Ch:${r.from}–${r.to}m`);
+    details += row('Length', fmtM(r.meters));
+    details += row('Pipe Spec', r.pipeSpec);
+    if ((r.encasings||[]).length) {
+      r.encasings.forEach(e => { details += row('Encasing', `${e.type} Ch:${e.from}–${e.to}m`); });
+    } else if (r.encasing && r.encasing !== 'Not Required') {
+      details += row('Encasing', `${r.encasing} Ch:${r.encasingFrom||''}–${r.encasingTo||''}m`);
+    }
+  }
+  if (r.type === 'refill') {
+    details += row('Chainage', `Ch:${r.from}–${r.to}m`);
+    details += row('Length', fmtM(r.meters));
+    details += row('Width × Depth', r.width && r.depth ? `${r.width}m × ${r.depth}m` : '');
+    details += row('Pipe Dia', r.pipeDia ? `${r.pipeDia}m` : '');
+    details += row('Trench Vol', r.trenchVol ? `${r.trenchVol} m³` : '');
+    details += row('Pipe Vol', r.pipeVol ? `${r.pipeVol} m³` : '');
+    details += row('Net Refill Vol', r.volume ? `${r.volume} m³` : '');
+    details += row('Road Restoration', r.road);
+  }
+  if (r.type === 'valve') {
+    details += row('Chainage', r.chainage ? `Ch:${r.chainage}m` : '');
+    details += row('Location', r.location);
+    details += row('Valve Type', r.valType);
+    details += row('Size', r.size);
+    details += row('Chamber Required', r.chamberReq);
+  }
+  if (r.type === 'chamber') {
+    details += row('Chainage', r.chainage ? `Ch:${r.chainage}m` : '');
+    details += row('Location', r.location);
+    details += row('Chamber Type', r.chamType);
+    details += row('L × W × H', (r.chamL||r.chamW||r.chamH) ? `${r.chamL||0}mm × ${r.chamW||0}mm × ${r.chamH||0}mm` : '');
+    details += row('Slab', r.slab);
+    if (r.slab === 'Precast') details += row('Slab Status', r.slabStatus);
+  }
+  if (r.type === 'fitting') {
+    details += row('Chainage', r.chainage ? `Ch:${r.chainage}m` : '');
+    details += row('Location', r.location);
+    details += row('Fitting Type', r.fitType);
+    details += row('Size', r.size);
+    details += row('Qty', r.qty);
+    details += row('Thrust Block', r.thrustBlock);
+  }
+  if (r.type === 'structure') {
+    details += row('Location', r.location);
+    details += row('L × W × H', (r.concrL||r.concrW||r.concrH) ? `${r.concrL||0}m × ${r.concrW||0}m × ${r.concrH||0}m` : '');
+    details += row('Total Volume', r.totalVol ? `${r.totalVol} m³` : '');
+    details += row('Pipe Vol Deducted', r.pipeVolConc ? `${r.pipeVolConc} m³` : '');
+    details += row('Net Volume', r.netVolConc ? `${r.netVolConc} m³` : '');
+  }
+  if (r.type && r.type.startsWith('civil_')) {
+    details += row('Description', r.description);
+    details += row('Location', r.location);
+    details += row('Status', r.status);
+    if (r.material) details += row('Material', r.material);
+    if (r.qty) details += row('Qty', r.qty);
+    if (r.skilled != null) details += row('Skilled Workers', r.skilled);
+    if (r.unskilled != null) details += row('Unskilled Workers', r.unskilled);
+  }
+  if (r.remarks) details += row('Remarks', r.remarks);
 
   const canEdit   = currentRole === 'admin' || currentRole === 'pm';
   const canDelete = currentRole === 'admin' || currentRole === 'pm';
@@ -2056,6 +2121,12 @@ function reportItemHTML(r, showActions=true) {
     </div>`;
   }
 
+  const allPhotos = [
+    ...(r.photosStart||[]).map(p=>({src:p.src||p, label:'📍 Start'})),
+    ...(r.photosEnd||[]).map(p=>({src:p.src||p, label:'🏁 End'})),
+    ...(r.photos||[]).map(p=>({src:p.src||p, label:'📷'})),
+  ];
+
   return `
     <div class="report-item">
       <div class="report-item-header">
@@ -2063,28 +2134,19 @@ function reportItemHTML(r, showActions=true) {
         <div class="report-type-label" style="color:${color}">${icon} ${label}</div>
         <div class="text-xs text-muted" style="margin-left:auto">${r.date||''}</div>
       </div>
-      <div class="report-info">${info}</div>
-      <div class="report-date">by ${r.supervisorName||r.supervisor||'—'} · ${r.project||''}</div>
-      ${(() => {
-        const allPhotos = [
-          ...(r.photosStart||[]).map(p=>({src:p.src||p, label:'📍 Start'})),
-          ...(r.photosEnd||[]).map(p=>({src:p.src||p, label:'🏁 End'})),
-          ...(r.photos||[]).map(p=>({src:p.src||p, label:'📷'})),
-        ];
-        if (!allPhotos.length) return '';
-        return `<div style="margin-top:8px">
-          <div class="text-xs text-muted mb-1">📷 ${allPhotos.length} photo${allPhotos.length>1?'s':''}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${allPhotos.map(p=>`
-              <div style="position:relative">
-                <img src="${p.src}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
-                <div style="position:absolute;bottom:2px;left:2px;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">${p.label}</div>
-              </div>`).join('')}
-          </div>
-        </div>`;
-      })()}
+      <div class="report-date" style="margin-bottom:6px">by ${r.supervisorName||r.supervisor||'—'} · ${r.project||''} ${r.route ? '· '+r.route : ''}</div>
+      ${details ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:6px">${details}</div>` : ''}
+      ${allPhotos.length ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          ${allPhotos.map(p=>`
+            <div style="position:relative">
+              <img src="${p.src}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+              <div style="position:absolute;bottom:2px;left:2px;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">${p.label}</div>
+            </div>`).join('')}
+        </div>` : ''}
       ${actions}
     </div>`;
+}
 }
 
 // Check if REMOVING a report would break downstream reports
