@@ -1525,6 +1525,148 @@ function getExcavPhotos(zone) {
   return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.src }));
 }
 
+// ── DEPENDENCY VALIDATION ─────────────────────────────────────
+function checkChainageDependency(type, project, route, from, to, date) {
+  const allReports = getReports();
+
+  // For pipe laying: check excavation covers from–to and date is valid
+  if (type === 'pipe') {
+    const excReports = allReports.filter(r =>
+      r.type === 'excavation' &&
+      r.project === project &&
+      (route ? r.route === route : true)
+    );
+
+    if (!excReports.length) {
+      return {
+        title: 'Excavation Not Done',
+        msg: `No excavation report found for this stretch (Ch:${from}m – Ch:${to}m) on this route. Excavation must be completed before pipe laying.`,
+        prereq: 'Excavation',
+        missing: `Ch:${from}–${to}m`
+      };
+    }
+
+    // Check if the requested range is covered by excavation reports
+    const uncovered = findUncoveredRange(from, to, excReports);
+    if (uncovered) {
+      return {
+        title: 'Excavation Not Done for This Range',
+        msg: `Pipe laying cannot be recorded for Ch:${uncovered.from}m – Ch:${uncovered.to}m. Excavation has not been done for this stretch.`,
+        prereq: 'Excavation',
+        missing: `Ch:${uncovered.from}–${uncovered.to}m`
+      };
+    }
+
+    // Check date: pipe laying date must be ≥ excavation date for the overlapping range
+    const latestExcDate = getLatestDateForRange(from, to, excReports);
+    if (latestExcDate && date < latestExcDate) {
+      return {
+        title: 'Date Before Excavation',
+        msg: `Pipe laying date (${fmtDate(date)}) cannot be before the excavation date (${fmtDate(latestExcDate)}) for this stretch.`,
+        prereq: 'Excavation',
+        missing: `Exc. done on ${fmtDate(latestExcDate)}`
+      };
+    }
+  }
+
+  // For refilling: check pipe laying covers from–to and date is valid
+  if (type === 'refill') {
+    const pipeReports = allReports.filter(r =>
+      r.type === 'pipe' &&
+      r.project === project &&
+      (route ? r.route === route : true)
+    );
+
+    if (!pipeReports.length) {
+      return {
+        title: 'Pipe Laying Not Done',
+        msg: `No pipe laying report found for this stretch (Ch:${from}m – Ch:${to}m) on this route. Pipe must be laid before refilling.`,
+        prereq: 'Pipe Laying',
+        missing: `Ch:${from}–${to}m`
+      };
+    }
+
+    const uncovered = findUncoveredRange(from, to, pipeReports);
+    if (uncovered) {
+      return {
+        title: 'Pipe Laying Not Done for This Range',
+        msg: `Refilling cannot be recorded for Ch:${uncovered.from}m – Ch:${uncovered.to}m. Pipe laying has not been done for this stretch.`,
+        prereq: 'Pipe Laying',
+        missing: `Ch:${uncovered.from}–${uncovered.to}m`
+      };
+    }
+
+    const latestPipeDate = getLatestDateForRange(from, to, pipeReports);
+    if (latestPipeDate && date < latestPipeDate) {
+      return {
+        title: 'Date Before Pipe Laying',
+        msg: `Refilling date (${fmtDate(date)}) cannot be before the pipe laying date (${fmtDate(latestPipeDate)}) for this stretch.`,
+        prereq: 'Pipe Laying',
+        missing: `Pipe laid on ${fmtDate(latestPipeDate)}`
+      };
+    }
+  }
+
+  return null; // all good
+}
+
+// Check if [from, to] is fully covered by the given reports
+// Returns the first uncovered sub-range, or null if fully covered
+function findUncoveredRange(from, to, reports) {
+  // Build sorted list of covered intervals
+  const covered = reports
+    .map(r => ({ f: parseFloat(r.from)||0, t: parseFloat(r.to)||0 }))
+    .filter(r => r.t > r.f && r.f < to && r.t > from)
+    .sort((a,b) => a.f - b.f);
+
+  let cursor = from;
+  for (const seg of covered) {
+    if (seg.f > cursor) {
+      // Gap found
+      return { from: Math.round(cursor), to: Math.round(seg.f) };
+    }
+    if (seg.t > cursor) cursor = seg.t;
+    if (cursor >= to) return null; // fully covered
+  }
+  if (cursor < to) return { from: Math.round(cursor), to: Math.round(to) };
+  return null;
+}
+
+// Get the latest (most recent) date among reports that overlap [from, to]
+function getLatestDateForRange(from, to, reports) {
+  const overlapping = reports.filter(r => {
+    const rf = parseFloat(r.from)||0;
+    const rt = parseFloat(r.to)||0;
+    return rt > from && rf < to;
+  });
+  if (!overlapping.length) return null;
+  return overlapping.map(r => r.date).sort().reverse()[0];
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+function showDependencyError(err) {
+  // Use the confirm modal styled as an error alert
+  document.getElementById('confirmTitle').innerHTML =
+    `<span style="color:var(--red)">⛔ ${err.title}</span>`;
+  document.getElementById('confirmMsg').innerHTML =
+    `<div style="margin-bottom:12px">${err.msg}</div>
+     <div style="background:rgba(255,69,58,0.08);border:1px solid rgba(255,69,58,0.25);border-radius:8px;padding:10px;font-size:12px">
+       <div style="font-weight:700;color:var(--red);margin-bottom:4px">Prerequisite: ${err.prereq}</div>
+       <div style="color:var(--muted)">Missing: ${err.missing}</div>
+     </div>`;
+  // Replace buttons: only OK
+  const modal = document.getElementById('confirmModal');
+  modal.querySelector('.flex.gap-3').innerHTML =
+    `<button class="btn btn-primary flex-1" onclick="document.getElementById('confirmModal').classList.add('hidden')">OK — Go Fix It</button>`;
+  document.getElementById('confirmYesBtn')?.remove?.();
+  modal.classList.remove('hidden');
+}
+
 // ── SUBMIT REPORT ─────────────────────────────────────────────
 async function submitReport(type) {
   const project = document.getElementById('f-project')?.value;
@@ -1537,6 +1679,32 @@ async function submitReport(type) {
 
   const g = id => document.getElementById(id)?.value || '';
   const gf= id => parseFloat(document.getElementById(id)?.value) || 0;
+
+  // ── DEPENDENCY CHECKS ────────────────────────────────────────
+  if (type === 'pipe' || type === 'refill') {
+    const from = gf('f-from');
+    const to   = gf('f-to');
+    if (!from && !to) { showToast('⚠️ Enter chainage range first'); return; }
+    const err = checkChainageDependency(type, project, route, from, to, date);
+    if (err) {
+      showDependencyError(err);
+      return;
+    }
+  }
+
+  // ── DOWNSTREAM EDIT CHECKS (editing excav/pipe must not break dependents) ──
+  if (_editId && (type === 'excavation' || type === 'pipe')) {
+    const oldR = getReports().find(r => String(r.id) === String(_editId));
+    if (oldR) {
+      const newFrom = gf('f-from');
+      const newTo   = gf('f-to');
+      const err = checkEditDependency(oldR, newFrom, newTo, date);
+      if (err) {
+        showDependencyError(err);
+        return;
+      }
+    }
+  }
 
   const data = {
     id:         _editId || Date.now(),
@@ -1734,6 +1902,154 @@ function reportItemHTML(r, showActions=true) {
     </div>`;
 }
 
+// Check if REMOVING a report would break downstream reports
+// Returns error object or null
+function checkDeleteDependency(r) {
+  const allReports = getReports();
+
+  if (r.type === 'excavation') {
+    // Check if any pipe report depends on this excavation stretch
+    const pipeReports = allReports.filter(p =>
+      p.type === 'pipe' &&
+      p.project === r.project &&
+      p.route === r.route &&
+      String(p.id) !== String(r.id)
+    );
+    // Simulate removal: would any pipe report's range become uncovered?
+    const remainingExcav = allReports.filter(e =>
+      e.type === 'excavation' &&
+      e.project === r.project &&
+      e.route === r.route &&
+      String(e.id) !== String(r.id)
+    );
+    for (const pipe of pipeReports) {
+      const pFrom = parseFloat(pipe.from)||0;
+      const pTo   = parseFloat(pipe.to)||0;
+      const gap   = findUncoveredRange(pFrom, pTo, remainingExcav);
+      if (gap) {
+        return {
+          title: 'Cannot Delete — Pipe Laying Depends on This',
+          msg: `Pipe laying report for Ch:${pipe.from}–${pipe.to}m (dated ${fmtDate(pipe.date)}) depends on this excavation. Deleting this excavation would leave Ch:${gap.from}–${gap.to}m without excavation coverage.`,
+          dependent: 'Pipe Laying',
+          hint: 'Delete the pipe laying report first, then delete this excavation.'
+        };
+      }
+    }
+  }
+
+  if (r.type === 'pipe') {
+    // Check if any refill report depends on this pipe stretch
+    const refillReports = allReports.filter(rf =>
+      rf.type === 'refill' &&
+      rf.project === r.project &&
+      rf.route === r.route &&
+      String(rf.id) !== String(r.id)
+    );
+    const remainingPipe = allReports.filter(p =>
+      p.type === 'pipe' &&
+      p.project === r.project &&
+      p.route === r.route &&
+      String(p.id) !== String(r.id)
+    );
+    for (const refill of refillReports) {
+      const rfFrom = parseFloat(refill.from)||0;
+      const rfTo   = parseFloat(refill.to)||0;
+      const gap    = findUncoveredRange(rfFrom, rfTo, remainingPipe);
+      if (gap) {
+        return {
+          title: 'Cannot Delete — Refilling Depends on This',
+          msg: `Refilling report for Ch:${refill.from}–${refill.to}m (dated ${fmtDate(refill.date)}) depends on this pipe laying. Deleting this would leave Ch:${gap.from}–${gap.to}m without pipe laying coverage.`,
+          dependent: 'Refilling',
+          hint: 'Delete the refilling report first, then delete this pipe laying report.'
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+// Check if EDITING a report (changing chainage/date) would break downstream
+// oldR = original report, newFrom/newTo/newDate = proposed new values
+function checkEditDependency(oldR, newFrom, newTo, newDate) {
+  const allReports = getReports();
+
+  // Editing excavation: check downstream pipe reports still covered
+  if (oldR.type === 'excavation') {
+    const remainingExcav = allReports.filter(e =>
+      e.type === 'excavation' &&
+      e.project === oldR.project &&
+      e.route === oldR.route &&
+      String(e.id) !== String(oldR.id)
+    ).concat([{ from: newFrom, to: newTo, date: newDate }]);
+
+    const pipeReports = allReports.filter(p =>
+      p.type === 'pipe' &&
+      p.project === oldR.project &&
+      p.route === oldR.route
+    );
+    for (const pipe of pipeReports) {
+      const pFrom = parseFloat(pipe.from)||0;
+      const pTo   = parseFloat(pipe.to)||0;
+      const gap   = findUncoveredRange(pFrom, pTo, remainingExcav);
+      if (gap) {
+        return {
+          title: 'Edit Would Break Pipe Laying',
+          msg: `Pipe laying report for Ch:${pipe.from}–${pipe.to}m depends on this excavation. Your edit would leave Ch:${gap.from}–${gap.to}m uncovered by excavation.`,
+          prereq: 'Excavation', missing: `Ch:${gap.from}–${gap.to}m`
+        };
+      }
+      // Date check: pipe date must remain ≥ excavation date
+      const latestExcDate = getLatestDateForRange(pFrom, pTo, remainingExcav);
+      if (latestExcDate && pipe.date < latestExcDate) {
+        return {
+          title: 'Edit Would Break Pipe Laying Date',
+          msg: `Pipe laying report dated ${fmtDate(pipe.date)} would be before the updated excavation date (${fmtDate(latestExcDate)}) for Ch:${pipe.from}–${pipe.to}m.`,
+          prereq: 'Excavation', missing: `Exc. date ${fmtDate(latestExcDate)}`
+        };
+      }
+    }
+  }
+
+  // Editing pipe: check downstream refill reports still covered
+  if (oldR.type === 'pipe') {
+    const remainingPipe = allReports.filter(p =>
+      p.type === 'pipe' &&
+      p.project === oldR.project &&
+      p.route === oldR.route &&
+      String(p.id) !== String(oldR.id)
+    ).concat([{ from: newFrom, to: newTo, date: newDate }]);
+
+    const refillReports = allReports.filter(rf =>
+      rf.type === 'refill' &&
+      rf.project === oldR.project &&
+      rf.route === oldR.route
+    );
+    for (const refill of refillReports) {
+      const rfFrom = parseFloat(refill.from)||0;
+      const rfTo   = parseFloat(refill.to)||0;
+      const gap    = findUncoveredRange(rfFrom, rfTo, remainingPipe);
+      if (gap) {
+        return {
+          title: 'Edit Would Break Refilling',
+          msg: `Refilling report for Ch:${refill.from}–${refill.to}m depends on this pipe laying. Your edit would leave Ch:${gap.from}–${gap.to}m without pipe coverage.`,
+          prereq: 'Pipe Laying', missing: `Ch:${gap.from}–${gap.to}m`
+        };
+      }
+      const latestPipeDate = getLatestDateForRange(rfFrom, rfTo, remainingPipe);
+      if (latestPipeDate && refill.date < latestPipeDate) {
+        return {
+          title: 'Edit Would Break Refilling Date',
+          msg: `Refilling report dated ${fmtDate(refill.date)} would be before the updated pipe laying date (${fmtDate(latestPipeDate)}) for Ch:${refill.from}–${refill.to}m.`,
+          prereq: 'Pipe Laying', missing: `Pipe date ${fmtDate(latestPipeDate)}`
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 function editReport(id) {
   const r = getReports().find(r => String(r.id) === String(id));
   if (!r) return;
@@ -1741,10 +2057,29 @@ function editReport(id) {
 }
 
 function deleteReport(id) {
+  const reports = getReports();
+  const r = reports.find(r => String(r.id) === String(id));
+  if (!r) return;
+
+  // Check downstream dependency before confirming
+  const depErr = checkDeleteDependency(r);
+  if (depErr) {
+    document.getElementById('confirmTitle').innerHTML =
+      `<span style="color:var(--red)">⛔ ${depErr.title}</span>`;
+    document.getElementById('confirmMsg').innerHTML =
+      `<div style="margin-bottom:12px">${depErr.msg}</div>
+       <div style="background:rgba(255,69,58,0.08);border:1px solid rgba(255,69,58,0.25);border-radius:8px;padding:10px;font-size:12px">
+         <div style="font-weight:700;color:var(--red);margin-bottom:4px">Dependent: ${depErr.dependent}</div>
+         <div style="color:var(--muted)">${depErr.hint}</div>
+       </div>`;
+    document.getElementById('confirmModal').querySelector('.flex.gap-3').innerHTML =
+      `<button class="btn btn-primary flex-1" onclick="document.getElementById('confirmModal').classList.add('hidden')">OK — Understood</button>`;
+    document.getElementById('confirmModal').classList.remove('hidden');
+    return;
+  }
+
   showConfirm('Delete Report', 'Delete this report? This cannot be undone.', async () => {
-    const reports = getReports();
-    const r = reports.find(r => String(r.id) === String(id));
-    const updated = reports.filter(r => String(r.id) !== String(id));
+    const updated = getReports().filter(r => String(r.id) !== String(id));
     saveReports(updated);
     renderCurrentTab();
     showToast('🗑️ Deleted');
