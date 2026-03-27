@@ -2317,60 +2317,57 @@ function renderTrackerTab() {
               </div>`;
             }).join('')}
 
-            <!-- Marker bar: valves, chambers, fittings, encasing on a shared axis -->
-            <div style="position:relative;height:22px;margin-top:4px;margin-left:96px;margin-right:96px">
-              <!-- Valve ticks -->
-              ${reps.filter(r=>r.type==='valve').map(r=>{
-                const ch=parseFloat(r.chainage)||0;
-                const left=Math.round(ch/len*100);
-                return `<div title="🔧 Valve: ${r.valType||''} Ch:${ch}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
-                  onmouseenter="showMarkerTip(this,'🔧 ${r.valType||'Valve'} — Ch:${ch}m')"
-                  onmouseleave="hideMarkerTip(this)">
-                  <div style="width:2px;height:12px;background:var(--red);margin:0 auto"></div>
-                  <div style="font-size:8px;color:var(--red);margin-top:1px">V</div>
-                </div>`;
-              }).join('')}
-              <!-- Chamber ticks -->
-              ${reps.filter(r=>r.type==='chamber').map(r=>{
-                const ch=parseFloat(r.chainage)||0;
-                const left=Math.round(ch/len*100);
-                return `<div title="🏛️ Chamber Ch:${ch}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
-                  onmouseenter="showMarkerTip(this,'🏛️ Chamber — Ch:${ch}m')"
-                  onmouseleave="hideMarkerTip(this)">
-                  <div style="width:2px;height:12px;background:var(--orange);margin:0 auto"></div>
-                  <div style="font-size:8px;color:var(--orange);margin-top:1px">C</div>
-                </div>`;
-              }).join('')}
-              <!-- Fitting ticks -->
-              ${reps.filter(r=>r.type==='fitting').map(r=>{
-                const ch=parseFloat(r.chainage)||0;
-                const left=Math.round(ch/len*100);
-                return `<div title="🔗 Fitting Ch:${ch}m" style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
-                  onmouseenter="showMarkerTip(this,'🔗 ${r.fitType||'Fitting'} — Ch:${ch}m')"
-                  onmouseleave="hideMarkerTip(this)">
-                  <div style="width:2px;height:12px;background:var(--cyan);margin:0 auto"></div>
-                  <div style="font-size:8px;color:var(--cyan);margin-top:1px">F</div>
-                </div>`;
-              }).join('')}
-              <!-- Encasing ticks -->
-              ${pipeReps.flatMap(r=>(r.encasings||[]).length
-                ? r.encasings.map(e=>({...e, label:e.type}))
-                : (r.encasing&&r.encasing!=='Not Required'?[{type:r.encasing,from:r.encasingFrom||r.from,to:r.encasingTo||r.to,label:r.encasing}]:[])
-              ).map(e=>{
-                const mid=(parseFloat(e.from||0)+parseFloat(e.to||0))/2;
-                const left=Math.round(mid/len*100);
-                return `<div style="position:absolute;left:${left}%;transform:translateX(-50%);top:0;cursor:pointer"
-                  onmouseenter="showMarkerTip(this,'🏗️ ${e.label} — Ch:${e.from}–${e.to}m')"
-                  onmouseleave="hideMarkerTip(this)">
-                  <div style="width:2px;height:12px;background:var(--purple);margin:0 auto"></div>
-                  <div style="font-size:8px;color:var(--purple);margin-top:1px">E</div>
-                </div>`;
-              }).join('')}
-            </div>
+            <!-- Marker rows: one per type, aligned with progress bars -->
+            ${[
+              { label:'Valve',   color:'var(--red)',    icon:'🔧',
+                items: reps.filter(r=>r.type==='valve').map(r=>({
+                  left:(parseFloat(r.chainage)||0)/len*100,
+                  tip:`🔧 ${r.valType||'Valve'} — Ch:${r.chainage}m`
+                }))
+              },
+              { label:'Chamber', color:'var(--orange)', icon:'🏛️',
+                items: reps.filter(r=>r.type==='chamber').map(r=>({
+                  left:(parseFloat(r.chainage)||0)/len*100,
+                  tip:`🏛️ ${r.chamType||'Chamber'} — Ch:${r.chainage}m`
+                }))
+              },
+              { label:'Fitting', color:'var(--cyan)',   icon:'🔗',
+                items: reps.filter(r=>r.type==='fitting').map(r=>({
+                  left:(parseFloat(r.chainage)||0)/len*100,
+                  tip:`🔗 ${r.fitType||'Fitting'} — Ch:${r.chainage}m`
+                }))
+              },
+              { label:'Encasing',color:'var(--purple)', icon:'🏗️',
+                items: pipeReps.flatMap(r=>(r.encasings||[]).length
+                  ? r.encasings.map(e=>({
+                      left:((parseFloat(e.from)||0)+(parseFloat(e.to)||0))/2/len*100,
+                      tip:`🏗️ ${e.type} — Ch:${e.from}–${e.to}m`
+                    }))
+                  : (r.encasing&&r.encasing!=='Not Required'?[{
+                      left:((parseFloat(r.encasingFrom||r.from)||0)+(parseFloat(r.encasingTo||r.to)||0))/2/len*100,
+                      tip:`🏗️ ${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`
+                    }]:[])
+                )
+              },
+            ].filter(row=>row.items.length).map(row=>`
+              <div class="flex items-center gap-2 mb-1">
+                <div style="font-size:11px;width:20px;text-align:center">${row.icon}</div>
+                <div style="font-size:10px;color:${row.color};width:72px;font-weight:700">${row.label}</div>
+                <div style="flex:1;position:relative;height:18px;background:var(--border);border-radius:4px;">
+                  ${row.items.map(item=>`
+                    <div style="position:absolute;left:${item.left.toFixed(2)}%;transform:translateX(-50%);top:0;height:100%;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center"
+                      onmouseenter="showMarkerTip(this,'${item.tip.replace(/'/g,'&#39;')}')"
+                      onmouseleave="hideMarkerTip(this)">
+                      <div style="width:2px;height:14px;background:${row.color}"></div>
+                    </div>`).join('')}
+                </div>
+                <div style="font-size:10px;color:${row.color};width:36px;text-align:right;font-weight:700">${row.items.length}</div>
+                <div style="width:44px"></div>
+              </div>`).join('')}
             <!-- Legend -->
-            <div class="flex gap-3 mt-1" style="margin-left:96px;flex-wrap:wrap">
-              ${[['V','var(--red)','Valve'],['C','var(--orange)','Chamber'],['F','var(--cyan)','Fitting'],['E','var(--purple)','Encasing']].map(([l,c,n])=>
-                `<div style="font-size:10px;color:${c}"><span style="font-weight:700">${l}</span> ${n}</div>`
+            <div class="flex gap-3 mt-2" style="margin-left:96px">
+              ${[['🔧','var(--red)','Valve'],['🏛️','var(--orange)','Chamber'],['🔗','var(--cyan)','Fitting'],['🏗️','var(--purple)','Encasing']].map(([ic,c,n])=>
+                `<div style="font-size:10px;color:${c}">${ic} ${n}</div>`
               ).join('')}
             </div>
           </div>
