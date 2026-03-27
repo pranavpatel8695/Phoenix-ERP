@@ -908,6 +908,7 @@ function buildReportForm(type, prefill={}) {
     } else if (type === 'structure') {
       const sel = document.getElementById('f-location-sel');
       if (sel) onConcreteLocChange(sel);
+      autoCalcConcrVol();
     } else if (prefill.photos?.length) {
       prefill.photos.forEach(p => addPhotoPreview(p.src||p));
     }
@@ -1173,16 +1174,16 @@ function buildTypeFields(type, p={}) {
         </div>
         <div class="field-group"><label>Slab</label>
           <div class="radio-group">
-            <div class="radio-opt${(p.slab||'Not Precast')==='Not Precast'?' selected':''}" onclick="selectChamberSlab('Not Precast',this)">Not Precast</div>
+            <div class="radio-opt${(p.slab||'Insitu')==='Insitu'?' selected':''}" onclick="selectChamberSlab('Insitu',this)">Insitu</div>
             <div class="radio-opt${p.slab==='Precast'?' selected':''}" onclick="selectChamberSlab('Precast',this)">Precast</div>
           </div>
-          <input type="hidden" id="f-slab" value="${p.slab||'Not Precast'}">
+          <input type="hidden" id="f-slab" value="${p.slab||'Insitu'}">
         </div>
         <div id="f-slab-precast-wrap" style="display:${p.slab==='Precast'?'block':'none'}">
           <div class="field-group mt-2"><label>Precast Slab Status</label>
             <div class="radio-group">
               <div class="radio-opt${(p.slabStatus||'Kept')==='Kept'?' selected':''}" onclick="selectRadio('f-slabStatus','Kept',this)">Kept</div>
-              <div class="radio-opt${p.slabStatus==='Not Fixed'?' selected':''}" onclick="selectRadio('f-slabStatus','Not Fixed',this)">Not Fixed</div>
+              <div class="radio-opt${p.slabStatus==='Not Kept'?' selected':''}" onclick="selectRadio('f-slabStatus','Not Kept',this)">Not Kept</div>
             </div>
             <input type="hidden" id="f-slabStatus" value="${p.slabStatus||'Kept'}">
           </div>
@@ -1221,9 +1222,6 @@ function buildTypeFields(type, p={}) {
 
   // ── 7. CONCRETE WORK (structure) ───────────────────────────
   if (type === 'structure') {
-    // Build location options:
-    // (a) Fitting reports where thrustBlock === 'Yes'
-    // (b) Pipe reports where encasing !== 'Not Required'
     const strProj = document.getElementById('f-project')?.value || '';
     const allR    = getReports().filter(r => r.project === strProj);
     const fittingLocs = allR
@@ -1244,7 +1242,7 @@ function buildTypeFields(type, p={}) {
       <div style="background:rgba(191,90,242,0.06);border:1px solid rgba(191,90,242,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location & Type</div>
         <div class="field-group"><label>Concrete Work Type <span class="req">*</span></label>
-          <select id="f-strType">${['Thrust Block','Pipe Encasing (CC)','Pipe Encasing (RCC)','Bed Concrete','Cap Concrete / Haunch','Anchor Block','Casing Pipe Grouting','Road Crossing (Jack & Bore)','Other'].map(v=>`<option${p.strType===v?' selected':''}>${v}</option>`).join('')}</select>
+          <select id="f-strType">${['Thrust Block','Pipe Encasing (CC)','Pipe Encasing (RCC)','Bed Concrete','Cap Concrete / Haunch','Anchor Block','Other'].map(v=>`<option${p.strType===v?' selected':''}>${v}</option>`).join('')}</select>
         </div>
         <div class="field-group">
           <label>Location (from Fitting / Pipe Laying records)</label>
@@ -1256,37 +1254,29 @@ function buildTypeFields(type, p={}) {
         </div>
         <div id="f-location-other-wrap" style="display:${strHasOther?'block':'none'}">
           <div class="field-group mt-2">
-            <label>Custom Location</label>
             <input type="text" id="f-location-other" value="${strHasOther?p.location:''}" placeholder="e.g. Ch:450m near road crossing" oninput="document.getElementById('f-location').value=this.value">
           </div>
         </div>
         <input type="hidden" id="f-location" value="${p.location||''}">
-        <div class="form-row mt-2">
-          <div class="field-group"><label>From Ch. (m)</label><input type="number" id="f-from" value="${p.from||''}" placeholder="e.g. 0"></div>
-          <div class="field-group"><label>To Ch. (m)</label><input type="number" id="f-to" value="${p.to||''}" placeholder="e.g. 50"></div>
-        </div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏗️ Concrete Specification</div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Concrete Dimensions</div>
         <div class="form-row">
-          <div class="field-group"><label>Grade of Concrete</label>
-            <select id="f-concrGrade">${['M10','M15','M20','M25','M30','PCC (1:3:6)','PCC (1:4:8)','Other'].map(v=>`<option${p.concrGrade===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Mix Type</label>
-            <select id="f-mixType">${['Design Mix','Nominal Mix','Ready Mix (RMC)'].map(v=>`<option${p.mixType===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
+          <div class="field-group"><label>Length (m)</label><input type="number" id="f-concrL" step="0.01" value="${p.concrL||''}" oninput="autoCalcConcrVol()" placeholder="0.00"></div>
+          <div class="field-group"><label>Width (m)</label><input type="number" id="f-concrW" step="0.01" value="${p.concrW||''}" oninput="autoCalcConcrVol()" placeholder="0.00"></div>
+          <div class="field-group"><label>Height (m)</label><input type="number" id="f-concrH" step="0.01" value="${p.concrH||''}" oninput="autoCalcConcrVol()" placeholder="0.00"></div>
         </div>
-        <div class="form-row">
-          <div class="field-group"><label>Est. Qty (cum)</label><input type="number" id="f-estConc" step="0.01" value="${p.estConc||''}" placeholder="0.00"></div>
-          <div class="field-group"><label>Actual Qty (cum)</label><input type="number" id="f-actualConc" step="0.01" value="${p.actualConc||''}" placeholder="0.00"></div>
+        <div class="field-group"><label>Total Volume (m³) — Auto (L×W×H)</label>
+          <input type="number" id="f-totalVol" value="${p.totalVol||''}" readonly style="opacity:0.6;background:rgba(191,90,242,0.06);border-color:rgba(191,90,242,0.3)" placeholder="Auto">
         </div>
-        <div class="form-row">
-          <div class="field-group"><label>Curing Status</label>
-            <select id="f-curingStatus">${['Not Started','In Progress','Completed (7 days)','Completed (14 days)','Completed (28 days)'].map(v=>`<option${p.curingStatus===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Cube Samples Taken</label>
-            <select id="f-cubeSamples">${['No','Yes — 3 Cubes','Yes — 6 Cubes','Yes — 9 Cubes'].map(v=>`<option${p.cubeSamples===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
+        <div class="field-group"><label>Pipe Dia (m) — for pipe vol. deduction</label>
+          <input type="number" id="f-concrPipeDia" step="0.001" value="${p.concrPipeDia||''}" oninput="autoCalcConcrVol()" placeholder="e.g. 0.600 (leave blank if not applicable)">
+        </div>
+        <div class="field-group"><label>Vol. of Pipe (m³) — Auto (0.785×D²×L)</label>
+          <input type="number" id="f-pipeVolConc" value="${p.pipeVolConc||''}" readonly style="opacity:0.6;background:rgba(255,69,58,0.06);border-color:rgba(255,69,58,0.2)" placeholder="Auto">
+        </div>
+        <div class="field-group"><label>Net Volume (m³) — Auto (Total − Pipe)</label>
+          <input type="number" id="f-netVolConc" value="${p.netVolConc||''}" readonly style="opacity:0.6;background:rgba(48,209,88,0.08);border-color:rgba(48,209,88,0.3);font-weight:700" placeholder="Auto">
         </div>
       </div>`;
   }
@@ -1352,6 +1342,22 @@ function autoCalcRefillVol() {
   if (tEl) tEl.value = trenchVol > 0 ? trenchVol.toFixed(3) : '';
   if (pEl) pEl.value = pipeVol   > 0 ? pipeVol.toFixed(3)   : '';
   if (vEl) vEl.value = netVol    > 0 ? netVol.toFixed(3)    : '';
+}
+
+function autoCalcConcrVol() {
+  const L   = parseFloat(document.getElementById('f-concrL')?.value) || 0;
+  const W   = parseFloat(document.getElementById('f-concrW')?.value) || 0;
+  const H   = parseFloat(document.getElementById('f-concrH')?.value) || 0;
+  const dia = parseFloat(document.getElementById('f-concrPipeDia')?.value) || 0;
+  const totalVol  = L * W * H;
+  const pipeVol   = dia > 0 ? 0.785 * dia * dia * L : 0;
+  const netVol    = Math.max(0, totalVol - pipeVol);
+  const tEl = document.getElementById('f-totalVol');
+  const pEl = document.getElementById('f-pipeVolConc');
+  const nEl = document.getElementById('f-netVolConc');
+  if (tEl) tEl.value = totalVol > 0 ? totalVol.toFixed(3) : '';
+  if (pEl) pEl.value = pipeVol  > 0 ? pipeVol.toFixed(3)  : '';
+  if (nEl) nEl.value = totalVol > 0 ? netVol.toFixed(3)   : '';
 }
 
 function selectEncasing(val, el) {
@@ -1877,11 +1883,15 @@ async function submitReport(type) {
     data.thrustBlock = g('f-thrustBlock');
   }
   if (type==='structure') {
-    data.strType=g('f-strType'); data.location=g('f-location');
-    data.from=gf('f-from'); data.to=gf('f-to');
-    data.concrGrade=g('f-concrGrade'); data.mixType=g('f-mixType');
-    data.estConc=gf('f-estConc'); data.actualConc=gf('f-actualConc');
-    data.curingStatus=g('f-curingStatus'); data.cubeSamples=g('f-cubeSamples');
+    data.strType      = g('f-strType');
+    data.location     = g('f-location');
+    data.concrL       = gf('f-concrL');
+    data.concrW       = gf('f-concrW');
+    data.concrH       = gf('f-concrH');
+    data.concrPipeDia = gf('f-concrPipeDia');
+    data.totalVol     = gf('f-totalVol');
+    data.pipeVolConc  = gf('f-pipeVolConc');
+    data.netVolConc   = gf('f-netVolConc');
   }
   if (type.startsWith('civil_')) {
     const desc = g('f-description');
