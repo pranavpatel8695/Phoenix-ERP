@@ -428,12 +428,28 @@ async function doSync() {
       } catch(e) { return null; }
     }).filter(r => r && r.type);
 
-    // 4. Merge: remote + local (never delete local)
+    // 4. Merge: remote + local (never delete local, preserve local photos)
     const local = getReports();
+    const localMap = local.reduce((m, r) => { m[String(r.id)] = r; return m; }, {});
     const remoteIds = new Set(remote.map(r => String(r.id)));
     const localOnly = local.filter(r => r.id && !remoteIds.has(String(r.id)));
+
+    // For reports that exist both remotely and locally, keep remote data but restore local photos
+    const mergedRemote = remote.map(r => {
+      const loc = localMap[String(r.id)];
+      if (loc) {
+        return {
+          ...r,
+          photos:      (r.photos?.length)      ? r.photos      : (loc.photos||[]),
+          photosStart: (r.photosStart?.length)  ? r.photosStart : (loc.photosStart||[]),
+          photosEnd:   (r.photosEnd?.length)    ? r.photosEnd   : (loc.photosEnd||[]),
+        };
+      }
+      return r;
+    });
+
     const merged = Object.values(
-      [...remote, ...localOnly].reduce((m, r) => { m[String(r.id)] = r; return m; }, {})
+      [...mergedRemote, ...localOnly].reduce((m, r) => { m[String(r.id)] = r; return m; }, {})
     );
     saveReports(merged);
 
@@ -2149,7 +2165,7 @@ function reportItemHTML(r, showActions=true) {
     ...(r.photosStart||[]).map(p=>({src:photoSrc(p), label:'📍 Start'})),
     ...(r.photosEnd||[]).map(p=>({src:photoSrc(p), label:'🏁 End'})),
     ...(r.photos||[]).map(p=>({src:photoSrc(p), label:'📷'})),
-  ].filter(p => p.src && p.src.startsWith('data:'));
+  ].filter(p => p.src);
 
   return `
     <div class="report-item">
