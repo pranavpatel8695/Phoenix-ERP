@@ -1163,28 +1163,29 @@ function buildTypeFields(type, p={}) {
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🏛️ Chamber Details</div>
-        <div class="form-row">
-          <div class="field-group"><label>Chamber Type <span class="req">*</span></label>
-            <select id="f-chamType">${['Valve Chamber','Air Valve Chamber','Scour Chamber','Junction Chamber','Meter Chamber','Inspection Chamber','Other'].map(v=>`<option${p.chamType===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Construction Status</label>
-            <select id="f-chamStatus">${['Foundation Done','Walls In Progress','Walls Complete','Plastering Done','Fully Complete'].map(v=>`<option${p.chamStatus===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
+        <div class="field-group"><label>Chamber Type <span class="req">*</span></label>
+          <select id="f-chamType">${['RCC','Brick Masonry'].map(v=>`<option${p.chamType===v?' selected':''}>${v}</option>`).join('')}</select>
         </div>
         <div class="form-row">
-          <div class="field-group"><label>Inner Size (L×B mm)</label><input type="text" id="f-chamSize" value="${p.chamSize||''}" placeholder="e.g. 1200×900"></div>
-          <div class="field-group"><label>Depth (mm)</label><input type="number" id="f-chamDepth" value="${p.chamDepth||''}" placeholder="e.g. 1500"></div>
+          <div class="field-group"><label>Length (mm)</label><input type="number" id="f-chamL" value="${p.chamL||''}" placeholder="e.g. 1200"></div>
+          <div class="field-group"><label>Width (mm)</label><input type="number" id="f-chamW" value="${p.chamW||''}" placeholder="e.g. 900"></div>
+          <div class="field-group"><label>Height (mm)</label><input type="number" id="f-chamH" value="${p.chamH||''}" placeholder="e.g. 1500"></div>
         </div>
-        <div class="form-row">
-          <div class="field-group"><label>Wall Material</label>
-            <select id="f-wallMat">${['Brick Masonry','RCC','Stone Masonry','Precast RCC'].map(v=>`<option${p.wallMat===v?' selected':''}>${v}</option>`).join('')}</select>
+        <div class="field-group"><label>Slab</label>
+          <div class="radio-group">
+            <div class="radio-opt${(p.slab||'Not Precast')==='Not Precast'?' selected':''}" onclick="selectChamberSlab('Not Precast',this)">Not Precast</div>
+            <div class="radio-opt${p.slab==='Precast'?' selected':''}" onclick="selectChamberSlab('Precast',this)">Precast</div>
           </div>
-          <div class="field-group"><label>Slab / Cover</label>
-            <select id="f-slab">${['Not Required','Precast RCC Slab','Cast-in-situ RCC','CI Cover','MS Cover'].map(v=>`<option${p.slab===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
+          <input type="hidden" id="f-slab" value="${p.slab||'Not Precast'}">
         </div>
-        <div class="field-group"><label>Plastering / Waterproofing</label>
-          <select id="f-plaster">${['Not Done','Internal Plaster Done','Waterproofing Done','Both Done'].map(v=>`<option${p.plaster===v?' selected':''}>${v}</option>`).join('')}</select>
+        <div id="f-slab-precast-wrap" style="display:${p.slab==='Precast'?'block':'none'}">
+          <div class="field-group mt-2"><label>Precast Slab Status</label>
+            <div class="radio-group">
+              <div class="radio-opt${(p.slabStatus||'Kept')==='Kept'?' selected':''}" onclick="selectRadio('f-slabStatus','Kept',this)">Kept</div>
+              <div class="radio-opt${p.slabStatus==='Not Fixed'?' selected':''}" onclick="selectRadio('f-slabStatus','Not Fixed',this)">Not Fixed</div>
+            </div>
+            <input type="hidden" id="f-slabStatus" value="${p.slabStatus||'Kept'}">
+          </div>
         </div>
       </div>`;
   }
@@ -1413,6 +1414,12 @@ function selectRadio(fieldId, val, el) {
   if (hidden) hidden.value = val;
   el.closest('.radio-group').querySelectorAll('.radio-opt').forEach(o => o.classList.remove('selected'));
   el.classList.add('selected');
+}
+
+function selectChamberSlab(val, el) {
+  selectRadio('f-slab', val, el);
+  const wrap = document.getElementById('f-slab-precast-wrap');
+  if (wrap) wrap.style.display = val === 'Precast' ? 'block' : 'none';
 }
 
 function onChamberLocChange(sel) {
@@ -1852,10 +1859,14 @@ async function submitReport(type) {
     data.chamberReq    = g('f-chamberReq');
   }
   if (type==='chamber') {
-    data.chainage=gf('f-chainage'); data.location=g('f-location');
-    data.chamType=g('f-chamType'); data.chamStatus=g('f-chamStatus');
-    data.chamSize=g('f-chamSize'); data.chamDepth=gf('f-chamDepth');
-    data.wallMat=g('f-wallMat'); data.slab=g('f-slab'); data.plaster=g('f-plaster');
+    data.chainage   = gf('f-chainage');
+    data.location   = g('f-location');
+    data.chamType   = g('f-chamType');
+    data.chamL      = gf('f-chamL');
+    data.chamW      = gf('f-chamW');
+    data.chamH      = gf('f-chamH');
+    data.slab       = g('f-slab');
+    data.slabStatus = g('f-slabStatus');
   }
   if (type==='fitting') {
     data.chainage    = gf('f-chainage');
@@ -1988,7 +1999,24 @@ function reportItemHTML(r, showActions=true) {
       </div>
       <div class="report-info">${info}</div>
       <div class="report-date">by ${r.supervisorName||r.supervisor||'—'} · ${r.project||''}</div>
-      ${r.photos?.length ? `<div class="text-xs text-muted mt-1">📷 ${r.photos.length} photo${r.photos.length>1?'s':''}</div>` : ''}
+      ${(() => {
+        const allPhotos = [
+          ...(r.photosStart||[]).map(p=>({src:p.src||p, label:'📍 Start'})),
+          ...(r.photosEnd||[]).map(p=>({src:p.src||p, label:'🏁 End'})),
+          ...(r.photos||[]).map(p=>({src:p.src||p, label:'📷'})),
+        ];
+        if (!allPhotos.length) return '';
+        return `<div style="margin-top:8px">
+          <div class="text-xs text-muted mb-1">📷 ${allPhotos.length} photo${allPhotos.length>1?'s':''}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${allPhotos.map(p=>`
+              <div style="position:relative">
+                <img src="${p.src}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+                <div style="position:absolute;bottom:2px;left:2px;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">${p.label}</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      })()}
       ${actions}
     </div>`;
 }
