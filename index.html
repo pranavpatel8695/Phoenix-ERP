@@ -599,17 +599,14 @@ function showLoginError(msg) {
 async function loginSuccess(user, userRecord) {
   currentUser = user;
   currentRole = userRecord.role;
-  showLoader('Loading your data…');
 
-  // Sync on login
-  await doSync();
-
+  // Show app immediately from local data
   hideLoader();
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
 
   // Update UI
-  document.getElementById('roleBadgeEl').textContent = 
+  document.getElementById('roleBadgeEl').textContent =
     currentRole === 'admin' ? 'Admin' : currentRole === 'pm' ? 'Project Manager' : 'Supervisor/Eng.';
   document.getElementById('roleBadgeEl').className = `role-badge ${currentRole}`;
   document.getElementById('avatarBtn').textContent = userRecord.name?.[0]?.toUpperCase() || user[0].toUpperCase();
@@ -621,12 +618,14 @@ async function loginSuccess(user, userRecord) {
   document.getElementById('navSettings').classList.toggle('hidden', currentRole === 'supervisor');
   document.getElementById('navUsers').classList.toggle('hidden', currentRole !== 'admin');
 
-  // If admin, push config
-  if (currentRole === 'admin') {
-    setTimeout(pushConfig, 2000);
-  }
-
   switchTab('home');
+
+  // Sync in background — refresh UI when done
+  setSyncStatus('syncing');
+  doSync().then(() => {
+    renderCurrentTab();
+    if (currentRole === 'admin') pushConfig();
+  });
 }
 
 function doLogout() {
