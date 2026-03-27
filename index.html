@@ -119,6 +119,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 /* ── MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:300;display:flex;align-items:flex-end;justify-content:center;}
+#confirmModal{z-index:500;}
 .modal-sheet{background:var(--surface);border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;}
 .modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px;}
 /* ── TABS ── */
@@ -1663,15 +1664,19 @@ function showDependencyError(err) {
        <div style="font-weight:700;color:var(--red);margin-bottom:4px">Prerequisite: ${err.prereq}</div>
        <div style="color:var(--muted)">Missing: ${err.missing}</div>
      </div>`;
-  // Temporarily replace buttons — restore on close
   const btnWrap = modal.querySelector('.flex.gap-3');
-  const origHTML = btnWrap.innerHTML;
-  btnWrap.innerHTML =
-    `<button class="btn btn-primary flex-1" onclick="
-      document.getElementById('confirmModal').classList.add('hidden');
-      document.getElementById('confirmModal').querySelector('.flex.gap-3').innerHTML = ${JSON.stringify(origHTML)};
-    ">OK — Got It</button>`;
+  window._confirmBtnBackup = btnWrap.innerHTML;
+  btnWrap.innerHTML = `<button class="btn btn-primary flex-1" onclick="closeDependencyError()">OK — Got It</button>`;
   modal.classList.remove('hidden');
+}
+
+function closeDependencyError() {
+  const modal = document.getElementById('confirmModal');
+  modal.classList.add('hidden');
+  if (window._confirmBtnBackup) {
+    modal.querySelector('.flex.gap-3').innerHTML = window._confirmBtnBackup;
+    window._confirmBtnBackup = null;
+  }
 }
 
 // ── SUBMIT REPORT ─────────────────────────────────────────────
@@ -2081,12 +2086,8 @@ function deleteReport(id) {
          <div style="color:var(--muted)">${depErr.hint}</div>
        </div>`;
     const btnWrap = modal.querySelector('.flex.gap-3');
-    const origHTML = btnWrap.innerHTML;
-    btnWrap.innerHTML =
-      `<button class="btn btn-primary flex-1" onclick="
-        document.getElementById('confirmModal').classList.add('hidden');
-        document.getElementById('confirmModal').querySelector('.flex.gap-3').innerHTML = ${JSON.stringify(origHTML)};
-      ">OK — Understood</button>`;
+    window._confirmBtnBackup = btnWrap.innerHTML;
+    btnWrap.innerHTML = `<button class="btn btn-primary flex-1" onclick="closeDependencyError()">OK — Understood</button>`;
     modal.classList.remove('hidden');
     return;
   }
