@@ -2211,11 +2211,16 @@ function renderTrackerTab() {
       const pendingPipeM = Math.max(0, excM - pipeM);
       const pendingCount = pendingPipeM > 0 ? 1 : 0; // simplified — gaps calc below
 
-      // Gap analysis: find uncovered pipe stretches where excavation exists
+      // Gap analysis: find uncovered pipe stretches where excavation exists (for dependency bars)
       const pipeGaps = findAllGaps(excReps, pipeReps, len);
       const refGaps  = findAllGaps(pipeReps, refReps, len);
 
-      const totalGaps = pipeGaps.length + refGaps.length;
+      // Full-route gaps for display list
+      const pipeGapsFull = findAllGapsFullRoute(pipeReps, len);
+      const refGapsFull  = findAllGapsFullRoute(refReps, len);
+      const excGapsFull  = findAllGapsFullRoute(excReps, len);
+
+      const totalGaps = excGapsFull.length + pipeGapsFull.length + refGapsFull.length;
 
       html += `
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">
@@ -2352,7 +2357,7 @@ function renderTrackerTab() {
           </div>
 
           <!-- Gap Chainage List -->
-          ${(pipeGaps.length || refGaps.length) ? `
+          ${(excGapsFull.length || pipeGapsFull.length || refGapsFull.length) ? `
           <div style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:12px">
             <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">📋 Gap Chainage List</div>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
@@ -2365,29 +2370,28 @@ function renderTrackerTab() {
                 </tr>
               </thead>
               <tbody>
-                ${pipeGaps.map(g=>`
+                ${excGapsFull.map(g=>`
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+                  <td style="padding:6px;color:var(--orange);font-weight:700">⛏️ Excavation</td>
+                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.from}m</td>
+                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.to}m</td>
+                  <td style="padding:6px;text-align:right;color:var(--orange);font-weight:700">${fmtM(g.to-g.from)}</td>
+                </tr>`).join('')}
+                ${pipeGapsFull.map(g=>`
                 <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
                   <td style="padding:6px;color:var(--red);font-weight:700">🔩 Pipe Laying</td>
                   <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.from}m</td>
                   <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.to}m</td>
                   <td style="padding:6px;text-align:right;color:var(--red);font-weight:700">${fmtM(g.to-g.from)}</td>
                 </tr>`).join('')}
-                ${refGaps.map(g=>`
+                ${refGapsFull.map(g=>`
                 <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-                  <td style="padding:6px;color:var(--orange);font-weight:700">🪣 Refilling</td>
+                  <td style="padding:6px;color:var(--blue);font-weight:700">🪣 Refilling</td>
                   <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.from}m</td>
                   <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.to}m</td>
-                  <td style="padding:6px;text-align:right;color:var(--orange);font-weight:700">${fmtM(g.to-g.from)}</td>
+                  <td style="padding:6px;text-align:right;color:var(--blue);font-weight:700">${fmtM(g.to-g.from)}</td>
                 </tr>`).join('')}
               </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="3" style="padding:6px;color:var(--muted);font-size:10px">Total pending</td>
-                  <td style="padding:6px;text-align:right;font-weight:800;color:var(--red)">
-                    ${fmtM([...pipeGaps,...refGaps].reduce((s,g)=>s+(g.to-g.from),0))}
-                  </td>
-                </tr>
-              </tfoot>
             </table>
           </div>` : ''}
 
@@ -2395,20 +2399,28 @@ function renderTrackerTab() {
           ${totalGaps > 0 ? `
           <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px">
             <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">⚠️ ACTION REQUIRED (${totalGaps})</div>
-            ${pipeGaps.map(g=>`
+            ${excGapsFull.map(g=>`
+              <div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);border-radius:6px;margin-bottom:6px">
+                <div style="font-size:20px">⛏️</div>
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:var(--orange)">Excavation Gap — ${fmtM(g.to-g.from)} missing</div>
+                  <div style="font-size:11px;color:var(--muted)">Ch: ${g.from}m → ${g.to}m</div>
+                </div>
+              </div>`).join('')}
+            ${pipeGapsFull.map(g=>`
               <div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,69,58,0.08);border-left:3px solid var(--red);border-radius:6px;margin-bottom:6px">
                 <div style="font-size:20px">🔩</div>
                 <div>
                   <div style="font-size:12px;font-weight:700;color:var(--red)">Pipe Laying Gap — ${fmtM(g.to-g.from)} missing</div>
-                  <div style="font-size:11px;color:var(--muted)">Ch: ${g.from}m → ${g.to}m · ${fmtM(g.to-g.from)} not yet laid</div>
+                  <div style="font-size:11px;color:var(--muted)">Ch: ${g.from}m → ${g.to}m</div>
                 </div>
               </div>`).join('')}
-            ${refGaps.map(g=>`
-              <div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);border-radius:6px;margin-bottom:6px">
+            ${refGapsFull.map(g=>`
+              <div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(90,200,250,0.08);border-left:3px solid var(--blue);border-radius:6px;margin-bottom:6px">
                 <div style="font-size:20px">🪣</div>
                 <div>
-                  <div style="font-size:12px;font-weight:700;color:var(--orange)">Refilling Gap — ${fmtM(g.to-g.from)} missing</div>
-                  <div style="font-size:11px;color:var(--muted)">Ch: ${g.from}m → ${g.to}m · ${fmtM(g.to-g.from)} not yet refilled</div>
+                  <div style="font-size:12px;font-weight:700;color:var(--blue)">Refilling Gap — ${fmtM(g.to-g.from)} missing</div>
+                  <div style="font-size:11px;color:var(--muted)">Ch: ${g.from}m → ${g.to}m</div>
                 </div>
               </div>`).join('')}
           </div>` : `
@@ -2429,21 +2441,38 @@ function renderTrackerTab() {
 function findAllGaps(prereqReps, targetReps, len) {
   const gaps = [];
   if (!prereqReps.length) return gaps;
-  // Build covered by prereq
   const prereqSegs = prereqReps
     .map(r=>({f:parseFloat(r.from)||0, t:parseFloat(r.to)||0}))
     .filter(s=>s.t>s.f).sort((a,b)=>a.f-b.f);
-  // Merge prereq into contiguous segments
   const merged = [];
   for (const s of prereqSegs) {
     if (!merged.length || s.f > merged[merged.length-1].t + 0.001) merged.push({...s});
     else merged[merged.length-1].t = Math.max(merged[merged.length-1].t, s.t);
   }
-  // For each prereq segment find gaps in target coverage
   for (const seg of merged) {
     const gap = findUncoveredRange(seg.f, seg.t, targetReps);
     if (gap) gaps.push({from: Math.round(gap.from), to: Math.round(gap.to)});
   }
+  return gaps;
+}
+
+// Gaps across full route [0, len] regardless of prereq
+function findAllGapsFullRoute(targetReps, len) {
+  const gaps = [];
+  const segs = targetReps
+    .map(r=>({f:parseFloat(r.from)||0, t:parseFloat(r.to)||0}))
+    .filter(s=>s.t>s.f).sort((a,b)=>a.f-b.f);
+  const merged = [];
+  for (const s of segs) {
+    if (!merged.length || s.f > merged[merged.length-1].t + 0.001) merged.push({...s});
+    else merged[merged.length-1].t = Math.max(merged[merged.length-1].t, s.t);
+  }
+  let cursor = 0;
+  for (const s of merged) {
+    if (s.f > cursor + 0.001) gaps.push({from: Math.round(cursor), to: Math.round(s.f)});
+    cursor = s.t;
+  }
+  if (cursor < len - 0.001) gaps.push({from: Math.round(cursor), to: Math.round(len)});
   return gaps;
 }
 
