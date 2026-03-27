@@ -1526,8 +1526,11 @@ function getExcavPhotos(zone) {
 }
 
 // ── DEPENDENCY VALIDATION ─────────────────────────────────────
-function checkChainageDependency(type, project, route, from, to, date) {
-  const allReports = getReports();
+function checkChainageDependency(type, project, route, from, to, date, excludeId) {
+  // Guard: invalid range
+  if (to <= from) return null;
+
+  const allReports = getReports().filter(r => String(r.id) !== String(excludeId||''));
 
   // For pipe laying: check excavation covers from–to and date is valid
   if (type === 'pipe') {
@@ -1540,24 +1543,22 @@ function checkChainageDependency(type, project, route, from, to, date) {
     if (!excReports.length) {
       return {
         title: 'Excavation Not Done',
-        msg: `No excavation report found for this stretch (Ch:${from}m – Ch:${to}m) on this route. Excavation must be completed before pipe laying.`,
+        msg: `No excavation report found for Ch:${from}m – Ch:${to}m on this route. Excavation must be completed before pipe laying.`,
         prereq: 'Excavation',
         missing: `Ch:${from}–${to}m`
       };
     }
 
-    // Check if the requested range is covered by excavation reports
     const uncovered = findUncoveredRange(from, to, excReports);
     if (uncovered) {
       return {
         title: 'Excavation Not Done for This Range',
-        msg: `Pipe laying cannot be recorded for Ch:${uncovered.from}m – Ch:${uncovered.to}m. Excavation has not been done for this stretch.`,
+        msg: `Pipe laying cannot be submitted for Ch:${uncovered.from}m – Ch:${uncovered.to}m. Excavation has not been done for this stretch yet.`,
         prereq: 'Excavation',
         missing: `Ch:${uncovered.from}–${uncovered.to}m`
       };
     }
 
-    // Check date: pipe laying date must be ≥ excavation date for the overlapping range
     const latestExcDate = getLatestDateForRange(from, to, excReports);
     if (latestExcDate && date < latestExcDate) {
       return {
@@ -1580,7 +1581,7 @@ function checkChainageDependency(type, project, route, from, to, date) {
     if (!pipeReports.length) {
       return {
         title: 'Pipe Laying Not Done',
-        msg: `No pipe laying report found for this stretch (Ch:${from}m – Ch:${to}m) on this route. Pipe must be laid before refilling.`,
+        msg: `No pipe laying report found for Ch:${from}m – Ch:${to}m on this route. Pipe must be laid before refilling.`,
         prereq: 'Pipe Laying',
         missing: `Ch:${from}–${to}m`
       };
@@ -1590,7 +1591,7 @@ function checkChainageDependency(type, project, route, from, to, date) {
     if (uncovered) {
       return {
         title: 'Pipe Laying Not Done for This Range',
-        msg: `Refilling cannot be recorded for Ch:${uncovered.from}m – Ch:${uncovered.to}m. Pipe laying has not been done for this stretch.`,
+        msg: `Refilling cannot be submitted for Ch:${uncovered.from}m – Ch:${uncovered.to}m. Pipe laying has not been done for this stretch yet.`,
         prereq: 'Pipe Laying',
         missing: `Ch:${uncovered.from}–${uncovered.to}m`
       };
@@ -1611,24 +1612,27 @@ function checkChainageDependency(type, project, route, from, to, date) {
 }
 
 // Check if [from, to] is fully covered by the given reports
-// Returns the first uncovered sub-range, or null if fully covered
 function findUncoveredRange(from, to, reports) {
-  // Build sorted list of covered intervals
+  // Guard: invalid range
+  if (!from && !to) return null;
+  if (to <= from)   return null;
+
   const covered = reports
     .map(r => ({ f: parseFloat(r.from)||0, t: parseFloat(r.to)||0 }))
     .filter(r => r.t > r.f && r.f < to && r.t > from)
     .sort((a,b) => a.f - b.f);
 
+  if (!covered.length) return { from: Math.round(from), to: Math.round(to) };
+
   let cursor = from;
   for (const seg of covered) {
-    if (seg.f > cursor) {
-      // Gap found
+    if (seg.f > cursor + 0.001) { // small tolerance for float
       return { from: Math.round(cursor), to: Math.round(seg.f) };
     }
     if (seg.t > cursor) cursor = seg.t;
-    if (cursor >= to) return null; // fully covered
+    if (cursor >= to) return null;
   }
-  if (cursor < to) return { from: Math.round(cursor), to: Math.round(to) };
+  if (cursor < to - 0.001) return { from: Math.round(cursor), to: Math.round(to) };
   return null;
 }
 
@@ -1650,7 +1654,7 @@ function fmtDate(d) {
 }
 
 function showDependencyError(err) {
-  // Use the confirm modal styled as an error alert
+  const modal = document.getElementById('confirmModal');
   document.getElementById('confirmTitle').innerHTML =
     `<span style="color:var(--red)">⛔ ${err.title}</span>`;
   document.getElementById('confirmMsg').innerHTML =
@@ -1659,11 +1663,14 @@ function showDependencyError(err) {
        <div style="font-weight:700;color:var(--red);margin-bottom:4px">Prerequisite: ${err.prereq}</div>
        <div style="color:var(--muted)">Missing: ${err.missing}</div>
      </div>`;
-  // Replace buttons: only OK
-  const modal = document.getElementById('confirmModal');
-  modal.querySelector('.flex.gap-3').innerHTML =
-    `<button class="btn btn-primary flex-1" onclick="document.getElementById('confirmModal').classList.add('hidden')">OK — Go Fix It</button>`;
-  document.getElementById('confirmYesBtn')?.remove?.();
+  // Temporarily replace buttons — restore on close
+  const btnWrap = modal.querySelector('.flex.gap-3');
+  const origHTML = btnWrap.innerHTML;
+  btnWrap.innerHTML =
+    `<button class="btn btn-primary flex-1" onclick="
+      document.getElementById('confirmModal').classList.add('hidden');
+      document.getElementById('confirmModal').querySelector('.flex.gap-3').innerHTML = ${JSON.stringify(origHTML)};
+    ">OK — Got It</button>`;
   modal.classList.remove('hidden');
 }
 
@@ -1684,8 +1691,8 @@ async function submitReport(type) {
   if (type === 'pipe' || type === 'refill') {
     const from = gf('f-from');
     const to   = gf('f-to');
-    if (!from && !to) { showToast('⚠️ Enter chainage range first'); return; }
-    const err = checkChainageDependency(type, project, route, from, to, date);
+    if (to <= from) { showToast('⚠️ Enter valid chainage range (To > From)'); return; }
+    const err = checkChainageDependency(type, project, route, from, to, date, _editId);
     if (err) {
       showDependencyError(err);
       return;
@@ -2064,6 +2071,7 @@ function deleteReport(id) {
   // Check downstream dependency before confirming
   const depErr = checkDeleteDependency(r);
   if (depErr) {
+    const modal = document.getElementById('confirmModal');
     document.getElementById('confirmTitle').innerHTML =
       `<span style="color:var(--red)">⛔ ${depErr.title}</span>`;
     document.getElementById('confirmMsg').innerHTML =
@@ -2072,9 +2080,14 @@ function deleteReport(id) {
          <div style="font-weight:700;color:var(--red);margin-bottom:4px">Dependent: ${depErr.dependent}</div>
          <div style="color:var(--muted)">${depErr.hint}</div>
        </div>`;
-    document.getElementById('confirmModal').querySelector('.flex.gap-3').innerHTML =
-      `<button class="btn btn-primary flex-1" onclick="document.getElementById('confirmModal').classList.add('hidden')">OK — Understood</button>`;
-    document.getElementById('confirmModal').classList.remove('hidden');
+    const btnWrap = modal.querySelector('.flex.gap-3');
+    const origHTML = btnWrap.innerHTML;
+    btnWrap.innerHTML =
+      `<button class="btn btn-primary flex-1" onclick="
+        document.getElementById('confirmModal').classList.add('hidden');
+        document.getElementById('confirmModal').querySelector('.flex.gap-3').innerHTML = ${JSON.stringify(origHTML)};
+      ">OK — Understood</button>`;
+    modal.classList.remove('hidden');
     return;
   }
 
