@@ -286,8 +286,19 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 <script>
 // ============================================================
 // PHOENIX ERP — Clean Architecture
-// Appwrite backend, GitHub Pages frontend
 // ============================================================
+
+// Global error handler — prevent infinite loading screen
+window.onerror = function(msg, src, line, col, err) {
+  console.error('Phoenix ERP Error:', msg, 'at', src, line, col);
+  const loader = document.getElementById('loader');
+  const login  = document.getElementById('loginScreen');
+  const app    = document.getElementById('app');
+  if (loader) loader.style.display = 'none';
+  if (app && !app.classList.contains('hidden')) return false;
+  if (login) login.classList.remove('hidden');
+  return false;
+};
 
 // ── CONFIG ──────────────────────────────────────────────────
 const AW = {
@@ -2112,6 +2123,14 @@ function reportItemHTML(r, showActions=true) {
   const canEdit   = currentRole === 'admin' || currentRole === 'pm';
   const canDelete = currentRole === 'admin' || currentRole === 'pm';
 
+  // Resolve route name from ID
+  const routeName = (() => {
+    if (!r.route) return '';
+    const routes = getRoutes()[r.project] || [];
+    const rt = routes.find(x => x.id === r.route);
+    return rt ? rt.name : r.route;
+  })();
+
   let actions = '';
   if (showActions && (canEdit || canDelete)) {
     actions = `<div class="report-actions">
@@ -2120,11 +2139,17 @@ function reportItemHTML(r, showActions=true) {
     </div>`;
   }
 
+  const photoSrc = p => {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    return p.src || p.data || '';
+  };
+
   const allPhotos = [
-    ...(r.photosStart||[]).map(p=>({src:p.src||p, label:'📍 Start'})),
-    ...(r.photosEnd||[]).map(p=>({src:p.src||p, label:'🏁 End'})),
-    ...(r.photos||[]).map(p=>({src:p.src||p, label:'📷'})),
-  ];
+    ...(r.photosStart||[]).map(p=>({src:photoSrc(p), label:'📍 Start'})),
+    ...(r.photosEnd||[]).map(p=>({src:photoSrc(p), label:'🏁 End'})),
+    ...(r.photos||[]).map(p=>({src:photoSrc(p), label:'📷'})),
+  ].filter(p => p.src && p.src.startsWith('data:'));
 
   return `
     <div class="report-item">
@@ -2133,7 +2158,7 @@ function reportItemHTML(r, showActions=true) {
         <div class="report-type-label" style="color:${color}">${icon} ${label}</div>
         <div class="text-xs text-muted" style="margin-left:auto">${r.date||''}</div>
       </div>
-      <div class="report-date" style="margin-bottom:6px">by ${r.supervisorName||r.supervisor||'—'} · ${r.project||''} ${r.route ? '· '+r.route : ''}</div>
+      <div class="report-date" style="margin-bottom:6px">by ${r.supervisorName||r.supervisor||'—'} · ${r.project||''} ${routeName ? '· '+routeName : ''}</div>
       ${details ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:6px">${details}</div>` : ''}
       ${allPhotos.length ? `
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
@@ -3364,12 +3389,10 @@ async function init() {
   const oldUsers = localStorage.getItem('aquatrack_users');
   if (oldUsers && !localStorage.getItem('phx_users')) {
     const u = JSON.parse(oldUsers);
-    // Ensure admin exists
     if (!u.admin) u.admin = { role:'admin', pass:'admin', name:'Admin' };
     LS.set('phx_users', u);
   }
   ['aquatrack_projects','aquatrack_routes','aquatrack_assignments','aquatrack_specials'].forEach(k => {
-    const newKey = k.replace('aquatrack_','phx_').replace('projects','projects').replace('routes','routes').replace('assignments','assignments').replace('specials','specials');
     const newMap = {'aquatrack_projects':'phx_projects','aquatrack_routes':'phx_routes','aquatrack_assignments':'phx_assignments','aquatrack_specials':'phx_specials'};
     if (localStorage.getItem(k) && !localStorage.getItem(newMap[k])) {
       localStorage.setItem(newMap[k], localStorage.getItem(k));
@@ -3379,6 +3402,18 @@ async function init() {
   hideLoader();
   document.getElementById('loginScreen').classList.remove('hidden');
 }
+
+// Safety net: always hide loader after 1s regardless of errors
+setTimeout(() => {
+  const loader = document.getElementById('loader');
+  const login  = document.getElementById('loginScreen');
+  const app    = document.getElementById('app');
+  if (loader && loader.style.display !== 'none') {
+    loader.style.display = 'none';
+    if (app && !app.classList.contains('hidden')) return;
+    if (login) login.classList.remove('hidden');
+  }
+}, 1000);
 
 init();
 </script>
