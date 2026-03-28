@@ -2012,15 +2012,14 @@ async function submitReport(type) {
 
 // ── REPORTS TAB ───────────────────────────────────────────────
 function applyReportDateFilter() {
-  const from = document.getElementById('rpt-from')?.value || '';
-  const to   = document.getElementById('rpt-to')?.value   || '';
-  const list = document.getElementById('rpt-list');
+  const from    = document.getElementById('rpt-from')?.value || '';
+  const to      = document.getElementById('rpt-to')?.value   || '';
+  const list    = document.getElementById('rpt-list');
   const countEl = document.getElementById('rpt-count');
   if (!list) return;
   let visible = 0;
   list.querySelectorAll('.report-item').forEach(el => {
-    const dateEl = el.querySelector('.text-xs.text-muted');
-    const date = dateEl ? dateEl.textContent.trim() : '';
+    const date = el.dataset.date || '';
     const show = (!from || date >= from) && (!to || date <= to);
     el.style.display = show ? '' : 'none';
     if (show) visible++;
@@ -2422,7 +2421,7 @@ function reportItemHTML(r, showActions=true) {
   ].filter(p => p.src);
 
   return `
-    <div class="report-item">
+    <div class="report-item" data-date="${r.date||''}">
       <div class="report-item-header">
         <div class="type-dot" style="background:${color}"></div>
         <div class="report-type-label" style="color:${color}">${icon} ${label}</div>
