@@ -2070,204 +2070,216 @@ function exportToPDF() {
 
   const vp = getVisibleProjects();
   let reports = getReports().filter(r => vp.includes(r.project));
-
-  if (module !== 'all') {
-    if (module === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
-    else reports = reports.filter(r => r.module === module);
-  }
+  if (module !== 'all') reports = reports.filter(r => module === 'pipeline' ? (!r.module||r.module==='pipeline') : r.module===module);
   if (project) reports = reports.filter(r => r.project === project);
   if (from)    reports = reports.filter(r => r.date >= from);
   if (to)      reports = reports.filter(r => r.date <= to);
   reports.sort((a,b) => (a.date||'').localeCompare(b.date||''));
 
   if (!reports.length) { showToast('⚠️ No reports in selected range'); return; }
-
   closeFormModal();
-  showToast('⏳ Generating PDF…');
 
-  setTimeout(() => {
-    try {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-      const W = 210, margin = 14;
-      let y = margin;
+  const moduleLabel = module==='pipeline'?'Pipeline Work':module==='civil'?'Civil Work':'All Modules';
+  const projLabel   = project || 'All Projects';
+  const genDate     = new Date().toLocaleString('en-IN');
+  const supervisors = [...new Set(reports.map(r=>r.supervisorName||r.supervisor||'').filter(Boolean))].join(', ');
 
-      const moduleLabel = module === 'pipeline' ? 'Pipeline Work' : module === 'civil' ? 'Civil Work' : 'All Modules';
-      const projLabel   = project || 'All Projects';
+  const getRouteName = r => {
+    const routes = getRoutes()[r.project]||[];
+    const rt = routes.find(x=>x.id===r.route);
+    return rt?rt.name:'';
+  };
 
-      // ── Header ──
-      doc.setFillColor(15,15,20);
-      doc.rect(0, 0, W, 22, 'F');
-      doc.setTextColor(232,25,44);
-      doc.setFontSize(16); doc.setFont('helvetica','bold');
-      doc.text('Phoenix ERP', margin, 13);
-      doc.setTextColor(180,180,200);
-      doc.setFontSize(9); doc.setFont('helvetica','normal');
-      doc.text('Site Reporting System', margin, 19);
-      doc.setTextColor(140,140,160);
-      doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, W-margin, 19, {align:'right'});
-      y = 30;
+  const th = (bg,txt) => `<th style="padding:7px 8px;text-align:left;font-size:9.5px;font-weight:700;color:#fff;background:${bg};border:1px solid rgba(255,255,255,0.2);white-space:nowrap">${txt}</th>`;
+  const td = (val,bg) => `<td style="padding:5px 8px;border:1px solid #e8e8e8;vertical-align:middle;font-size:10px;background:${bg}">${val===null||val===undefined||val===''?'—':val}</td>`;
+  const badge = v => `<span style="display:inline-block;padding:2px 6px;border-radius:8px;font-size:8.5px;font-weight:700;background:#f1f5f9;color:#475569">${v}</span>`;
 
-      // ── Sub-header ──
-      doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(30,30,40);
-      doc.text(`${moduleLabel} Report`, margin, y);
-      doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,100,120);
-      doc.text(`Project: ${projLabel}   |   Period: ${from||'—'} to ${to||'—'}   |   Total: ${reports.length} reports`, margin, y+5);
-      y += 12;
+  // Summary stat card
+  const stat = (bg,val,lbl) => `<div style="flex:1;background:${bg};border-radius:10px;padding:12px 8px;text-align:center;color:#fff;min-width:80px"><div style="font-size:18px;font-weight:700">${val}</div><div style="font-size:10px;margin-top:2px">${lbl}</div></div>`;
 
-      // ── Color map ──
-      const typeColors = {
-        excavation:[255,159,10], pipe:[10,132,255], refill:[48,209,88],
-        valve:[255,69,58], chamber:[255,159,10], fitting:[90,200,250],
-        structure:[191,90,242], civil_dpr:[255,159,10], civil_drawing:[10,132,255],
-        civil_quality:[48,209,88], civil_material:[191,90,242],
-        civil_labour:[90,200,250], civil_other:[136,136,153]
-      };
-      const typeLabels = {
-        excavation:'Excavation', pipe:'Pipe Laying', refill:'Refilling',
-        valve:'Valve', chamber:'Chamber', fitting:'Fitting', structure:'Concrete Work',
-        civil_dpr:'DPR Entry', civil_drawing:'Drawing', civil_quality:'Quality Check',
-        civil_material:'Material', civil_labour:'Labour', civil_other:'Other'
-      };
+  // Section header
+  const secHead = (bg,icon,lbl,sub) => `<div style="background:${bg};color:#fff;padding:8px 14px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;margin-top:18px">${icon} ${lbl} <span style="font-weight:400;font-size:10px;opacity:0.85">— ${sub}</span></div>`;
 
-      // ── Per report ──
-      reports.forEach((r, idx) => {
-        const rowH = 7;
-        const blockH = estimateBlockHeight(r);
-        if (y + blockH > 280) { doc.addPage(); y = margin; }
+  // Build table for each type
+  const buildTable = (bg, rows) => `<table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:4px"><thead><tr>${rows.headers.map(h=>th(bg,h)).join('')}</tr></thead><tbody>${rows.body}</tbody></table>`;
 
-        // Type bar
-        const col = typeColors[r.type] || [136,136,153];
-        doc.setFillColor(...col);
-        doc.rect(margin, y, 3, blockH, 'F');
+  let sections = '';
 
-        // Header line
-        doc.setFontSize(10); doc.setFont('helvetica','bold');
-        doc.setTextColor(...col);
-        doc.text((typeLabels[r.type]||r.type).toUpperCase(), margin+5, y+5);
-        doc.setTextColor(80,80,100); doc.setFont('helvetica','normal'); doc.setFontSize(8);
-        doc.text(r.date||'', W-margin, y+5, {align:'right'});
-        doc.setFontSize(7.5);
-        const routeName = (() => {
-          const routes = getRoutes()[r.project]||[];
-          const rt = routes.find(x=>x.id===r.route);
-          return rt ? rt.name : '';
-        })();
-        doc.text(`${r.project||''}${routeName?' · '+routeName:''}  |  by ${r.supervisorName||r.supervisor||'—'}`, margin+5, y+10);
-
-        // Detail fields
-        let fy = y + 15;
-        const field = (lbl, val) => {
-          if (!val) return;
-          doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(120,120,140);
-          doc.text(lbl, margin+5, fy);
-          doc.setFont('helvetica','normal'); doc.setTextColor(30,30,50);
-          doc.text(String(val), margin+38, fy);
-          fy += 5;
-        };
-
-        if (r.type==='excavation') {
-          field('Chainage', `Ch:${r.from}–${r.to}m`);
-          field('Length', fmtM(r.meters));
-          field('W × D', r.width&&r.depth?`${r.width}m × ${r.depth}m`:'');
-          field('Volume', r.volume?`${parseFloat(r.volume).toFixed(2)} m³`:'');
-          field('Soil', r.soil);
-        } else if (r.type==='pipe') {
-          field('Chainage', `Ch:${r.from}–${r.to}m`);
-          field('Length', fmtM(r.meters));
-          field('Pipe Spec', r.pipeSpec);
-          (r.encasings||[]).forEach(e => field('Encasing', `${e.type} Ch:${e.from}–${e.to}m`));
-        } else if (r.type==='refill') {
-          field('Chainage', `Ch:${r.from}–${r.to}m`);
-          field('Length', fmtM(r.meters));
-          field('W × D', r.width&&r.depth?`${r.width}m × ${r.depth}m`:'');
-          field('Net Vol', r.volume?`${r.volume} m³`:'');
-          field('Road', r.road);
-        } else if (r.type==='valve') {
-          field('Chainage', `Ch:${r.chainage}m`);
-          field('Location', r.location);
-          field('Valve Type', r.valType);
-          field('Size', r.size);
-          field('Chamber Req', r.chamberReq);
-        } else if (r.type==='chamber') {
-          field('Chainage', `Ch:${r.chainage}m`);
-          field('Location', r.location);
-          field('Type', r.chamType);
-          field('L×W×H', (r.chamL||r.chamW||r.chamH)?`${r.chamL||0}×${r.chamW||0}×${r.chamH||0}mm`:'');
-          field('Slab', r.slab+(r.slab==='Precast'?' — '+r.slabStatus:''));
-        } else if (r.type==='fitting') {
-          field('Chainage', `Ch:${r.chainage}m`);
-          field('Location', r.location);
-          field('Fitting', r.fitType);
-          field('Size', r.size);
-          field('Qty', r.qty);
-          field('Thrust Blk', r.thrustBlock);
-        } else if (r.type==='structure') {
-          field('Location', r.location);
-          field('L×W×H', (r.concrL||r.concrW||r.concrH)?`${r.concrL||0}×${r.concrW||0}×${r.concrH||0}m`:'');
-          field('Net Vol', r.netVolConc?`${r.netVolConc} m³`:'');
-        } else if (r.type&&r.type.startsWith('civil_')) {
-          field('Description', (r.description||'').slice(0,60));
-          field('Location', r.location);
-          field('Status', r.status);
-        }
-        if (r.remarks) field('Remarks', r.remarks.slice(0,80));
-
-        // Photos inline
-        const allPhotos = [
-          ...(r.photosStart||[]).map(p=>({src:typeof p==='string'?p:p.src||'', label:'Start'})),
-          ...(r.photosEnd||[]).map(p=>({src:typeof p==='string'?p:p.src||'', label:'End'})),
-          ...(r.photos||[]).map(p=>({src:typeof p==='string'?p:p.src||'', label:'Photo'})),
-        ].filter(p=>p.src&&p.src.startsWith('data:'));
-
-        if (allPhotos.length) {
-          if (fy + 35 > 280) { doc.addPage(); fy = margin; }
-          let px = margin + 5;
-          allPhotos.forEach(ph => {
-            try {
-              doc.addImage(ph.src, 'JPEG', px, fy, 28, 22);
-              doc.setFontSize(6); doc.setTextColor(120,120,140);
-              doc.text(ph.label, px+14, fy+24, {align:'center'});
-              px += 32;
-            } catch(e) {}
-          });
-          fy += 28;
-        }
-
-        // Divider
-        doc.setDrawColor(220,220,230);
-        doc.line(margin, fy+2, W-margin, fy+2);
-        y = fy + 6;
+  // ── Pipeline types ──
+  if (module === 'pipeline' || module === 'all') {
+    // Excavation
+    const excR = reports.filter(r=>r.type==='excavation');
+    if (excR.length) {
+      const totalM = excR.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+      const totalV = excR.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
+      sections += secHead('#FF9F0A','⛏️','Excavation',`${excR.length} records | Total: ${fmtM(totalM)} | Vol: ${totalV.toFixed(2)} cum`);
+      sections += buildTable('#FF9F0A', {
+        headers:['#','Date','Chainage (From–To)','Length','Qty (cum)','Width (m)','Depth (m)','Soil Type','Route','Supervisor/Eng.'],
+        body: excR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`${r.from}m – ${r.to}m`,bg)}${td(fmtM(r.meters),bg)}${td(parseFloat(r.volume||0).toFixed(2),bg)}${td(r.width,bg)}${td(r.depth,bg)}${td(r.soil,bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
       });
-
-      // Footer on each page
-      const pageCount = doc.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(7); doc.setTextColor(160,160,180);
-        doc.text(`Phoenix ERP — ${moduleLabel} — ${projLabel}`, margin, 292);
-        doc.text(`Page ${i} of ${pageCount}`, W-margin, 292, {align:'right'});
-      }
-
-      const filename = `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from}_${to}.pdf`;
-      doc.save(filename);
-      showToast('✅ PDF downloaded');
-    } catch(e) {
-      console.error(e);
-      showToast('❌ PDF generation failed: ' + e.message);
     }
-  }, 100);
-}
 
-function estimateBlockHeight(r) {
-  let fields = 3; // header + sub-header + gap
-  if (['excavation','pipe','refill'].includes(r.type)) fields += 5;
-  else if (['valve','chamber','fitting'].includes(r.type)) fields += 5;
-  else if (r.type === 'structure') fields += 3;
-  else fields += 3;
-  if (r.remarks) fields += 1;
-  const photoRows = Math.ceil(((r.photosStart||[]).length+(r.photosEnd||[]).length+(r.photos||[]).length)/3);
-  return fields * 5 + photoRows * 30 + 10;
+    // Pipe Laying
+    const pipeR = reports.filter(r=>r.type==='pipe');
+    if (pipeR.length) {
+      const totalM = pipeR.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+      sections += secHead('#0A84FF','🔩','Pipe Laying',`${pipeR.length} records | Total: ${fmtM(totalM)}`);
+      sections += buildTable('#0A84FF', {
+        headers:['#','Date','Chainage (From–To)','Length','Pipe Spec','CC/RCC Encasing','Encasing Chainage','Route','Supervisor/Eng.'],
+        body: pipeR.map((r,i)=>{
+          const bg=i%2?'#f8f9fc':'#fff';
+          const encList=(r.encasings||[]).length?r.encasings.map(e=>`${e.type} Ch:${e.from}–${e.to}m`).join(', '):(r.encasing&&r.encasing!=='Not Required'?r.encasing:'Not Required');
+          const encCh=(r.encasings||[]).length?r.encasings.map(e=>`${e.from}–${e.to}m`).join(', '):(r.encasingFrom?`${r.encasingFrom}–${r.encasingTo}m`:'');
+          return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`${r.from}m – ${r.to}m`,bg)}${td(fmtM(r.meters),bg)}${td(r.pipeSpec||r.size||'',bg)}${td(badge(encList),bg)}${td(encCh||'—',bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
+      });
+    }
+
+    // Refilling
+    const refR = reports.filter(r=>r.type==='refill');
+    if (refR.length) {
+      const totalM = refR.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+      const totalNet = refR.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
+      sections += secHead('#30D158','🪣','Refilling',`${refR.length} records | Total: ${fmtM(totalM)} | Net: ${totalNet.toFixed(2)} cum`);
+      sections += buildTable('#30D158', {
+        headers:['#','Date','Chainage (From–To)','Length','Trench Vol (cum)','Net Qty (cum)','Width (m)','Depth (m)','Road Restoration','Route','Supervisor/Eng.'],
+        body: refR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`${r.from}m – ${r.to}m`,bg)}${td(fmtM(r.meters),bg)}${td(parseFloat(r.trenchVol||0).toFixed(3),bg)}${td(parseFloat(r.volume||0).toFixed(3),bg)}${td(r.width,bg)}${td(r.depth,bg)}${td(r.road,bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
+      });
+    }
+
+    // Valves
+    const valR = reports.filter(r=>r.type==='valve');
+    if (valR.length) {
+      sections += secHead('#FF453A','🔧','Valves',`${valR.length} records`);
+      sections += buildTable('#FF453A', {
+        headers:['#','Date','Chainage','Location','Valve Type','Size','Chamber Req','Route','Supervisor/Eng.'],
+        body: valR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`Ch:${r.chainage}m`,bg)}${td(r.location,bg)}${td(r.valType,bg)}${td(r.size,bg)}${td(badge(r.chamberReq||'No'),bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
+      });
+    }
+
+    // Chambers
+    const chamR = reports.filter(r=>r.type==='chamber');
+    if (chamR.length) {
+      sections += secHead('#FF9500','🏛️','Chambers',`${chamR.length} records`);
+      sections += buildTable('#FF9500', {
+        headers:['#','Date','Chainage','Location','Type','L×W×H (mm)','Slab','Slab Status','Route','Supervisor/Eng.'],
+        body: chamR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`Ch:${r.chainage}m`,bg)}${td(r.location,bg)}${td(r.chamType,bg)}${td((r.chamL||r.chamW||r.chamH)?`${r.chamL||0}×${r.chamW||0}×${r.chamH||0}`:'',bg)}${td(r.slab,bg)}${td(r.slab==='Precast'?r.slabStatus:'',bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
+      });
+    }
+
+    // Fittings
+    const fitR = reports.filter(r=>r.type==='fitting');
+    if (fitR.length) {
+      sections += secHead('#5AC8FA','🔗','Fittings',`${fitR.length} records`);
+      sections += buildTable('#5AC8FA', {
+        headers:['#','Date','Chainage','Location','Fitting Type','Size','Qty','Thrust Block','Route','Supervisor/Eng.'],
+        body: fitR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`Ch:${r.chainage}m`,bg)}${td(r.location,bg)}${td(r.fitType,bg)}${td(r.size,bg)}${td(r.qty,bg)}${td(badge(r.thrustBlock||'No'),bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
+      });
+    }
+
+    // Concrete
+    const strR = reports.filter(r=>r.type==='structure');
+    if (strR.length) {
+      sections += secHead('#BF5AF2','🏗️','Concrete Work',`${strR.length} records`);
+      sections += buildTable('#BF5AF2', {
+        headers:['#','Date','Location','L×W×H (m)','Total Vol (m³)','Pipe Vol (m³)','Net Vol (m³)','Route','Supervisor/Eng.'],
+        body: strR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(r.location,bg)}${td((r.concrL||r.concrW||r.concrH)?`${r.concrL||0}×${r.concrW||0}×${r.concrH||0}`:'',bg)}${td(r.totalVol,bg)}${td(r.pipeVolConc||'—',bg)}${td(r.netVolConc,bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
+      });
+    }
+  }
+
+  // ── Civil types ──
+  if (module === 'civil' || module === 'all') {
+    const civilTypes = [
+      {type:'civil_dpr',   bg:'#FF9F0A', icon:'📄', label:'DPR Entry'},
+      {type:'civil_drawing',bg:'#0A84FF',icon:'📐', label:'Drawing'},
+      {type:'civil_quality',bg:'#30D158',icon:'✅', label:'Quality Check'},
+      {type:'civil_material',bg:'#BF5AF2',icon:'📦',label:'Material'},
+      {type:'civil_labour', bg:'#5AC8FA',icon:'👷',label:'Labour'},
+      {type:'civil_other',  bg:'#888899',icon:'📝',label:'Other'},
+    ];
+    civilTypes.forEach(({type,bg,icon,label})=>{
+      const recs = reports.filter(r=>r.type===type);
+      if (!recs.length) return;
+      sections += secHead(bg,icon,label,`${recs.length} records`);
+      sections += buildTable(bg, {
+        headers:['#','Date','Description','Location','Status','Project','Supervisor/Eng.'],
+        body: recs.map((r,i)=>{const row=i%2?'#f8f9fc':'#fff';return`<tr style="background:${row}">${td(i+1,row)}${td(r.date,row)}${td(r.description,row)}${td(r.location,row)}${td(r.status,row)}${td(r.project,row)}${td(r.supervisorName||r.supervisor,row)}</tr>`;}).join('')
+      });
+    });
+  }
+
+  // Summary stats
+  const excM  = reports.filter(r=>r.type==='excavation').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+  const pipeM = reports.filter(r=>r.type==='pipe').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+  const refM  = reports.filter(r=>r.type==='refill').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+  const valC  = reports.filter(r=>r.type==='valve').length;
+  const chamC = reports.filter(r=>r.type==='chamber').length;
+  const strC  = reports.filter(r=>r.type==='structure').length;
+  const fitC  = reports.filter(r=>r.type==='fitting').length;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>${moduleLabel} Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Noto Serif',Cambria,Georgia,serif; background:#f0f2f5; color:#1a1a2e; }
+    .page { max-width:960px; margin:0 auto; background:#fff; }
+    table { border-collapse:collapse; }
+    @media print { body{background:#fff;} .no-print{display:none;} }
+    .no-print { padding:16px; text-align:center; background:#f0f2f5; }
+    .no-print button { padding:10px 24px; background:#0A84FF; color:#fff; border:none; border-radius:8px; font-size:14px; cursor:pointer; margin:4px; }
+    .no-print button.sec { background:#666; }
+  </style>
+  </head><body>
+  <div class="no-print">
+    <button onclick="window.print()">🖨️ Print / Save as PDF</button>
+    <button class="sec" onclick="window.close()">✕ Close</button>
+  </div>
+  <div class="page">
+    <div style="background:#1e1e28;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <div>
+        <div style="color:#E8192C;font-size:18px;font-weight:700">Phoenix ERP</div>
+        <div style="color:#aaa;font-size:11px">${moduleLabel}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="color:#fff;font-size:14px;font-weight:700">Project Report</div>
+        <div style="color:#aaa;font-size:11px">${projLabel} | Generated: ${genDate}</div>
+      </div>
+    </div>
+    <div style="padding:0 20px 20px">
+      <div style="color:#888;font-size:11px;margin-bottom:14px;border-bottom:1px solid #eee;padding-bottom:10px">
+        Period: ${from||'All'} to ${to||'All'} | Total: ${reports.length} reports | Supervisor(s): ${supervisors}
+      </div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px">
+        ${stat('#FF9F0A',fmtM(excM),'Excavation')}
+        ${stat('#0A84FF',fmtM(pipeM),'Pipe Laying')}
+        ${stat('#30D158',fmtM(refM),'Refilling')}
+        ${stat('#FF453A',valC,'Valves')}
+        ${stat('#FF9500',chamC,'Chambers')}
+        ${stat('#BF5AF2',strC,'Concrete')}
+        ${stat('#5AC8FA',fitC,'Fittings')}
+      </div>
+      ${sections}
+    </div>
+  </div>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+  } else {
+    // Popup blocked — download as HTML file
+    const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from||'all'}_${to||'all'}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('✅ Report downloaded as HTML — open and print to PDF');
+  }
 }
 
 function renderReportsTab() {
