@@ -1007,12 +1007,15 @@ function buildTypeFields(type, p={}) {
 
   // ── 2. PIPE LAYING ─────────────────────────────────────────
   if (type === 'pipe') {
-    // Get current route's pipe spec for prefill display
     const proj = document.getElementById('f-project')?.value || '';
     const routeId = p.route || '';
     const routeList = getRoutes()[proj] || [];
     const matchedRoute = routeList.find(r => r.id === routeId);
-    const pipeSpec = matchedRoute?.pipe || p.pipeSpec || '';
+    // Build pipes list from route (new multi-pipe or legacy single)
+    const routePipes = matchedRoute?.pipes?.length
+      ? matchedRoute.pipes.map(p => `${p.dia} ${p.material}`)
+      : matchedRoute?.pipe ? [matchedRoute.pipe] : [];
+    const pipeSpec = p.pipeSpec || (routePipes[0] || '');
 
     html += `
       <div style="background:rgba(10,132,255,0.06);border:1px solid rgba(10,132,255,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
@@ -1024,10 +1027,16 @@ function buildTypeFields(type, p={}) {
         <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔩 Pipe Specification (from Route)</div>
-        <div id="f-pipespec-display" style="padding:11px 14px;border-radius:10px;border:1px solid ${pipeSpec ? 'rgba(10,132,255,0.4)' : 'var(--border)'};background:${pipeSpec ? 'rgba(10,132,255,0.08)' : 'var(--surface2)'};font-size:13px;font-weight:${pipeSpec ? '700' : '400'};color:${pipeSpec ? 'var(--blue)' : 'var(--muted)'};margin-bottom:0">
-          ${pipeSpec ? '🔩 ' + pipeSpec : '⚠️ No pipe spec set for this route — add in Settings → Projects → Routes'}
-        </div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔩 Pipe Specification</div>
+        ${routePipes.length > 1 ? `
+          <div class="field-group"><label>Select Pipe Spec <span class="req">*</span></label>
+            <select id="f-pipespec-display" onchange="document.getElementById('f-pipeSpec').value=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid rgba(10,132,255,0.4);background:rgba(10,132,255,0.08);color:var(--blue);font-family:inherit;font-size:13px;font-weight:700">
+              ${routePipes.map(s=>`<option value="${s}"${pipeSpec===s?' selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>` : `
+          <div id="f-pipespec-display" style="padding:11px 14px;border-radius:10px;border:1px solid ${routePipes.length?'rgba(10,132,255,0.4)':'var(--border)'};background:${routePipes.length?'rgba(10,132,255,0.08)':'var(--surface2)'};font-size:13px;font-weight:${routePipes.length?'700':'400'};color:${routePipes.length?'var(--blue)':'var(--muted)'};margin-bottom:0">
+            ${routePipes.length ? '🔩 ' + routePipes[0] : '⚠️ No pipe spec — add in Settings → Projects → Routes'}
+          </div>`}
         <input type="hidden" id="f-pipeSpec" value="${pipeSpec}">
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
@@ -1555,20 +1564,33 @@ function updatePipeSpecDisplay() {
   if (!display) return;
   const routes = getRoutes()[proj] || [];
   const rt = routes.find(r => r.id === routeId);
-  const spec = rt?.pipe || '';
-  hidden && (hidden.value = spec);
-  if (spec) {
-    display.style.borderColor = 'rgba(10,132,255,0.4)';
-    display.style.background  = 'rgba(10,132,255,0.08)';
-    display.style.color       = 'var(--blue)';
-    display.style.fontWeight  = '700';
-    display.textContent       = '🔩 ' + spec;
+  const pipesArr = rt?.pipes?.length
+    ? rt.pipes.map(p => `${p.dia} ${p.material}`)
+    : rt?.pipe ? [rt.pipe] : [];
+
+  if (display.tagName === 'SELECT') {
+    // It's a dropdown — rebuild options
+    display.innerHTML = pipesArr.length
+      ? pipesArr.map(s=>`<option value="${s}">${s}</option>`).join('')
+      : '<option value="">⚠️ No pipe spec — add in Settings</option>';
+    if (hidden) hidden.value = pipesArr[0] || '';
   } else {
-    display.style.borderColor = 'var(--border)';
-    display.style.background  = 'var(--surface2)';
-    display.style.color       = 'var(--muted)';
-    display.style.fontWeight  = '400';
-    display.textContent       = '⚠️ No pipe spec set for this route — add in Settings → Projects → Routes';
+    // Single display div
+    const spec = pipesArr[0] || '';
+    if (hidden) hidden.value = spec;
+    if (spec) {
+      display.style.borderColor = 'rgba(10,132,255,0.4)';
+      display.style.background  = 'rgba(10,132,255,0.08)';
+      display.style.color       = 'var(--blue)';
+      display.style.fontWeight  = '700';
+      display.textContent       = '🔩 ' + spec;
+    } else {
+      display.style.borderColor = 'var(--border)';
+      display.style.background  = 'var(--surface2)';
+      display.style.color       = 'var(--muted)';
+      display.style.fontWeight  = '400';
+      display.textContent       = '⚠️ No pipe spec set for this route — add in Settings → Projects → Routes';
+    }
   }
 }
 
@@ -3152,34 +3174,76 @@ function manageRoutes(proj) {
       <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
     </div>
     ${routes.map((rt,i) => `
-      <div class="card mb-2 flex justify-between items-center">
-        <div>
-          <div class="font-bold" style="font-size:13px">${rt.name}</div>
-          <div class="text-xs text-muted">${rt.pipe||'—'} · ${fmtM(rt.length)}</div>
+      <div class="card mb-2">
+        <div class="flex justify-between items-center">
+          <div>
+            <div class="font-bold" style="font-size:13px">${rt.name}</div>
+            <div class="text-xs text-muted">${fmtM(rt.length)}</div>
+            ${(rt.pipes||[rt.pipe]).filter(Boolean).map(p=>
+              `<div style="font-size:11px;color:var(--blue);margin-top:2px">🔩 ${typeof p==='string'?p:(p.dia||'')+(p.material?' — '+p.material:'')}</div>`
+            ).join('')}
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="deleteRoute('${proj}',${i})">✕</button>
         </div>
-        <button class="btn btn-danger btn-sm" onclick="deleteRoute('${proj}',${i})">✕</button>
       </div>`).join('')}
     ${!routes.length ? '<div class="text-sm text-muted mb-3">No routes yet.</div>' : ''}
     <div class="divider"></div>
     <div class="card-title">+ Add Route</div>
     <div class="field-group"><label>Route Name</label><input type="text" id="rt-name" placeholder="e.g. WTP to ESR"></div>
-    <div class="form-row">
-      <div class="field-group"><label>Length (m)</label><input type="number" id="rt-len" placeholder="e.g. 6898"></div>
-      <div class="field-group"><label>Pipe Spec</label><input type="text" id="rt-pipe" placeholder="e.g. 600mm DI"></div>
-    </div>
+    <div class="field-group"><label>Total Length (m)</label><input type="number" id="rt-len" placeholder="e.g. 6898"></div>
+    <div class="card-title mt-3" style="font-size:12px">Pipe Specifications</div>
+    <div id="rt-pipes-list"></div>
+    <button class="btn btn-ghost btn-sm w-full mb-3" onclick="addRoutePipeRow()">+ Add Pipe Spec</button>
     <button class="btn btn-primary w-full" onclick="addRoute('${proj}')">Add Route</button>`;
   document.getElementById('formModalContent').innerHTML = html;
   document.getElementById('formModal').classList.remove('hidden');
+  // Add first pipe row by default
+  addRoutePipeRow();
+}
+
+function addRoutePipeRow() {
+  const list = document.getElementById('rt-pipes-list');
+  if (!list) return;
+  const i = Date.now();
+  const div = document.createElement('div');
+  div.className = 'flex items-center gap-2 mb-2';
+  div.id = 'rt-pipe-row-' + i;
+  div.innerHTML = `
+    <input type="text" id="rt-dia-${i}" placeholder="Dia (e.g. 600mm)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+    <select id="rt-mat-${i}" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+      <option>DI (Ductile Iron)</option>
+      <option>MS (Mild Steel)</option>
+      <option>HDPE</option>
+      <option>PVC</option>
+      <option>CI (Cast Iron)</option>
+      <option>PSC</option>
+      <option>RCC</option>
+      <option>Other</option>
+    </select>
+    <button class="btn btn-danger btn-sm" onclick="this.closest('[id^=rt-pipe-row]').remove()" style="padding:6px 10px">✕</button>`;
+  list.appendChild(div);
 }
 
 function addRoute(proj) {
   const name = document.getElementById('rt-name').value.trim();
   const len  = parseFloat(document.getElementById('rt-len').value) || 0;
-  const pipe = document.getElementById('rt-pipe').value.trim();
   if (!name || !len) { showToast('Enter route name and length'); return; }
+
+  // Collect all pipe spec rows
+  const list = document.getElementById('rt-pipes-list');
+  const pipes = list ? Array.from(list.querySelectorAll('[id^="rt-pipe-row-"]')).map(row => {
+    const idx = row.id.replace('rt-pipe-row-','');
+    const dia = document.getElementById('rt-dia-'+idx)?.value.trim() || '';
+    const mat = document.getElementById('rt-mat-'+idx)?.value || '';
+    return dia ? { dia, material: mat } : null;
+  }).filter(Boolean) : [];
+
+  // Backward-compatible: also set pipe as first spec string
+  const pipe = pipes.length ? `${pipes[0].dia} ${pipes[0].material}` : '';
+
   const routes = getRoutes();
   if (!routes[proj]) routes[proj] = [];
-  routes[proj].push({ id: 'R' + Date.now(), name, length: len, pipe });
+  routes[proj].push({ id: 'R' + Date.now(), name, length: len, pipe, pipes });
   saveRoutes(routes);
   pushConfig();
   manageRoutes(proj);
