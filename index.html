@@ -1584,7 +1584,7 @@ function addExcavPhotoPreview(src, zone) {
   if (prev.querySelectorAll('.photo-thumb').length >= 1) { showToast('Max 1 photo per zone'); return; }
   const wrap = document.createElement('div');
   wrap.className = 'photo-thumb';
-  wrap.innerHTML = `<img src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
+  wrap.innerHTML = `<img src="${src}" data-src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
   prev.appendChild(wrap);
 }
 
@@ -1675,21 +1675,21 @@ function addPhotoPreview(src) {
   if (prev.querySelectorAll('.photo-thumb').length >= 1) { showToast('Max 1 photo allowed'); return; }
   const wrap = document.createElement('div');
   wrap.className = 'photo-thumb';
-  wrap.innerHTML = `<img src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
+  wrap.innerHTML = `<img src="${src}" data-src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
   prev.appendChild(wrap);
 }
 
 function getFormPhotos() {
   const prev = document.getElementById('f-photo-prev');
   if (!prev) return [];
-  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.src }));
+  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.dataset.src || img.src })).filter(p => p.src.startsWith('data:'));
 }
 
 function getExcavPhotos(zone) {
   const prevId = zone === 'start' ? 'f-photo-prev-start' : 'f-photo-prev-end';
   const prev = document.getElementById(prevId);
   if (!prev) return [];
-  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.src }));
+  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.dataset.src || img.src })).filter(p => p.src.startsWith('data:'));
 }
 
 // ── DEPENDENCY VALIDATION ─────────────────────────────────────
@@ -3467,14 +3467,43 @@ function renderSpecialsList() {
     const color= pct>=100?'var(--red)':pct>=75?'var(--orange)':'var(--green)';
     return `
       <div class="card mb-2">
-        <div class="flex justify-between items-center">
+        <div class="flex justify-between items-center mb-1">
           <div class="font-bold" style="font-size:13px">⭐ ${s.name}</div>
           <button class="btn btn-danger btn-sm" onclick="deleteSpecial(${i})">✕</button>
         </div>
-        <div class="text-xs text-muted mt-1">Total: ${s.total} · Used: ${used} · Left: <span style="color:${color};font-weight:700">${left}</span></div>
-        <div class="progress-bar mt-1"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+        <div class="text-xs text-muted mb-1">Total: <strong>${s.total}</strong> · Used: <strong>${used}</strong> · Left: <span style="color:${color};font-weight:700">${left}</span></div>
+        <div class="progress-bar mb-2"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+        <div class="flex items-center gap-2">
+          <input type="number" id="sp-add-${i}" placeholder="Add qty" min="1" style="width:90px;padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+          <button class="btn btn-primary btn-sm" onclick="addSpecialQty(${i})">+ Add Qty</button>
+          <button class="btn btn-ghost btn-sm" onclick="editSpecialTotal(${i},${s.total})">✏️ Set Total</button>
+        </div>
       </div>`;
   }).join('');
+}
+
+function addSpecialQty(idx) {
+  const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
+  const qty  = parseInt(document.getElementById('sp-add-' + idx)?.value) || 0;
+  if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
+  const specials = getSpecials();
+  specials[proj][idx].total = (specials[proj][idx].total || 0) + qty;
+  saveSpecials(specials);
+  pushConfig();
+  renderSpecialsList();
+  showToast(`✅ Added ${qty} nos`);
+}
+
+function editSpecialTotal(idx, currentTotal) {
+  const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
+  const newTotal = parseInt(prompt(`Set new total for this special (current: ${currentTotal}):`, currentTotal));
+  if (isNaN(newTotal) || newTotal < 0) return;
+  const specials = getSpecials();
+  specials[proj][idx].total = newTotal;
+  saveSpecials(specials);
+  pushConfig();
+  renderSpecialsList();
+  showToast('✅ Total updated');
 }
 
 function addSpecial() {
