@@ -8,6 +8,8 @@
 <title>Phoenix ERP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root {
   --bg: #0f0f14;
@@ -2009,6 +2011,265 @@ async function submitReport(type) {
 }
 
 // ── REPORTS TAB ───────────────────────────────────────────────
+function applyReportDateFilter() {
+  const from = document.getElementById('rpt-from')?.value || '';
+  const to   = document.getElementById('rpt-to')?.value   || '';
+  const list = document.getElementById('rpt-list');
+  const countEl = document.getElementById('rpt-count');
+  if (!list) return;
+  let visible = 0;
+  list.querySelectorAll('.report-item').forEach(el => {
+    const dateEl = el.querySelector('.text-xs.text-muted');
+    const date = dateEl ? dateEl.textContent.trim() : '';
+    const show = (!from || date >= from) && (!to || date <= to);
+    el.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  if (countEl) countEl.textContent = visible + ' shown';
+}
+
+function openExportModal() {
+  const today    = new Date().toISOString().slice(0,10);
+  const monthAgo = new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
+  const vp = getVisibleProjects();
+  const html = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">📄 Export PDF</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Module</label>
+      <select id="exp-module">
+        <option value="pipeline">🔩 Pipeline Work</option>
+        <option value="civil">🏗️ Civil Work</option>
+        <option value="all">All Modules</option>
+      </select>
+    </div>
+    <div class="field-group"><label>Project</label>
+      <select id="exp-project">
+        <option value="">All Projects</option>
+        ${vp.map(p=>`<option>${p}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>From Date</label><input type="date" id="exp-from" value="${monthAgo}"></div>
+      <div class="field-group"><label>To Date</label><input type="date" id="exp-to" value="${today}"></div>
+    </div>
+    <div class="flex gap-3 mt-2">
+      <button class="btn btn-secondary flex-1" onclick="closeFormModal()">Cancel</button>
+      <button class="btn btn-primary flex-1" onclick="exportToPDF()">📥 Download PDF</button>
+    </div>`;
+  document.getElementById('formModalContent').innerHTML = html;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function exportToPDF() {
+  const module  = document.getElementById('exp-module')?.value || 'pipeline';
+  const project = document.getElementById('exp-project')?.value || '';
+  const from    = document.getElementById('exp-from')?.value   || '';
+  const to      = document.getElementById('exp-to')?.value     || '';
+
+  const vp = getVisibleProjects();
+  let reports = getReports().filter(r => vp.includes(r.project));
+
+  if (module !== 'all') {
+    if (module === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
+    else reports = reports.filter(r => r.module === module);
+  }
+  if (project) reports = reports.filter(r => r.project === project);
+  if (from)    reports = reports.filter(r => r.date >= from);
+  if (to)      reports = reports.filter(r => r.date <= to);
+  reports.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+
+  if (!reports.length) { showToast('⚠️ No reports in selected range'); return; }
+
+  closeFormModal();
+  showToast('⏳ Generating PDF…');
+
+  setTimeout(() => {
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+      const W = 210, margin = 14;
+      let y = margin;
+
+      const moduleLabel = module === 'pipeline' ? 'Pipeline Work' : module === 'civil' ? 'Civil Work' : 'All Modules';
+      const projLabel   = project || 'All Projects';
+
+      // ── Header ──
+      doc.setFillColor(15,15,20);
+      doc.rect(0, 0, W, 22, 'F');
+      doc.setTextColor(232,25,44);
+      doc.setFontSize(16); doc.setFont('helvetica','bold');
+      doc.text('Phoenix ERP', margin, 13);
+      doc.setTextColor(180,180,200);
+      doc.setFontSize(9); doc.setFont('helvetica','normal');
+      doc.text('Site Reporting System', margin, 19);
+      doc.setTextColor(140,140,160);
+      doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, W-margin, 19, {align:'right'});
+      y = 30;
+
+      // ── Sub-header ──
+      doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(30,30,40);
+      doc.text(`${moduleLabel} Report`, margin, y);
+      doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,100,120);
+      doc.text(`Project: ${projLabel}   |   Period: ${from||'—'} to ${to||'—'}   |   Total: ${reports.length} reports`, margin, y+5);
+      y += 12;
+
+      // ── Color map ──
+      const typeColors = {
+        excavation:[255,159,10], pipe:[10,132,255], refill:[48,209,88],
+        valve:[255,69,58], chamber:[255,159,10], fitting:[90,200,250],
+        structure:[191,90,242], civil_dpr:[255,159,10], civil_drawing:[10,132,255],
+        civil_quality:[48,209,88], civil_material:[191,90,242],
+        civil_labour:[90,200,250], civil_other:[136,136,153]
+      };
+      const typeLabels = {
+        excavation:'Excavation', pipe:'Pipe Laying', refill:'Refilling',
+        valve:'Valve', chamber:'Chamber', fitting:'Fitting', structure:'Concrete Work',
+        civil_dpr:'DPR Entry', civil_drawing:'Drawing', civil_quality:'Quality Check',
+        civil_material:'Material', civil_labour:'Labour', civil_other:'Other'
+      };
+
+      // ── Per report ──
+      reports.forEach((r, idx) => {
+        const rowH = 7;
+        const blockH = estimateBlockHeight(r);
+        if (y + blockH > 280) { doc.addPage(); y = margin; }
+
+        // Type bar
+        const col = typeColors[r.type] || [136,136,153];
+        doc.setFillColor(...col);
+        doc.rect(margin, y, 3, blockH, 'F');
+
+        // Header line
+        doc.setFontSize(10); doc.setFont('helvetica','bold');
+        doc.setTextColor(...col);
+        doc.text((typeLabels[r.type]||r.type).toUpperCase(), margin+5, y+5);
+        doc.setTextColor(80,80,100); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+        doc.text(r.date||'', W-margin, y+5, {align:'right'});
+        doc.setFontSize(7.5);
+        const routeName = (() => {
+          const routes = getRoutes()[r.project]||[];
+          const rt = routes.find(x=>x.id===r.route);
+          return rt ? rt.name : '';
+        })();
+        doc.text(`${r.project||''}${routeName?' · '+routeName:''}  |  by ${r.supervisorName||r.supervisor||'—'}`, margin+5, y+10);
+
+        // Detail fields
+        let fy = y + 15;
+        const field = (lbl, val) => {
+          if (!val) return;
+          doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(120,120,140);
+          doc.text(lbl, margin+5, fy);
+          doc.setFont('helvetica','normal'); doc.setTextColor(30,30,50);
+          doc.text(String(val), margin+38, fy);
+          fy += 5;
+        };
+
+        if (r.type==='excavation') {
+          field('Chainage', `Ch:${r.from}–${r.to}m`);
+          field('Length', fmtM(r.meters));
+          field('W × D', r.width&&r.depth?`${r.width}m × ${r.depth}m`:'');
+          field('Volume', r.volume?`${parseFloat(r.volume).toFixed(2)} m³`:'');
+          field('Soil', r.soil);
+        } else if (r.type==='pipe') {
+          field('Chainage', `Ch:${r.from}–${r.to}m`);
+          field('Length', fmtM(r.meters));
+          field('Pipe Spec', r.pipeSpec);
+          (r.encasings||[]).forEach(e => field('Encasing', `${e.type} Ch:${e.from}–${e.to}m`));
+        } else if (r.type==='refill') {
+          field('Chainage', `Ch:${r.from}–${r.to}m`);
+          field('Length', fmtM(r.meters));
+          field('W × D', r.width&&r.depth?`${r.width}m × ${r.depth}m`:'');
+          field('Net Vol', r.volume?`${r.volume} m³`:'');
+          field('Road', r.road);
+        } else if (r.type==='valve') {
+          field('Chainage', `Ch:${r.chainage}m`);
+          field('Location', r.location);
+          field('Valve Type', r.valType);
+          field('Size', r.size);
+          field('Chamber Req', r.chamberReq);
+        } else if (r.type==='chamber') {
+          field('Chainage', `Ch:${r.chainage}m`);
+          field('Location', r.location);
+          field('Type', r.chamType);
+          field('L×W×H', (r.chamL||r.chamW||r.chamH)?`${r.chamL||0}×${r.chamW||0}×${r.chamH||0}mm`:'');
+          field('Slab', r.slab+(r.slab==='Precast'?' — '+r.slabStatus:''));
+        } else if (r.type==='fitting') {
+          field('Chainage', `Ch:${r.chainage}m`);
+          field('Location', r.location);
+          field('Fitting', r.fitType);
+          field('Size', r.size);
+          field('Qty', r.qty);
+          field('Thrust Blk', r.thrustBlock);
+        } else if (r.type==='structure') {
+          field('Location', r.location);
+          field('L×W×H', (r.concrL||r.concrW||r.concrH)?`${r.concrL||0}×${r.concrW||0}×${r.concrH||0}m`:'');
+          field('Net Vol', r.netVolConc?`${r.netVolConc} m³`:'');
+        } else if (r.type&&r.type.startsWith('civil_')) {
+          field('Description', (r.description||'').slice(0,60));
+          field('Location', r.location);
+          field('Status', r.status);
+        }
+        if (r.remarks) field('Remarks', r.remarks.slice(0,80));
+
+        // Photos inline
+        const allPhotos = [
+          ...(r.photosStart||[]).map(p=>({src:typeof p==='string'?p:p.src||'', label:'Start'})),
+          ...(r.photosEnd||[]).map(p=>({src:typeof p==='string'?p:p.src||'', label:'End'})),
+          ...(r.photos||[]).map(p=>({src:typeof p==='string'?p:p.src||'', label:'Photo'})),
+        ].filter(p=>p.src&&p.src.startsWith('data:'));
+
+        if (allPhotos.length) {
+          if (fy + 35 > 280) { doc.addPage(); fy = margin; }
+          let px = margin + 5;
+          allPhotos.forEach(ph => {
+            try {
+              doc.addImage(ph.src, 'JPEG', px, fy, 28, 22);
+              doc.setFontSize(6); doc.setTextColor(120,120,140);
+              doc.text(ph.label, px+14, fy+24, {align:'center'});
+              px += 32;
+            } catch(e) {}
+          });
+          fy += 28;
+        }
+
+        // Divider
+        doc.setDrawColor(220,220,230);
+        doc.line(margin, fy+2, W-margin, fy+2);
+        y = fy + 6;
+      });
+
+      // Footer on each page
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7); doc.setTextColor(160,160,180);
+        doc.text(`Phoenix ERP — ${moduleLabel} — ${projLabel}`, margin, 292);
+        doc.text(`Page ${i} of ${pageCount}`, W-margin, 292, {align:'right'});
+      }
+
+      const filename = `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from}_${to}.pdf`;
+      doc.save(filename);
+      showToast('✅ PDF downloaded');
+    } catch(e) {
+      console.error(e);
+      showToast('❌ PDF generation failed: ' + e.message);
+    }
+  }, 100);
+}
+
+function estimateBlockHeight(r) {
+  let fields = 3; // header + sub-header + gap
+  if (['excavation','pipe','refill'].includes(r.type)) fields += 5;
+  else if (['valve','chamber','fitting'].includes(r.type)) fields += 5;
+  else if (r.type === 'structure') fields += 3;
+  else fields += 3;
+  if (r.remarks) fields += 1;
+  const photoRows = Math.ceil(((r.photosStart||[]).length+(r.photosEnd||[]).length+(r.photos||[]).length)/3);
+  return fields * 5 + photoRows * 30 + 10;
+}
+
 function renderReportsTab() {
   const vp = getVisibleProjects();
   let reports = getReports().filter(r => vp.includes(r.project));
@@ -2019,10 +2280,20 @@ function renderReportsTab() {
 
   reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
+  const today = new Date().toISOString().slice(0,10);
+  const monthAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
+
   let html = `
     <div class="section-header">
       <div class="section-title">All Reports</div>
-      <div class="chip active">${reports.length} total</div>
+      <button class="btn btn-primary btn-sm" onclick="openExportModal()">📄 Export PDF</button>
+    </div>
+    <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Filter</div>
+      <input type="date" id="rpt-from" value="${monthAgo}" max="${today}" onchange="applyReportDateFilter()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px">
+      <div style="font-size:11px;color:var(--muted)">to</div>
+      <input type="date" id="rpt-to" value="${today}" max="${today}" onchange="applyReportDateFilter()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px">
+      <div class="chip active" id="rpt-count">${reports.length} total</div>
     </div>`;
 
   // Project filter
@@ -2037,7 +2308,12 @@ function renderReportsTab() {
     return html + `<div class="empty-state"><div class="icon">📋</div><p>No reports yet. Submit your first report!</p></div>`;
   }
 
+  html += `<div id="rpt-list">`;
   reports.forEach(r => { html += reportItemHTML(r, true); });
+  html += `</div>`;
+
+  // Apply date filter after render
+  setTimeout(() => applyReportDateFilter(), 50);
   return html;
 }
 
