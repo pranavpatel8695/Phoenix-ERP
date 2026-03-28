@@ -381,8 +381,35 @@ async function aw(method, path, data) {
   }
 }
 
-// ── SYNC ─────────────────────────────────────────────────────
-setSyncStatus('synced');
+// ── PHOTO STORAGE (separate from reports to avoid 5MB limit) ──
+function savePhotosForReport(id, photosStart, photosEnd, photos) {
+  try {
+    const key = 'phx_photos_' + id;
+    if (!photosStart?.length && !photosEnd?.length && !photos?.length) return;
+    localStorage.setItem(key, JSON.stringify({ photosStart, photosEnd, photos }));
+  } catch(e) { console.warn('Photo save failed:', e); }
+}
+function getPhotosForReport(id) {
+  try {
+    const v = localStorage.getItem('phx_photos_' + id);
+    return v ? JSON.parse(v) : null;
+  } catch(e) { return null; }
+}
+function deletePhotosForReport(id) {
+  localStorage.removeItem('phx_photos_' + id);
+}
+function injectPhotosIntoReports(reports) {
+  return reports.map(r => {
+    const stored = getPhotosForReport(r.id);
+    if (!stored) return r;
+    return {
+      ...r,
+      photosStart: r.photosStart?.length ? r.photosStart : (stored.photosStart||[]),
+      photosEnd:   r.photosEnd?.length   ? r.photosEnd   : (stored.photosEnd||[]),
+      photos:      r.photos?.length      ? r.photos      : (stored.photos||[]),
+    };
+  });
+}
 
 async function doSync() {
   if (_syncing) return;
@@ -2009,13 +2036,17 @@ async function submitReport(type) {
     if (type==='civil_labour')   { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
   }
 
+  // Save photos separately, keep report lean
+  savePhotosForReport(data.id, data.photosStart, data.photosEnd, data.photos);
+  const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
+
   // Save locally
   const reports = getReports();
   if (_editId) {
     const idx = reports.findIndex(r => String(r.id) === String(_editId));
-    if (idx > -1) { data.id = _editId; reports[idx] = data; }
+    if (idx > -1) { dataLean.id = _editId; reports[idx] = dataLean; }
   } else {
-    reports.push(data);
+    reports.push(dataLean);
   }
   saveReports(reports);
 
@@ -2334,6 +2365,16 @@ const TYPE_LABELS = {
 };
 
 function reportItemHTML(r, showActions=true) {
+  // Inject photos from separate localStorage store
+  const stored = getPhotosForReport(r.id);
+  if (stored) {
+    r = {
+      ...r,
+      photosStart: r.photosStart?.length ? r.photosStart : (stored.photosStart||[]),
+      photosEnd:   r.photosEnd?.length   ? r.photosEnd   : (stored.photosEnd||[]),
+      photos:      r.photos?.length      ? r.photos      : (stored.photos||[]),
+    };
+  }
   const color = TYPE_COLORS[r.type] || 'var(--muted)';
   const icon  = TYPE_ICONS[r.type]  || '📝';
   const label = TYPE_LABELS[r.type] || r.type;
@@ -2667,6 +2708,7 @@ function deleteReport(id) {
   showConfirm('Delete Report', 'Delete this report? This cannot be undone.', async () => {
     const updated = getReports().filter(r => String(r.id) !== String(id));
     saveReports(updated);
+    deletePhotosForReport(id);
     renderCurrentTab();
     showToast('🗑️ Deleted');
     if (r) {
@@ -3433,6 +3475,7 @@ function renderUsersTab() {
             <div class="account-user">@${username} · <span style="color:${roleColor};font-weight:700">${roleLabel}</span></div>
           </div>
           <div class="flex gap-2">
+            <button class="btn btn-ghost btn-sm" onclick="showUserCredentials('${username}')" title="View Credentials">🔑</button>
             <button class="btn btn-ghost btn-sm" onclick="openEditUser('${username}')">✏️</button>
             <button class="btn btn-danger btn-sm" onclick="deleteUserUM('${username}')">🗑️</button>
           </div>
@@ -3643,12 +3686,69 @@ function saveUserUM() {
 
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
-  users[user] = { role: role, pass: pass, name: name.trim(), projects: projs };
+  users[user] = { role, pass, name: name.trim(), projects: projs };
   saveUsers(users);
   pushConfig();
-  closeFormModal();
-  showToast('✅ User @' + user + ' created');
+
+  // Show credentials card
+  const roleLabel = role === 'admin' ? 'Admin' : role === 'pm' ? 'Project Manager' : 'Supervisor / Engineer';
+  const creds = `App: ${location.origin}\nUsername: ${user}\nPassword: ${pass}\nRole: ${roleLabel}`;
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">✅ User Created</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal();document.getElementById('main').innerHTML=renderUsersTab()">✕ Close</button>
+    </div>
+    <div style="background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.3);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">🔐 Login Credentials</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${[['👤 Name', name.trim()], ['🔑 Username', user], ['🔒 Password', pass], ['🎭 Role', roleLabel]].map(([l,v])=>`
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="font-size:11px;color:var(--muted);min-width:90px">${l}</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);background:var(--surface2);padding:4px 10px;border-radius:6px;flex:1;font-family:monospace">${v}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;text-align:center">Share these credentials with the user to let them log in.</div>
+    <div class="flex gap-3">
+      <button class="btn btn-primary flex-1" onclick="
+        navigator.clipboard?.writeText(\`${creds.replace(/`/g,'\\`')}\`)
+          .then(()=>showToast('✅ Credentials copied!'))
+          .catch(()=>showToast('⚠️ Copy failed — screenshot instead'));
+      ">📋 Copy Credentials</button>
+      <button class="btn btn-secondary flex-1" onclick="closeFormModal();document.getElementById('main').innerHTML=renderUsersTab()">Done</button>
+    </div>`;
+  document.getElementById('formModal').classList.remove('hidden');
   document.getElementById('main').innerHTML = renderUsersTab();
+}
+
+function showUserCredentials(username) {
+  const u = getUsers()[username];
+  if (!u) return;
+  const roleLabel = u.role === 'admin' ? 'Admin' : u.role === 'pm' ? 'Project Manager' : 'Supervisor / Engineer';
+  const appUrl = window.location.origin + window.location.pathname;
+  const creds = `Phoenix ERP Login\nApp: ${appUrl}\nUsername: ${username}\nPassword: ${u.pass}\nRole: ${roleLabel}`;
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">🔑 User Credentials</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div style="background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.3);border-radius:12px;padding:16px;margin-bottom:16px">
+      ${[['👤 Name', u.name||username], ['🔑 Username', username], ['🔒 Password', u.pass], ['🎭 Role', roleLabel], ['🌐 App URL', appUrl]].map(([l,v])=>`
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-size:11px;color:var(--muted);min-width:90px;flex-shrink:0">${l}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);background:var(--surface);padding:5px 10px;border-radius:6px;flex:1;font-family:monospace;word-break:break-all">${v}</div>
+        </div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:14px">Share these credentials with <strong>${u.name||username}</strong> to let them log in.</div>
+    <div class="flex gap-3">
+      <button class="btn btn-primary flex-1" onclick="
+        navigator.clipboard?.writeText(\`${creds.replace(/`/g,'\\`').replace(/\\/g,'\\\\')}\`)
+          .then(()=>showToast('✅ Copied to clipboard!'))
+          .catch(()=>showToast('⚠️ Copy failed'));
+      ">📋 Copy All</button>
+      <button class="btn btn-secondary flex-1" onclick="closeFormModal()">Close</button>
+    </div>`;
+  document.getElementById('formModal').classList.remove('hidden');
 }
 
 function openEditUser(username) {
