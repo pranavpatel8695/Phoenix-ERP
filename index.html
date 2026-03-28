@@ -384,19 +384,20 @@ async function aw(method, path, data) {
 // ── PHOTO STORAGE (separate from reports to avoid 5MB limit) ──
 function savePhotosForReport(id, photosStart, photosEnd, photos) {
   try {
-    const key = 'phx_photos_' + id;
-    if (!photosStart?.length && !photosEnd?.length && !photos?.length) return;
-    localStorage.setItem(key, JSON.stringify({ photosStart, photosEnd, photos }));
-  } catch(e) { console.warn('Photo save failed:', e); }
+    const key = 'phx_photos_' + String(id);
+    const hasAny = photosStart?.length || photosEnd?.length || photos?.length;
+    if (!hasAny) { localStorage.removeItem(key); return; }
+    localStorage.setItem(key, JSON.stringify({ photosStart: photosStart||[], photosEnd: photosEnd||[], photos: photos||[] }));
+  } catch(e) { console.warn('Photo save failed (storage full?):', e); }
 }
 function getPhotosForReport(id) {
   try {
-    const v = localStorage.getItem('phx_photos_' + id);
+    const v = localStorage.getItem('phx_photos_' + String(id));
     return v ? JSON.parse(v) : null;
   } catch(e) { return null; }
 }
 function deletePhotosForReport(id) {
-  localStorage.removeItem('phx_photos_' + id);
+  localStorage.removeItem('phx_photos_' + String(id));
 }
 function injectPhotosIntoReports(reports) {
   return reports.map(r => {
@@ -1911,6 +1912,30 @@ async function submitReport(type) {
     const err = checkChainageDependency(type, project, route, ch, ch, date, _editId);
     if (err) { showDependencyError(err); return; }
   }
+  if (type === 'fitting') {
+    const fitName = g('f-fitType');
+    const qty     = gf('f-qty') || 1;
+    if (!fitName) { showToast('⚠️ Select a fitting type'); return; }
+    const specials = getSpecials()[project] || [];
+    const special  = specials.find(s => s.name === fitName);
+    if (special && special.total) {
+      // Count already used (excluding current edit)
+      const usedQty = getReports().filter(r =>
+        r.type === 'fitting' && r.project === project &&
+        r.fitType === fitName && String(r.id) !== String(_editId||'')
+      ).reduce((s, r) => s + (parseInt(r.qty)||1), 0);
+      const available = (special.total || 0) - usedQty;
+      if (qty > available) {
+        showDependencyError({
+          title: 'Qty Exceeds Available Stock',
+          msg: `You are trying to use ${qty} nos of "${fitName}", but only ${available} nos remain (Total: ${special.total}, Used: ${usedQty}).`,
+          prereq: 'Specials Stock',
+          missing: `Available: ${available} nos`
+        });
+        return;
+      }
+    }
+  }
   if (type === 'chamber') {
     const loc = g('f-location');
     if (!loc) { showToast('⚠️ Select a valve location'); return; }
@@ -2051,8 +2076,9 @@ async function submitReport(type) {
     if (type==='civil_labour')   { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
   }
 
-  // Save photos separately, keep report lean
-  savePhotosForReport(data.id, data.photosStart, data.photosEnd, data.photos);
+  // Save photos separately by string ID
+  const reportId = String(data.id);
+  savePhotosForReport(reportId, data.photosStart, data.photosEnd, data.photos);
   const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
 
   // Save locally
@@ -2691,8 +2717,18 @@ function checkEditDependency(oldR, newFrom, newTo, newDate) {
 }
 
 function editReport(id) {
-  const r = getReports().find(r => String(r.id) === String(id));
+  let r = getReports().find(r => String(r.id) === String(id));
   if (!r) return;
+  // Restore photos from separate store for prefill
+  const stored = getPhotosForReport(String(id));
+  if (stored) {
+    r = {
+      ...r,
+      photosStart: stored.photosStart||[],
+      photosEnd:   stored.photosEnd||[],
+      photos:      stored.photos||[],
+    };
+  }
   openReportForm(r.type, r);
 }
 
