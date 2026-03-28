@@ -664,7 +664,7 @@ async function loginSuccess(user, userRecord) {
 
   // Update UI
   document.getElementById('roleBadgeEl').textContent =
-    currentRole === 'admin' ? 'Admin' : currentRole === 'pm' ? 'Project Manager' : 'Supervisor/Eng.';
+    currentRole === 'admin' ? 'Admin' : currentRole === 'pm' ? 'Project Manager' : 'Engineer';
   document.getElementById('roleBadgeEl').className = `role-badge ${currentRole}`;
   document.getElementById('avatarBtn').textContent = userRecord.name?.[0]?.toUpperCase() || user[0].toUpperCase();
   document.getElementById('topbarSub').textContent = userRecord.name || user;
@@ -701,7 +701,7 @@ function showUserMenu() {
       <div class="avatar-btn" style="width:48px;height:48px;font-size:18px">${(getUsers()[currentUser]?.name||currentUser)[0].toUpperCase()}</div>
       <div>
         <div class="font-bold">${getUsers()[currentUser]?.name||currentUser}</div>
-        <div class="text-sm text-muted">${currentRole === 'admin' ? 'Administrator' : currentRole === 'pm' ? 'Project Manager' : 'Supervisor/Engineer'}</div>
+        <div class="text-sm text-muted">${currentRole === 'admin' ? 'Administrator' : currentRole === 'pm' ? 'Project Manager' : 'Engineer'}</div>
       </div>
     </div>
     <button class="btn btn-secondary w-full mb-2" onclick="doSync();document.getElementById('userMenuModal').classList.add('hidden')">↻ Sync Now</button>
@@ -2174,7 +2174,7 @@ function exportToPDF() {
       const totalV = excR.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
       sections += secHead('#FF9F0A','⛏️','Excavation',`${excR.length} records | Total: ${fmtM(totalM)} | Vol: ${totalV.toFixed(2)} cum`);
       sections += buildTable('#FF9F0A', {
-        headers:['#','Date','Chainage (From–To)','Length','Qty (cum)','Width (m)','Depth (m)','Soil Type','Route','Supervisor/Eng.'],
+        headers:['#','Date','Chainage (From–To)','Length','Qty (cum)','Width (m)','Depth (m)','Soil Type','Route','Engineer'],
         body: excR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`${r.from}m – ${r.to}m`,bg)}${td(fmtM(r.meters),bg)}${td(parseFloat(r.volume||0).toFixed(2),bg)}${td(r.width,bg)}${td(r.depth,bg)}${td(r.soil,bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
       });
     }
@@ -2185,7 +2185,7 @@ function exportToPDF() {
       const totalM = pipeR.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
       sections += secHead('#0A84FF','🔩','Pipe Laying',`${pipeR.length} records | Total: ${fmtM(totalM)}`);
       sections += buildTable('#0A84FF', {
-        headers:['#','Date','Chainage (From–To)','Length','Pipe Spec','CC/RCC Encasing','Encasing Chainage','Route','Supervisor/Eng.'],
+        headers:['#','Date','Chainage (From–To)','Length','Pipe Spec','CC/RCC Encasing','Encasing Chainage','Route','Engineer'],
         body: pipeR.map((r,i)=>{
           const bg=i%2?'#f8f9fc':'#fff';
           const encList=(r.encasings||[]).length?r.encasings.map(e=>`${e.type} Ch:${e.from}–${e.to}m`).join(', '):(r.encasing&&r.encasing!=='Not Required'?r.encasing:'Not Required');
@@ -2201,7 +2201,7 @@ function exportToPDF() {
       const totalNet = refR.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
       sections += secHead('#30D158','🪣','Refilling',`${refR.length} records | Total: ${fmtM(totalM)} | Net: ${totalNet.toFixed(2)} cum`);
       sections += buildTable('#30D158', {
-        headers:['#','Date','Chainage (From–To)','Length','Trench Vol (cum)','Net Qty (cum)','Width (m)','Depth (m)','Road Restoration','Route','Supervisor/Eng.'],
+        headers:['#','Date','Chainage (From–To)','Length','Trench Vol (cum)','Net Qty (cum)','Width (m)','Depth (m)','Road Restoration','Route','Engineer'],
         body: refR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`${r.from}m – ${r.to}m`,bg)}${td(fmtM(r.meters),bg)}${td(parseFloat(r.trenchVol||0).toFixed(3),bg)}${td(parseFloat(r.volume||0).toFixed(3),bg)}${td(r.width,bg)}${td(r.depth,bg)}${td(r.road,bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
       });
     }
@@ -2211,7 +2211,7 @@ function exportToPDF() {
     if (valR.length) {
       sections += secHead('#FF453A','🔧','Valves',`${valR.length} records`);
       sections += buildTable('#FF453A', {
-        headers:['#','Date','Chainage','Location','Valve Type','Size','Chamber Req','Route','Supervisor/Eng.'],
+        headers:['#','Date','Chainage','Location','Valve Type','Size','Chamber Req','Route','Engineer'],
         body: valR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`Ch:${r.chainage}m`,bg)}${td(r.location,bg)}${td(r.valType,bg)}${td(r.size,bg)}${td(badge(r.chamberReq||'No'),bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
       });
     }
@@ -2221,7 +2221,7 @@ function exportToPDF() {
     if (chamR.length) {
       sections += secHead('#FF9500','🏛️','Chambers',`${chamR.length} records`);
       sections += buildTable('#FF9500', {
-        headers:['#','Date','Chainage','Location','Type','L×W×H (mm)','Slab','Slab Status','Route','Supervisor/Eng.'],
+        headers:['#','Date','Chainage','Location','Type','L×W×H (mm)','Slab','Slab Status','Route','Engineer'],
         body: chamR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`Ch:${r.chainage}m`,bg)}${td(r.location,bg)}${td(r.chamType,bg)}${td((r.chamL||r.chamW||r.chamH)?`${r.chamL||0}×${r.chamW||0}×${r.chamH||0}`:'',bg)}${td(r.slab,bg)}${td(r.slab==='Precast'?r.slabStatus:'',bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
       });
     }
@@ -2231,7 +2231,7 @@ function exportToPDF() {
     if (fitR.length) {
       sections += secHead('#5AC8FA','🔗','Fittings',`${fitR.length} records`);
       sections += buildTable('#5AC8FA', {
-        headers:['#','Date','Chainage','Location','Fitting Type','Size','Qty','Thrust Block','Route','Supervisor/Eng.'],
+        headers:['#','Date','Chainage','Location','Fitting Type','Size','Qty','Thrust Block','Route','Engineer'],
         body: fitR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`Ch:${r.chainage}m`,bg)}${td(r.location,bg)}${td(r.fitType,bg)}${td(r.size,bg)}${td(r.qty,bg)}${td(badge(r.thrustBlock||'No'),bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
       });
     }
@@ -2241,7 +2241,7 @@ function exportToPDF() {
     if (strR.length) {
       sections += secHead('#BF5AF2','🏗️','Concrete Work',`${strR.length} records`);
       sections += buildTable('#BF5AF2', {
-        headers:['#','Date','Location','L×W×H (m)','Total Vol (m³)','Pipe Vol (m³)','Net Vol (m³)','Route','Supervisor/Eng.'],
+        headers:['#','Date','Location','L×W×H (m)','Total Vol (m³)','Pipe Vol (m³)','Net Vol (m³)','Route','Engineer'],
         body: strR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(r.location,bg)}${td((r.concrL||r.concrW||r.concrH)?`${r.concrL||0}×${r.concrW||0}×${r.concrH||0}`:'',bg)}${td(r.totalVol,bg)}${td(r.pipeVolConc||'—',bg)}${td(r.netVolConc,bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
       });
     }
@@ -2262,7 +2262,7 @@ function exportToPDF() {
       if (!recs.length) return;
       sections += secHead(bg,icon,label,`${recs.length} records`);
       sections += buildTable(bg, {
-        headers:['#','Date','Description','Location','Status','Project','Supervisor/Eng.'],
+        headers:['#','Date','Description','Location','Status','Project','Engineer'],
         body: recs.map((r,i)=>{const row=i%2?'#f8f9fc':'#fff';return`<tr style="background:${row}">${td(i+1,row)}${td(r.date,row)}${td(r.description,row)}${td(r.location,row)}${td(r.status,row)}${td(r.project,row)}${td(r.supervisorName||r.supervisor,row)}</tr>`;}).join('')
       });
     });
@@ -2309,7 +2309,7 @@ function exportToPDF() {
     </div>
     <div style="padding:0 20px 20px">
       <div style="color:#888;font-size:11px;margin-bottom:14px;border-bottom:1px solid #eee;padding-bottom:10px">
-        Period: ${from||'All'} to ${to||'All'} | Total: ${reports.length} reports | Supervisor(s): ${supervisors}
+        Period: ${from||'All'} to ${to||'All'} | Total: ${reports.length} reports | Engineer(s): ${supervisors}
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px">
         ${stat('#FF9F0A',fmtM(excM),'Excavation')}
@@ -3152,7 +3152,6 @@ function renderSettingsTab() {
     tabs = `
       <div class="tab-bar" id="settingsTabs">
         <div class="tab-item active" onclick="showSettingsTab('projects',this)">Projects</div>
-        <div class="tab-item" onclick="showSettingsTab('accounts',this)">Accounts</div>
         <div class="tab-item" onclick="showSettingsTab('specials',this)">Specials</div>
         <div class="tab-item" onclick="showSettingsTab('export',this)">📄 Export</div>
       </div>`;
@@ -3363,7 +3362,7 @@ function renderSettingsAccounts() {
         <div class="account-avatar" style="background:${roleColor}">${(r.name||u)[0].toUpperCase()}</div>
         <div class="account-info">
           <div class="account-name">${r.name||u}</div>
-          <div class="account-user">@${u} · <span style="color:${roleColor}">${r.role==='pm'?'Project Manager':'Supervisor/Eng.'}</span></div>
+          <div class="account-user">@${u} · <span style="color:${roleColor}">${r.role==='pm'?'Project Manager':'Engineer'}</span></div>
           <div class="text-xs text-muted">${(r.projects||[]).join(', ')||'All projects'}</div>
         </div>
         <button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">✕</button>
@@ -3386,7 +3385,7 @@ function openAddAccount() {
     <div class="field-group"><label>Password</label><input type="password" id="ac-pass" placeholder="Set password"></div>
     <div class="field-group"><label>Role</label>
       <select id="ac-role">
-        <option value="supervisor">Supervisor / Engineer</option>
+        <option value="supervisor">Engineer</option>
         <option value="pm">Project Manager</option>
       </select>
     </div>
@@ -3544,7 +3543,7 @@ function renderUsersTab() {
 
   function userCard([username, u]) {
     const roleColor = u.role === 'pm' ? 'var(--green)' : 'var(--blue)';
-    const roleLabel = u.role === 'pm' ? 'Project Manager' : 'Supervisor/Eng.';
+    const roleLabel = u.role === 'pm' ? 'Project Manager' : 'Engineer';
     const ap = (u.projects || []);
     return `
       <div class="account-card" style="flex-direction:column;align-items:stretch;gap:10px">
@@ -3610,7 +3609,7 @@ function switchUserMgmtTab(role, el) {
 
   function userCard([username, u]) {
     const roleColor = u.role === 'pm' ? 'var(--green)' : 'var(--blue)';
-    const roleLabel = u.role === 'pm' ? 'Project Manager' : 'Supervisor/Eng.';
+    const roleLabel = u.role === 'pm' ? 'Project Manager' : 'Engineer';
     const ap = (u.projects || []);
     return `
       <div class="account-card" style="flex-direction:column;align-items:stretch;gap:10px">
@@ -3648,7 +3647,7 @@ function switchUserMgmtTab(role, el) {
 
   const content = document.getElementById('userMgmtContent');
   if (!filtered.length) {
-    content.innerHTML = `<div class="empty-state"><div class="icon">👤</div><p>No ${role === 'pm' ? 'Project Managers' : 'Supervisors'} yet.<br>Tap "+ New User" to add one.</p></div>`;
+    content.innerHTML = `<div class="empty-state"><div class="icon">👤</div><p>No ${role === 'pm' ? 'Project Managers' : 'Engineers'} yet.<br>Tap "+ New User" to add one.</p></div>`;
   } else {
     content.innerHTML = filtered.map(userCard).join('');
   }
@@ -3702,7 +3701,7 @@ function openAddUserUM() {
     <div class="field-group">
       <label>Role <span class="req">*</span></label>
       <select id="um-role">
-        <option value="supervisor">Supervisor / Engineer</option>
+        <option value="supervisor">Engineer</option>
         <option value="pm">Project Manager</option>
       </select>
     </div>
@@ -3771,7 +3770,7 @@ function saveUserUM() {
   pushConfig();
 
   // Show credentials card
-  const roleLabel = role === 'admin' ? 'Admin' : role === 'pm' ? 'Project Manager' : 'Supervisor / Engineer';
+  const roleLabel = role === 'admin' ? 'Admin' : role === 'pm' ? 'Project Manager' : 'Engineer';
   const creds = `App: ${location.origin}\nUsername: ${user}\nPassword: ${pass}\nRole: ${roleLabel}`;
   document.getElementById('formModalContent').innerHTML = `
     <div class="flex justify-between items-center mb-4">
@@ -3804,7 +3803,7 @@ function saveUserUM() {
 function showUserCredentials(username) {
   const u = getUsers()[username];
   if (!u) return;
-  const roleLabel = u.role === 'admin' ? 'Admin' : u.role === 'pm' ? 'Project Manager' : 'Supervisor / Engineer';
+  const roleLabel = u.role === 'admin' ? 'Admin' : u.role === 'pm' ? 'Project Manager' : 'Engineer';
   const appUrl = window.location.origin + window.location.pathname;
   const creds = `Phoenix ERP Login\nApp: ${appUrl}\nUsername: ${username}\nPassword: ${u.pass}\nRole: ${roleLabel}`;
   document.getElementById('formModalContent').innerHTML = `
@@ -3855,7 +3854,7 @@ function openEditUser(username) {
     <div class="field-group">
       <label>Role</label>
       <select id="eu-role">
-        <option value="supervisor"${u.role==='supervisor'?' selected':''}>Supervisor / Engineer</option>
+        <option value="supervisor"${u.role==='supervisor'?' selected':''}>Engineer</option>
         <option value="pm"${u.role==='pm'?' selected':''}>Project Manager</option>
       </select>
     </div>
