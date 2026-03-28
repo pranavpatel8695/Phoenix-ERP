@@ -3587,7 +3587,7 @@ function renderUsersTab() {
     </div>
     <div class="tab-bar" id="userMgmtTabs">
       <div class="tab-item active" onclick="switchUserMgmtTab('pm',this)">Project Managers <span class="badge badge-green" style="margin-left:4px">${pms.length}</span></div>
-      <div class="tab-item" onclick="switchUserMgmtTab('supervisor',this)">Supervisors <span class="badge badge-blue" style="margin-left:4px">${supervisors.length}</span></div>
+      <div class="tab-item" onclick="switchUserMgmtTab('supervisor',this)">Engineers <span class="badge badge-blue" style="margin-left:4px">${supervisors.length}</span></div>
     </div>
     <div id="userMgmtContent">`;
 
@@ -3620,6 +3620,7 @@ function switchUserMgmtTab(role, el) {
             <div class="account-user">@${username} · <span style="color:${roleColor};font-weight:700">${roleLabel}</span></div>
           </div>
           <div class="flex gap-2">
+            <button class="btn btn-ghost btn-sm" onclick="showUserCredentials('${username}')" title="View Credentials">🔑</button>
             <button class="btn btn-ghost btn-sm" onclick="openEditUser('${username}')">✏️</button>
             <button class="btn btn-danger btn-sm" onclick="deleteUserUM('${username}')">🗑️</button>
           </div>
