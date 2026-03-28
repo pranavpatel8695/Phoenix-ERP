@@ -2028,39 +2028,6 @@ function applyReportDateFilter() {
   if (countEl) countEl.textContent = visible + ' shown';
 }
 
-function openExportModal() {
-  const today    = new Date().toISOString().slice(0,10);
-  const monthAgo = new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
-  const vp = getVisibleProjects();
-  const html = `
-    <div class="flex justify-between items-center mb-4">
-      <div class="section-title">📄 Export PDF</div>
-      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
-    </div>
-    <div class="field-group"><label>Module</label>
-      <select id="exp-module">
-        <option value="pipeline">🔩 Pipeline Work</option>
-        <option value="civil">🏗️ Civil Work</option>
-        <option value="all">All Modules</option>
-      </select>
-    </div>
-    <div class="field-group"><label>Project</label>
-      <select id="exp-project">
-        <option value="">All Projects</option>
-        ${vp.map(p=>`<option>${p}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-row">
-      <div class="field-group"><label>From Date</label><input type="date" id="exp-from" value="${monthAgo}"></div>
-      <div class="field-group"><label>To Date</label><input type="date" id="exp-to" value="${today}"></div>
-    </div>
-    <div class="flex gap-3 mt-2">
-      <button class="btn btn-secondary flex-1" onclick="closeFormModal()">Cancel</button>
-      <button class="btn btn-primary flex-1" onclick="exportToPDF()">📥 Download PDF</button>
-    </div>`;
-  document.getElementById('formModalContent').innerHTML = html;
-  document.getElementById('formModal').classList.remove('hidden');
-}
 
 function exportToPDF() {
   const module  = document.getElementById('exp-module')?.value || 'pipeline';
@@ -2298,7 +2265,6 @@ function renderReportsTab() {
   let html = `
     <div class="section-header">
       <div class="section-title">All Reports</div>
-      <button class="btn btn-primary btn-sm" onclick="openExportModal()">📄 Export PDF</button>
     </div>
     <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Filter</div>
@@ -3074,12 +3040,18 @@ function renderSettingsTab() {
         <div class="tab-item active" onclick="showSettingsTab('projects',this)">Projects</div>
         <div class="tab-item" onclick="showSettingsTab('accounts',this)">Accounts</div>
         <div class="tab-item" onclick="showSettingsTab('specials',this)">Specials</div>
+        <div class="tab-item" onclick="showSettingsTab('export',this)">📄 Export</div>
       </div>`;
     content = renderSettingsProjects();
   } else {
-    // PM only sees specials
+    // PM sees specials + export
+    tabs = `
+      <div class="tab-bar" id="settingsTabs">
+        <div class="tab-item active" onclick="showSettingsTab('specials',this)">Specials</div>
+        <div class="tab-item" onclick="showSettingsTab('export',this)">📄 Export</div>
+      </div>`;
     content = renderSettingsSpecials();
-    return `<div class="section-title mb-4">⚙️ Settings</div>${content}`;
+    return `<div class="section-title mb-4">⚙️ Settings</div>${tabs}<div id="settingsContent">${content}</div>`;
   }
 
   return `<div class="section-title mb-4">⚙️ Settings</div>${tabs}<div id="settingsContent">${content}</div>`;
@@ -3092,6 +3064,37 @@ function showSettingsTab(tab, el) {
   if (tab === 'projects') c.innerHTML = renderSettingsProjects();
   if (tab === 'accounts') c.innerHTML = renderSettingsAccounts();
   if (tab === 'specials') c.innerHTML = renderSettingsSpecials();
+  if (tab === 'export')   c.innerHTML = renderSettingsExport();
+}
+
+function renderSettingsExport() {
+  const today    = new Date().toISOString().slice(0,10);
+  const monthAgo = new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
+  const vp = getVisibleProjects();
+  return `
+    <div class="settings-section">
+      <div class="settings-section-title">📄 Export Reports</div>
+      <div class="field-group">
+        <label>Module</label>
+        <select id="exp-module">
+          <option value="pipeline">🔩 Pipeline Work</option>
+          <option value="civil">🏗️ Civil Work</option>
+          <option value="all">All Modules</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Project</label>
+        <select id="exp-project">
+          <option value="">All Projects</option>
+          ${vp.map(p=>`<option>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="field-group"><label>From Date</label><input type="date" id="exp-from" value="${monthAgo}"></div>
+        <div class="field-group"><label>To Date</label><input type="date" id="exp-to" value="${today}"></div>
+      </div>
+      <button class="btn btn-primary w-full mt-2" onclick="exportToPDF()">📥 Export PDF Report</button>
+    </div>`;
 }
 
 function renderSettingsProjects() {
