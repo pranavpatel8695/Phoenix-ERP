@@ -1272,12 +1272,27 @@ function buildTypeFields(type, p={}) {
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔗 Fitting Details</div>
-        <div class="field-group"><label>Fitting Type <span class="req">*</span></label>
-          <select id="f-fitType">${['Tee (Equal)','Tee (Reducer)','Bend 90°','Bend 45°','Bend 22.5°','Bend 11.25°','Reducer (Concentric)','Reducer (Eccentric)','Flange Adaptor','Puddle Flange','Collar','Dismantling Joint','Blank Flange','Sleeve Coupling','Other'].map(v=>`<option${p.fitType===v?' selected':''}>${v}</option>`).join('')}</select>
-        </div>
-        <div class="field-group"><label>Size (mm) <span class="req">*</span></label>
-          <input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm">
-        </div>
+        ${(() => {
+          const fProj = document.getElementById('f-project')?.value || '';
+          const specItems = (getSpecials()[fProj] || []);
+          const selectedSpec = p.fitType || '';
+          if (specItems.length) {
+            return `<div class="field-group"><label>Fitting Type & Size <span class="req">*</span></label>
+              <select id="f-fitType">
+                <option value="">— Select Fitting —</option>
+                ${specItems.map(s=>`<option value="${s.name}"${selectedSpec===s.name?' selected':''}>${s.name}</option>`).join('')}
+              </select>
+            </div>`;
+          } else {
+            return `<div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:8px;padding:10px;font-size:12px;color:var(--orange);margin-bottom:10px">
+              ⚠️ No fittings defined for this project. Add them in Settings → Specials.
+            </div>
+            <div class="field-group"><label>Fitting Type & Size <span class="req">*</span></label>
+              <input type="text" id="f-fitType" value="${p.fitType||''}" placeholder="e.g. Tee (Equal) 600mm">
+            </div>`;
+          }
+        })()}
+        <input type="hidden" id="f-size" value="${p.size||''}">
         <div class="form-row">
           <div class="field-group"><label>Qty <span class="req">*</span></label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
           <div class="field-group"><label>Thrust Block Required?</label>
@@ -3388,11 +3403,11 @@ function renderSettingsSpecials() {
 
   let html = `
     <div class="settings-section">
-      <div class="settings-section-title">⭐ Fitting Specials</div>
+      <div class="settings-section-title">⭐ Fitting Specials (Type & Size)</div>
       <div class="field-group"><select id="specialsProjSel" onchange="renderSpecialsList()">${vp.map(p=>`<option>${p}</option>`).join('')}</select></div>
       <div id="specialsList"></div>
       <div class="flex gap-2 mt-3">
-        <input type="text" id="sp-name" placeholder="Special name" style="flex:2;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit">
+        <input type="text" id="sp-name" placeholder="e.g. Tee (Equal) 600mm" style="flex:2;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit">
         <input type="number" id="sp-total" placeholder="Nos" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;text-align:center">
         <button class="btn btn-primary btn-sm" onclick="addSpecial()">+</button>
       </div>
@@ -3868,6 +3883,22 @@ async function init() {
       localStorage.setItem(newMap[k], localStorage.getItem(k));
     }
   });
+
+  // Migrate inline photos to separate photo store
+  try {
+    const allR = LS.get('phx_reports', []);
+    let migrated = false;
+    allR.forEach(r => {
+      if (!r.id) return;
+      const hasInline = r.photosStart?.length || r.photosEnd?.length || r.photos?.length;
+      if (hasInline) {
+        savePhotosForReport(r.id, r.photosStart||[], r.photosEnd||[], r.photos||[]);
+        r.photosStart = []; r.photosEnd = []; r.photos = [];
+        migrated = true;
+      }
+    });
+    if (migrated) LS.set('phx_reports', allR);
+  } catch(e) {}
 
   hideLoader();
   document.getElementById('loginScreen').classList.remove('hidden');
