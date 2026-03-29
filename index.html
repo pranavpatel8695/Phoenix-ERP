@@ -1205,6 +1205,9 @@ function buildTypeFields(type, p={}) {
           }
         })()}
         <input type="hidden" id="f-size" value="${p.size||''}">
+        <div class="field-group"><label>Quantity (Nos) <span class="req">*</span></label>
+          <input type="number" id="f-val-qty" value="${p.qty||1}" min="1" placeholder="e.g. 1">
+        </div>
         <div class="field-group"><label>Chamber Required?</label>
           <div class="radio-group">
             <div class="radio-opt${(p.chamberReq||'No')==='No'?' selected':''}" onclick="selectRadio('f-chamberReq','No',this)">No</div>
@@ -1921,6 +1924,58 @@ async function submitReport(type) {
   const g = id => document.getElementById(id)?.value || '';
   const gf= id => parseFloat(document.getElementById(id)?.value) || 0;
 
+  // ── FIELD VALIDATION (all fields required except remarks) ────
+  const req = (val, msg) => { if (!val || val === '0' || val === 0) { showToast('⚠️ ' + msg); return false; } return true; };
+  if (type === 'excavation') {
+    if (!req(gf('f-from') || g('f-from'), 'Enter From Chainage')) return;
+    if (!req(g('f-to'), 'Enter To Chainage')) return;
+    if (gf('f-to') <= gf('f-from')) { showToast('⚠️ To Chainage must be greater than From Chainage'); return; }
+    if (!req(g('f-width'), 'Enter Width')) return;
+    if (!req(g('f-depth'), 'Enter Depth')) return;
+    if (!req(g('f-soil'), 'Select Soil Type')) return;
+  }
+  if (type === 'pipe') {
+    if (!req(g('f-from'), 'Enter From Chainage')) return;
+    if (!req(g('f-to'), 'Enter To Chainage')) return;
+    if (gf('f-to') <= gf('f-from')) { showToast('⚠️ To Chainage must be greater than From Chainage'); return; }
+    if (!req(g('f-pipeSpec'), 'Select Pipe Specification')) return;
+  }
+  if (type === 'refill') {
+    if (!req(g('f-from'), 'Enter From Chainage')) return;
+    if (!req(g('f-to'), 'Enter To Chainage')) return;
+    if (gf('f-to') <= gf('f-from')) { showToast('⚠️ To Chainage must be greater than From Chainage'); return; }
+    if (!req(g('f-width'), 'Enter Width')) return;
+    if (!req(g('f-depth'), 'Enter Depth')) return;
+    if (!req(g('f-pipeDia'), 'Enter Pipe Diameter')) return;
+    if (!req(g('f-road'), 'Select Road Restoration')) return;
+  }
+  if (type === 'valve') {
+    if (!req(g('f-chainage'), 'Enter Chainage')) return;
+    if (!req(g('f-location'), 'Enter Location')) return;
+    if (!req(g('f-valType'), 'Select Valve Type & Size')) return;
+    if (!req(g('f-val-qty') || '1', 'Enter Quantity')) return;
+  }
+  if (type === 'chamber') {
+    if (!req(g('f-chainage'), 'Enter Chainage')) return;
+    if (!req(g('f-location'), 'Select Valve Location')) return;
+    if (!req(g('f-chamType'), 'Select Chamber Type')) return;
+    if (!req(g('f-chamL'), 'Enter Chamber Length')) return;
+    if (!req(g('f-chamW'), 'Enter Chamber Width')) return;
+    if (!req(g('f-chamH'), 'Enter Chamber Height')) return;
+  }
+  if (type === 'fitting') {
+    if (!req(g('f-chainage'), 'Enter Chainage')) return;
+    if (!req(g('f-location'), 'Enter Location')) return;
+    if (!req(g('f-fitType'), 'Select Fitting Type & Size')) return;
+    if (!req(g('f-qty') || '1', 'Enter Quantity')) return;
+  }
+  if (type === 'structure') {
+    if (!req(g('f-location'), 'Select Location')) return;
+    if (!req(g('f-concrL'), 'Enter Length')) return;
+    if (!req(g('f-concrW'), 'Enter Width')) return;
+    if (!req(g('f-concrH'), 'Enter Height')) return;
+  }
+
   // ── DEPENDENCY CHECKS ────────────────────────────────────────
   if (type === 'pipe' || type === 'refill') {
     const from = gf('f-from');
@@ -2056,6 +2111,7 @@ async function submitReport(type) {
     data.location      = g('f-location');
     data.valType       = g('f-valType');
     data.size          = g('f-size');
+    data.qty           = gf('f-val-qty') || 1;
     data.chamberReq    = g('f-chamberReq');
   }
   if (type==='chamber') {
@@ -2478,8 +2534,8 @@ function reportItemHTML(r, showActions=true) {
   if (r.type === 'valve') {
     details += row('Chainage', r.chainage ? `Ch:${r.chainage}m` : '');
     details += row('Location', r.location);
-    details += row('Valve Type', r.valType);
-    details += row('Size', r.size);
+    details += row('Valve Type & Size', r.valType);
+    details += row('Quantity', r.qty ? `${r.qty} nos` : '1 nos');
     details += row('Chamber Required', r.chamberReq);
   }
   if (r.type === 'chamber') {
@@ -3586,7 +3642,7 @@ function renderValvesList() {
   if (!items.length) { el.innerHTML = '<div class="text-sm text-muted">No valves yet.</div>'; return; }
   const reports = getReports().filter(r => r.project === proj && r.type === 'valve');
   el.innerHTML = items.map((s, i) => {
-    const used  = reports.reduce((sum, r) => r.valType === s.name ? sum + 1 : sum, 0);
+    const used  = reports.reduce((sum, r) => r.valType === s.name ? sum + (parseInt(r.qty)||1) : sum, 0);
     const left  = (s.total || 0) - used;
     const pct   = s.total ? Math.min(100, Math.round(used / s.total * 100)) : 0;
     const color = pct >= 100 ? 'var(--red)' : pct >= 75 ? 'var(--orange)' : 'var(--green)';
