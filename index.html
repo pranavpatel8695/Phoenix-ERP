@@ -245,9 +245,6 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     <div class="nav-item" data-tab="settings" onclick="switchTab('settings')" id="navSettings">
       <div class="nav-icon">⚙️</div>Settings
     </div>
-    <div class="nav-item" data-tab="attendance" onclick="switchTab('attendance')" id="navAttendance">
-      <div class="nav-icon">🕐</div>Attend.
-    </div>
     <div class="nav-item" data-tab="users" onclick="switchTab('users')" id="navUsers">
       <div class="nav-icon">👥</div>Users
     </div>
@@ -318,7 +315,7 @@ const APP_VERSION = '3.0';
 // ── STATE ───────────────────────────────────────────────────
 let currentUser = null;
 let currentRole = null; // 'admin' | 'pm' | 'supervisor'
-let currentModule = 'pipeline'; // 'pipeline' | 'civil'
+let currentModule = 'pipeline'; // 'pipeline' | 'civil' | 'electrical'
 let activeTab = 'home';
 let _syncing = false;
 let _editId = null;
@@ -695,7 +692,7 @@ async function loginSuccess(user, userRecord) {
   document.getElementById('navTracker').classList.toggle('hidden', currentRole === 'supervisor');
   document.getElementById('navSettings').classList.toggle('hidden', currentRole === 'supervisor');
   document.getElementById('navUsers').classList.toggle('hidden', currentRole !== 'admin');
-  document.getElementById('navAttendance').classList.toggle('hidden', false);
+  document.getElementById('navAttendance')?.classList.toggle('hidden', false);
 
   switchTab('home');
 
@@ -745,11 +742,12 @@ function renderCurrentTab() {
   const main = document.getElementById('main');
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
-    case 'submit':   main.innerHTML = renderSubmitTab(); break;
-    case 'reports':  _rptTypeFilter = 'all'; _rptProjFilter = ''; main.innerHTML = renderReportsTab(); break;
+    case 'submit':   main.innerHTML = currentModule==='attendance' ? renderAttendanceTab() : renderSubmitTab(); break;
+    case 'reports':  if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;} _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
     case 'attendance': main.innerHTML = renderAttendanceTab(); break;
+    case 'users':    main.innerHTML = renderUsersTab(); break;
   }
   if (activeTab === 'settings') initSettings();
 }
@@ -791,6 +789,16 @@ function renderHome() {
         <div class="name">Civil Work</div>
         <div class="count">${allReports.filter(r=>r.module==='civil').length} reports</div>
       </div>
+      <div class="module-card${currentModule==='electrical'?' selected':''}" onclick="currentModule='electrical';renderCurrentTab()" style="${currentModule==='electrical'?'border-color:var(--green);background:rgba(48,209,88,0.05)':''}">
+        <div class="icon">⚡</div>
+        <div class="name">Electrical Work</div>
+        <div class="count">${allReports.filter(r=>r.module==='electrical').length} reports</div>
+      </div>
+      <div class="module-card${currentModule==='attendance'?' selected':''}" onclick="currentModule='attendance';renderCurrentTab()" style="${currentModule==='attendance'?'border-color:var(--cyan);background:rgba(90,200,250,0.05)':''}">
+        <div class="icon">🕐</div>
+        <div class="name">Attendance</div>
+        <div class="count">${getAttendance().length} records</div>
+      </div>
     </div>`;
 
   // Pipeline stats
@@ -825,7 +833,7 @@ function renderHome() {
           </div>`;
       });
     }
-  } else {
+  } else if (currentModule === 'civil') {
     // Civil Work
     const civilR = allReports.filter(r => r.module === 'civil' && vp.includes(r.project));
     html += `
@@ -835,6 +843,30 @@ function renderHome() {
         <div class="stat-card"><div class="val text-blue">${civilR.filter(r=>r.type==='civil_dpr').length}</div><div class="lbl">DPR</div></div>
         <div class="stat-card"><div class="val text-green">${civilR.filter(r=>r.type==='civil_drawing').length}</div><div class="lbl">Drawings</div></div>
         <div class="stat-card"><div class="val text-purple">${civilR.filter(r=>r.type==='civil_quality').length}</div><div class="lbl">Quality</div></div>
+      </div>`;
+  } else if (currentModule === 'electrical') {
+    const elecR = allReports.filter(r => r.module === 'electrical' && vp.includes(r.project));
+    html += `
+      <div class="section-header"><div class="section-title">Electrical Work Overview</div></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val text-green">${elecR.length}</div><div class="lbl">Total Reports</div></div>
+        <div class="stat-card"><div class="val text-blue">${elecR.filter(r=>r.type==='elec_panel').length}</div><div class="lbl">Panel</div></div>
+        <div class="stat-card"><div class="val text-orange">${elecR.filter(r=>r.type==='elec_cable').length}</div><div class="lbl">Cable</div></div>
+        <div class="stat-card"><div class="val text-purple">${elecR.filter(r=>r.type==='elec_other').length}</div><div class="lbl">Other</div></div>
+      </div>`;
+  } else {
+    // Attendance
+    const today = new Date().toISOString().slice(0,10);
+    const att = getAttendance();
+    const todayAtt = att.filter(a=>a.date===today&&a.atype==='attendance');
+    const pending = att.filter(a=>a.pmStatus==='pending').length;
+    html += `
+      <div class="section-header"><div class="section-title">Attendance Overview</div></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val text-blue">${todayAtt.length}</div><div class="lbl">Marked Today</div></div>
+        <div class="stat-card"><div class="val text-orange">${pending}</div><div class="lbl">Pending Approval</div></div>
+        <div class="stat-card"><div class="val text-green">${att.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='approved').length}</div><div class="lbl">Approved</div></div>
+        <div class="stat-card"><div class="val text-purple">${att.filter(a=>a.atype==='leave').length}</div><div class="lbl">Leave Records</div></div>
       </div>`;
   }
 
@@ -877,9 +909,17 @@ function renderSubmitTab() {
     { id:'civil_labour',  icon:'👷', label:'Labour',       color:'var(--cyan)' },
     { id:'civil_other',   icon:'📝', label:'Other',        color:'var(--muted)' },
   ];
+  const elecTypes = [
+    { id:'elec_panel',    icon:'⚡', label:'Panel Work',   color:'var(--yellow)' },
+    { id:'elec_cable',    icon:'🔌', label:'Cable Laying', color:'var(--orange)' },
+    { id:'elec_motor',    icon:'⚙️', label:'Motor/Pump',   color:'var(--blue)' },
+    { id:'elec_testing',  icon:'🔬', label:'Testing',      color:'var(--green)' },
+    { id:'elec_earthing', icon:'🌍', label:'Earthing',     color:'var(--cyan)' },
+    { id:'elec_other',    icon:'📝', label:'Other',        color:'var(--muted)' },
+  ];
 
-  const types = currentModule === 'pipeline' ? pipeTypes : civilTypes;
-  const moduleLabel = currentModule === 'pipeline' ? '🔩 Pipeline Work' : '🏗️ Civil Work';
+  const types = currentModule === 'pipeline' ? pipeTypes : currentModule === 'civil' ? civilTypes : elecTypes;
+  const moduleLabel = currentModule === 'pipeline' ? '🔩 Pipeline Work' : currentModule === 'civil' ? '🏗️ Civil Work' : '⚡ Electrical Work';
 
   let html = `
     <div class="section-header">
@@ -1419,7 +1459,7 @@ function buildTypeFields(type, p={}) {
   }
 
   // ── CIVIL TYPES (unchanged) ─────────────────────────────────
-  if (type.startsWith('civil_')) {
+  if (type.startsWith('civil_') || type.startsWith('elec_')) {
     html += `
       <div class="field-group"><label>Description <span class="req">*</span></label>
         <textarea id="f-description" rows="3" placeholder="Describe the work…">${p.description||''}</textarea>
@@ -1430,10 +1470,10 @@ function buildTypeFields(type, p={}) {
           <select id="f-status">${['In Progress','Completed','Pending','On Hold'].map(v=>`<option${p.status===v?' selected':''}>${v}</option>`).join('')}</select>
         </div>
       </div>`;
-    if (type === 'civil_material') {
+    if (type === 'civil_material' || type === 'elec_cable') {
       html += `
         <div class="form-row">
-          <div class="field-group"><label>Material Name</label><input type="text" id="f-material" value="${p.material||''}" placeholder="e.g. Steel Bar 12mm"></div>
+          <div class="field-group"><label>${type==='elec_cable'?'Cable Type':'Material Name'}</label><input type="text" id="f-material" value="${p.material||''}" placeholder="${type==='elec_cable'?'e.g. HT Cable 11KV':'e.g. Steel Bar 12mm'}"></div>
           <div class="field-group"><label>Qty / Unit</label><input type="text" id="f-qty" value="${p.qty||''}" placeholder="e.g. 500 kg"></div>
         </div>`;
     }
@@ -1442,6 +1482,19 @@ function buildTypeFields(type, p={}) {
         <div class="form-row">
           <div class="field-group"><label>Skilled Workers</label><input type="number" id="f-skilled" value="${p.skilled||''}" placeholder="0"></div>
           <div class="field-group"><label>Unskilled Workers</label><input type="number" id="f-unskilled" value="${p.unskilled||''}" placeholder="0"></div>
+        </div>`;
+    }
+    if (type === 'elec_panel' || type === 'elec_motor') {
+      html += `
+        <div class="form-row">
+          <div class="field-group"><label>${type==='elec_motor'?'Motor/Pump':'Panel'} Tag No.</label><input type="text" id="f-material" value="${p.material||''}" placeholder="e.g. MCC-01"></div>
+          <div class="field-group"><label>Capacity / Rating</label><input type="text" id="f-qty" value="${p.qty||''}" placeholder="e.g. 37 kW"></div>
+        </div>`;
+    }
+    if (type === 'elec_testing') {
+      html += `
+        <div class="field-group"><label>Test Result</label>
+          <select id="f-material"><option${p.material==='Pass'?' selected':''}>Pass</option><option${p.material==='Fail'?' selected':''}>Fail</option><option${p.material==='Pending'?' selected':''}>Pending</option></select>
         </div>`;
     }
   }
@@ -2114,7 +2167,7 @@ async function submitReport(type) {
   const data = {
     id:         _editId || Date.now(),
     type,
-    module:     type.startsWith('civil_') ? 'civil' : 'pipeline',
+    module:     type.startsWith('civil_') ? 'civil' : type.startsWith('elec_') ? 'electrical' : 'pipeline',
     project,
     route:      route || '',
     date,
@@ -2198,14 +2251,16 @@ async function submitReport(type) {
     data.pipeVolConc  = gf('f-pipeVolConc');
     data.netVolConc   = gf('f-netVolConc');
   }
-  if (type.startsWith('civil_')) {
+  if (type.startsWith('civil_') || type.startsWith('elec_')) {
     const desc = g('f-description');
     if (!desc) { showToast('⚠️ Description is required'); return; }
     data.description = desc;
     data.location    = g('f-location');
     data.status      = g('f-status');
-    if (type==='civil_material') { data.material=g('f-material'); data.qty=g('f-qty'); }
-    if (type==='civil_labour')   { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
+    if (type==='civil_material'||type==='elec_cable'||type==='elec_panel'||type==='elec_motor'||type==='elec_testing') {
+      data.material=g('f-material'); data.qty=g('f-qty');
+    }
+    if (type==='civil_labour') { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
   }
 
   // Save photos directly in report (separate key per report to avoid 5MB limit)
@@ -2292,7 +2347,9 @@ function exportToPDF() {
 
   const vp = getVisibleProjects();
   let reports = getReports().filter(r => vp.includes(r.project));
-  if (module !== 'all') reports = reports.filter(r => module === 'pipeline' ? (!r.module||r.module==='pipeline') : r.module===module);
+  if (module !== 'all') reports = reports.filter(r =>
+    module === 'pipeline' ? (!r.module||r.module==='pipeline') : r.module===module
+  );
   if (project) reports = reports.filter(r => r.project === project);
   if (from)    reports = reports.filter(r => r.date >= from);
   if (to)      reports = reports.filter(r => r.date <= to);
@@ -2430,6 +2487,27 @@ function exportToPDF() {
     });
   }
 
+  // ── Electrical types ──
+  if (module === 'electrical' || module === 'all') {
+    const elecTypes = [
+      {type:'elec_panel',   bg:'#FFD60A',icon:'⚡',label:'Panel Work'},
+      {type:'elec_cable',   bg:'#FF9F0A',icon:'🔌',label:'Cable Laying'},
+      {type:'elec_motor',   bg:'#0A84FF',icon:'⚙️',label:'Motor/Pump'},
+      {type:'elec_testing', bg:'#30D158',icon:'🔬',label:'Testing'},
+      {type:'elec_earthing',bg:'#5AC8FA',icon:'🌍',label:'Earthing'},
+      {type:'elec_other',   bg:'#888899',icon:'📝',label:'Other'},
+    ];
+    elecTypes.forEach(({type,bg,icon,label})=>{
+      const recs = reports.filter(r=>r.type===type);
+      if (!recs.length) return;
+      sections += secHead(bg,icon,label,`${recs.length} records`);
+      sections += buildTable(bg, {
+        headers:['#','Date','Description','Location','Status','Material/Tag','Qty','Project','Engineer'],
+        body: recs.map((r,i)=>{const row=i%2?'#f8f9fc':'#fff';return`<tr style="background:${row}">${td(i+1,row)}${td(r.date,row)}${td(r.description,row)}${td(r.location,row)}${td(r.status,row)}${td(r.material,row)}${td(r.qty,row)}${td(r.project,row)}${td(r.supervisorName||r.supervisor,row)}</tr>`;}).join('')
+      });
+    });
+  }
+
   // Summary stats
   const excM  = reports.filter(r=>r.type==='excavation').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
   const pipeM = reports.filter(r=>r.type==='pipe').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
@@ -2507,7 +2585,9 @@ function exportToPDF() {
 function buildTypeFilterBtns(module) {
   const types = module === 'pipeline'
     ? [['all','All','var(--muted)'],['excavation','⛏️ Excavation','var(--orange)'],['pipe','🔩 Pipe Laying','var(--blue)'],['refill','🪣 Refilling','var(--green)'],['valve','🔧 Valve','var(--red)'],['chamber','🏛️ Chamber','var(--orange)'],['fitting','🔗 Fitting','var(--cyan)'],['structure','🏗️ Concrete','var(--purple)']]
-    : [['all','All','var(--muted)'],['civil_dpr','📄 DPR','var(--orange)'],['civil_drawing','📐 Drawing','var(--blue)'],['civil_quality','✅ Quality','var(--green)'],['civil_material','📦 Material','var(--purple)'],['civil_labour','👷 Labour','var(--cyan)'],['civil_other','📝 Other','var(--muted)']];
+    : module === 'civil'
+    ? [['all','All','var(--muted)'],['civil_dpr','📄 DPR','var(--orange)'],['civil_drawing','📐 Drawing','var(--blue)'],['civil_quality','✅ Quality','var(--green)'],['civil_material','📦 Material','var(--purple)'],['civil_labour','👷 Labour','var(--cyan)'],['civil_other','📝 Other','var(--muted)']]
+    : [['all','All','var(--muted)'],['elec_panel','⚡ Panel','var(--yellow)'],['elec_cable','🔌 Cable','var(--orange)'],['elec_motor','⚙️ Motor','var(--blue)'],['elec_testing','🔬 Testing','var(--green)'],['elec_earthing','🌍 Earthing','var(--cyan)'],['elec_other','📝 Other','var(--muted)']];
   return types.map(([t,l,c]) => {
     const isAll = t === 'all';
     const border = isAll ? 'var(--border)' : 'transparent';
@@ -2523,7 +2603,8 @@ function renderReportsTab() {
 
   // Filter by module
   if (currentModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
-  else reports = reports.filter(r => r.module === 'civil');
+  else if (currentModule === 'civil') reports = reports.filter(r => r.module === 'civil');
+  else reports = reports.filter(r => r.module === 'electrical');
 
   reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
@@ -2570,17 +2651,22 @@ const TYPE_COLORS = {
   excavation:'var(--orange)',pipe:'var(--blue)',refill:'var(--green)',
   valve:'var(--red)',chamber:'var(--orange)',fitting:'var(--cyan)',structure:'var(--purple)',
   civil_dpr:'var(--orange)',civil_drawing:'var(--blue)',civil_quality:'var(--green)',
-  civil_material:'var(--purple)',civil_labour:'var(--cyan)',civil_other:'var(--muted)'
+  civil_material:'var(--purple)',civil_labour:'var(--cyan)',civil_other:'var(--muted)',
+  elec_panel:'var(--yellow)',elec_cable:'var(--orange)',elec_motor:'var(--blue)',
+  elec_testing:'var(--green)',elec_earthing:'var(--cyan)',elec_other:'var(--muted)'
 };
 const TYPE_ICONS = {
   excavation:'⛏️',pipe:'🔩',refill:'🪣',valve:'🔧',chamber:'🏛️',fitting:'🔗',structure:'🏗️',
-  civil_dpr:'📄',civil_drawing:'📐',civil_quality:'✅',civil_material:'📦',civil_labour:'👷',civil_other:'📝'
+  civil_dpr:'📄',civil_drawing:'📐',civil_quality:'✅',civil_material:'📦',civil_labour:'👷',civil_other:'📝',
+  elec_panel:'⚡',elec_cable:'🔌',elec_motor:'⚙️',elec_testing:'🔬',elec_earthing:'🌍',elec_other:'📝'
 };
 const TYPE_LABELS = {
   excavation:'Excavation',pipe:'Pipe Laying',refill:'Refilling',
   valve:'Valve',chamber:'Chamber',fitting:'Fitting',structure:'Concrete Work',
   civil_dpr:'DPR Entry',civil_drawing:'Drawing',civil_quality:'Quality Check',
-  civil_material:'Material',civil_labour:'Labour',civil_other:'Other'
+  civil_material:'Material',civil_labour:'Labour',civil_other:'Other',
+  elec_panel:'Panel Work',elec_cable:'Cable Laying',elec_motor:'Motor/Pump',
+  elec_testing:'Testing',elec_earthing:'Earthing',elec_other:'Other'
 };
 
 function reportItemHTML(r, showActions=true) {
@@ -2660,7 +2746,7 @@ function reportItemHTML(r, showActions=true) {
     details += row('Pipe Vol Deducted', r.pipeVolConc ? `${r.pipeVolConc} m³` : '');
     details += row('Net Volume', r.netVolConc ? `${r.netVolConc} m³` : '');
   }
-  if (r.type && r.type.startsWith('civil_')) {
+  if (r.type && (r.type.startsWith('civil_') || r.type.startsWith('elec_'))) {
     details += row('Description', r.description);
     details += row('Location', r.location);
     details += row('Status', r.status);
@@ -3373,6 +3459,7 @@ function renderSettingsExport() {
         <select id="exp-module">
           <option value="pipeline">🔩 Pipeline Work</option>
           <option value="civil">🏗️ Civil Work</option>
+          <option value="electrical">⚡ Electrical Work</option>
           <option value="all">All Modules</option>
         </select>
       </div>
