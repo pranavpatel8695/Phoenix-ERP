@@ -393,7 +393,11 @@ function savePhotosForReport(id, photosStart, photosEnd, photos) {
 function getPhotosForReport(id) {
   try {
     const v = localStorage.getItem('phx_photos_' + String(id));
-    return v ? JSON.parse(v) : null;
+    if (!v) return null;
+    const parsed = JSON.parse(v);
+    // Validate has actual data
+    if (!parsed.photosStart?.length && !parsed.photosEnd?.length && !parsed.photos?.length) return null;
+    return parsed;
   } catch(e) { return null; }
 }
 function deletePhotosForReport(id) {
@@ -726,7 +730,7 @@ function renderCurrentTab() {
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
     case 'submit':   main.innerHTML = renderSubmitTab(); break;
-    case 'reports':  main.innerHTML = renderReportsTab(); break;
+    case 'reports':  _rptTypeFilter = 'all'; main.innerHTML = renderReportsTab(); break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
     case 'users':    main.innerHTML = renderUsersTab(); break;
@@ -2188,9 +2192,18 @@ async function submitReport(type) {
     if (type==='civil_labour')   { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
   }
 
-  // Save photos separately by string ID
+  // Save photos directly in report (separate key per report to avoid 5MB limit)
   const reportId = String(data.id);
-  savePhotosForReport(reportId, data.photosStart, data.photosEnd, data.photos);
+  const hasPhotos = data.photosStart?.length || data.photosEnd?.length || data.photos?.length;
+  if (hasPhotos) {
+    try {
+      localStorage.setItem('phx_photos_' + reportId, JSON.stringify({
+        photosStart: data.photosStart || [],
+        photosEnd:   data.photosEnd   || [],
+        photos:      data.photos      || []
+      }));
+    } catch(e) { console.warn('Photo storage failed:', e); }
+  }
   const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
 
   // Save locally
@@ -2217,6 +2230,19 @@ async function submitReport(type) {
 }
 
 // ── REPORTS TAB ───────────────────────────────────────────────
+let _rptTypeFilter = 'all';
+
+function setReportTypeFilter(type, btn) {
+  _rptTypeFilter = type;
+  document.querySelectorAll('.rpt-type-btn').forEach(b => {
+    const active = b.dataset.type === type;
+    b.style.background = active ? 'var(--surface)' : 'rgba(0,0,0,0)';
+    b.style.border = active ? '1px solid var(--border)' : '1px solid transparent';
+    b.classList.toggle('rpt-type-active', active);
+  });
+  applyReportDateFilter();
+}
+
 function applyReportDateFilter() {
   const from    = document.getElementById('rpt-from')?.value || '';
   const to      = document.getElementById('rpt-to')?.value   || '';
@@ -2226,7 +2252,10 @@ function applyReportDateFilter() {
   let visible = 0;
   list.querySelectorAll('.report-item').forEach(el => {
     const date = el.dataset.date || '';
-    const show = (!from || date >= from) && (!to || date <= to);
+    const type = el.dataset.type || '';
+    const dateOk = (!from || date >= from) && (!to || date <= to);
+    const typeOk = _rptTypeFilter === 'all' || type === _rptTypeFilter;
+    const show = dateOk && typeOk;
     el.style.display = show ? '' : 'none';
     if (show) visible++;
   });
@@ -2471,12 +2500,18 @@ function renderReportsTab() {
     <div class="section-header">
       <div class="section-title">All Reports</div>
     </div>
-    <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Filter</div>
+    <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Date</div>
       <input type="date" id="rpt-from" value="${monthAgo}" max="${today}" onchange="applyReportDateFilter()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px">
       <div style="font-size:11px;color:var(--muted)">to</div>
       <input type="date" id="rpt-to" value="${today}" max="${today}" onchange="applyReportDateFilter()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px">
       <div class="chip active" id="rpt-count">${reports.length} total</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:0 2px" id="rpt-type-filters">
+      ${(currentModule==='pipeline'
+        ? [['all','All','var(--muted)'],['excavation','⛏️ Excavation','var(--orange)'],['pipe','🔩 Pipe Laying','var(--blue)'],['refill','🪣 Refilling','var(--green)'],['valve','🔧 Valve','var(--red)'],['chamber','🏛️ Chamber','var(--orange)'],['fitting','🔗 Fitting','var(--cyan)'],['structure','🏗️ Concrete','var(--purple)']]
+        : [['all','All','var(--muted)'],['civil_dpr','📄 DPR','var(--orange)'],['civil_drawing','📐 Drawing','var(--blue)'],['civil_quality','✅ Quality','var(--green)'],['civil_material','📦 Material','var(--purple)'],['civil_labour','👷 Labour','var(--cyan)'],['civil_other','📝 Other','var(--muted)']]
+      ).map(([t,l,c])=>`<button onclick="setReportTypeFilter('${t}',this)" data-type="${t}" style="padding:5px 10px;border-radius:20px;border:1px solid ${t==='all'?'var(--border)':'transparent'};background:${t==='all'?'var(--surface)':'rgba(0,0,0,0)'};color:${c};font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s" class="rpt-type-btn${t==='all'?' rpt-type-active':''}">${l}</button>`).join('')}
     </div>`;
 
   // Project filter
@@ -2637,7 +2672,7 @@ function reportItemHTML(r, showActions=true) {
   ].filter(p => p.src);
 
   return `
-    <div class="report-item" data-date="${r.date||''}">
+    <div class="report-item" data-date="${r.date||''}" data-type="${r.type||''}">
       <div class="report-item-header">
         <div class="type-dot" style="background:${color}"></div>
         <div class="report-type-label" style="color:${color}">${icon} ${label}</div>
