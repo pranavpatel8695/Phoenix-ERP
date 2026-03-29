@@ -1895,6 +1895,12 @@ async function submitReport(type) {
   if (!date)    { showToast('⚠️ Select a date'); return; }
   if (date > new Date().toISOString().slice(0,10)) { showToast('⚠️ Future date not allowed'); return; }
 
+  // Route required for all pipeline types
+  const pipelineTypes = ['excavation','pipe','refill','valve','chamber','fitting','structure'];
+  if (pipelineTypes.includes(type)) {
+    if (!route) { showToast('⚠️ Select a route — add routes in Settings → Projects'); return; }
+  }
+
   const g = id => document.getElementById(id)?.value || '';
   const gf= id => parseFloat(document.getElementById(id)?.value) || 0;
 
