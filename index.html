@@ -508,6 +508,7 @@ async function pullConfig() {
     if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
     if (d.assignments)                       saveAssignments(d.assignments);
     if (d.specials)                          saveSpecials(d.specials);
+    if (d.valveSpecials)                     saveValveSpecials(d.valveSpecials);
     if (d.users) {
       const local = getUsers();
       const adminPass = local.admin?.pass || 'admin';
@@ -530,6 +531,7 @@ async function pushConfig() {
     routes:      getRoutes(),
     assignments: getAssignments(),
     specials:    getSpecials(),
+    valveSpecials: getValveSpecials(),
     users:       getUsers(),
     updatedAt:   Date.now()
   };
@@ -1182,12 +1184,27 @@ function buildTypeFields(type, p={}) {
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔧 Valve Details</div>
-        <div class="form-row">
-          <div class="field-group"><label>Valve Type <span class="req">*</span></label>
-            <select id="f-valType">${['Sluice Valve (SW)','Butterfly Valve (BFV)','Air Valve (AV)','Scour Valve (ScV)','Non-Return Valve (NRV)','Pressure Reducing Valve (PRV)','Flow Control Valve (FCV)','Altitude Valve','Gate Valve','Other'].map(v=>`<option${p.valType===v?' selected':''}>${v}</option>`).join('')}</select>
-          </div>
-          <div class="field-group"><label>Size (mm) <span class="req">*</span></label><input type="text" id="f-size" value="${p.size||''}" placeholder="e.g. 600mm"></div>
-        </div>
+        ${(() => {
+          const vProj = document.getElementById('f-project')?.value || '';
+          const valveItems = (getValveSpecials()[vProj] || []);
+          const selectedVal = p.valType || '';
+          if (valveItems.length) {
+            return `<div class="field-group"><label>Valve Type & Size <span class="req">*</span></label>
+              <select id="f-valType">
+                <option value="">— Select Valve —</option>
+                ${valveItems.map(s=>`<option value="${s.name}"${selectedVal===s.name?' selected':''}>${s.name}</option>`).join('')}
+              </select>
+            </div>`;
+          } else {
+            return `<div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:8px;padding:10px;font-size:12px;color:var(--orange);margin-bottom:10px">
+              ⚠️ No valves defined for this project. Add them in Settings → Valves.
+            </div>
+            <div class="field-group"><label>Valve Type & Size <span class="req">*</span></label>
+              <input type="text" id="f-valType" value="${p.valType||''}" placeholder="e.g. Sluice Valve 600mm">
+            </div>`;
+          }
+        })()}
+        <input type="hidden" id="f-size" value="${p.size||''}">
         <div class="field-group"><label>Chamber Required?</label>
           <div class="radio-group">
             <div class="radio-opt${(p.chamberReq||'No')==='No'?' selected':''}" onclick="selectRadio('f-chamberReq','No',this)">No</div>
@@ -1286,7 +1303,7 @@ function buildTypeFields(type, p={}) {
             </div>`;
           } else {
             return `<div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:8px;padding:10px;font-size:12px;color:var(--orange);margin-bottom:10px">
-              ⚠️ No fittings defined for this project. Add them in Settings → Specials.
+              ⚠️ No fittings defined for this project. Add them in Settings → Fittings.
             </div>
             <div class="field-group"><label>Fitting Type & Size <span class="req">*</span></label>
               <input type="text" id="f-fitType" value="${p.fitType||''}" placeholder="e.g. Tee (Equal) 600mm">
@@ -3158,7 +3175,8 @@ function renderSettingsTab() {
     tabs = `
       <div class="tab-bar" id="settingsTabs">
         <div class="tab-item active" onclick="showSettingsTab('projects',this)">Projects</div>
-        <div class="tab-item" onclick="showSettingsTab('specials',this)">Specials</div>
+        <div class="tab-item" onclick="showSettingsTab('specials',this)">Fittings</div>
+        <div class="tab-item" onclick="showSettingsTab('valves',this)">Valves</div>
         <div class="tab-item" onclick="showSettingsTab('export',this)">📄 Export</div>
       </div>`;
     content = renderSettingsProjects();
@@ -3166,7 +3184,8 @@ function renderSettingsTab() {
     // PM sees specials + export
     tabs = `
       <div class="tab-bar" id="settingsTabs">
-        <div class="tab-item active" onclick="showSettingsTab('specials',this)">Specials</div>
+        <div class="tab-item active" onclick="showSettingsTab('specials',this)">Fittings</div>
+        <div class="tab-item" onclick="showSettingsTab('valves',this)">Valves</div>
         <div class="tab-item" onclick="showSettingsTab('export',this)">📄 Export</div>
       </div>`;
     content = renderSettingsSpecials();
@@ -3183,6 +3202,7 @@ function showSettingsTab(tab, el) {
   if (tab === 'projects') c.innerHTML = renderSettingsProjects();
   if (tab === 'accounts') c.innerHTML = renderSettingsAccounts();
   if (tab === 'specials') c.innerHTML = renderSettingsSpecials();
+  if (tab === 'valves')   c.innerHTML = renderSettingsValves();
   if (tab === 'export')   c.innerHTML = renderSettingsExport();
 }
 
@@ -3444,7 +3464,7 @@ function renderSettingsSpecials() {
 
   let html = `
     <div class="settings-section">
-      <div class="settings-section-title">⭐ Fitting Specials (Type & Size)</div>
+      <div class="settings-section-title">🔗 Fittings (Type & Size)</div>
       <div class="field-group"><select id="specialsProjSel" onchange="renderSpecialsList()">${vp.map(p=>`<option>${p}</option>`).join('')}</select></div>
       <div id="specialsList"></div>
       <div class="flex gap-2 mt-3">
@@ -3534,6 +3554,106 @@ function deleteSpecial(idx) {
   saveSpecials(specials);
   pushConfig();
   renderSpecialsList();
+}
+
+// ── VALVE SETTINGS (same pattern as Specials) ─────────────────
+const getValveSpecials  = () => LS.get('phx_valve_specials', {});
+const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
+
+function renderSettingsValves() {
+  const vp = getVisibleProjects();
+  let html = `
+    <div class="settings-section">
+      <div class="settings-section-title">🔧 Valves (Type & Size)</div>
+      <div class="field-group"><select id="valvesProjSel" onchange="renderValvesList()">${vp.map(p=>`<option>${p}</option>`).join('')}</select></div>
+      <div id="valvesList"></div>
+      <div class="flex gap-2 mt-3">
+        <input type="text" id="vsp-name" placeholder="e.g. NRV 600mm" style="flex:2;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit">
+        <input type="number" id="vsp-total" placeholder="Nos" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;text-align:center">
+        <button class="btn btn-primary btn-sm" onclick="addValveSpecial()">+</button>
+      </div>
+    </div>`;
+  setTimeout(renderValvesList, 50);
+  return html;
+}
+
+function renderValvesList() {
+  const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
+  const valves = getValveSpecials();
+  const items = valves[proj] || [];
+  const el = document.getElementById('valvesList');
+  if (!el) return;
+  if (!items.length) { el.innerHTML = '<div class="text-sm text-muted">No valves yet.</div>'; return; }
+  const reports = getReports().filter(r => r.project === proj && r.type === 'valve');
+  el.innerHTML = items.map((s, i) => {
+    const used  = reports.reduce((sum, r) => r.valType === s.name ? sum + 1 : sum, 0);
+    const left  = (s.total || 0) - used;
+    const pct   = s.total ? Math.min(100, Math.round(used / s.total * 100)) : 0;
+    const color = pct >= 100 ? 'var(--red)' : pct >= 75 ? 'var(--orange)' : 'var(--green)';
+    return `
+      <div class="card mb-2">
+        <div class="flex justify-between items-center mb-1">
+          <div class="font-bold" style="font-size:13px">🔧 ${s.name}</div>
+          <button class="btn btn-danger btn-sm" onclick="deleteValveSpecial(${i})">✕</button>
+        </div>
+        <div class="text-xs text-muted mb-1">Total: <strong>${s.total}</strong> · Used: <strong>${used}</strong> · Left: <span style="color:${color};font-weight:700">${left}</span></div>
+        <div class="progress-bar mb-2"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+        <div class="flex items-center gap-2">
+          <input type="number" id="vsp-add-${i}" placeholder="Add qty" min="1" style="width:90px;padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+          <button class="btn btn-primary btn-sm" onclick="addValveSpecialQty(${i})">+ Add Qty</button>
+          <button class="btn btn-ghost btn-sm" onclick="editValveSpecialTotal(${i},${s.total})">✏️ Set Total</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function addValveSpecial() {
+  const name  = document.getElementById('vsp-name').value.trim();
+  const total = parseInt(document.getElementById('vsp-total').value) || 0;
+  const proj  = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
+  if (!name) { showToast('Enter valve name'); return; }
+  const valves = getValveSpecials();
+  if (!valves[proj]) valves[proj] = [];
+  valves[proj].push({ name, total });
+  saveValveSpecials(valves);
+  pushConfig();
+  document.getElementById('vsp-name').value = '';
+  document.getElementById('vsp-total').value = '';
+  renderValvesList();
+  showToast('✅ Valve added');
+}
+
+function addValveSpecialQty(idx) {
+  const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
+  const qty  = parseInt(document.getElementById('vsp-add-' + idx)?.value) || 0;
+  if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
+  const valves = getValveSpecials();
+  valves[proj][idx].total = (valves[proj][idx].total || 0) + qty;
+  saveValveSpecials(valves);
+  pushConfig();
+  renderValvesList();
+  showToast(`✅ Added ${qty} nos`);
+}
+
+function editValveSpecialTotal(idx, currentTotal) {
+  const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
+  const newTotal = parseInt(prompt(`Set new total for this valve (current: ${currentTotal}):`, currentTotal));
+  if (isNaN(newTotal) || newTotal < 0) return;
+  const valves = getValveSpecials();
+  valves[proj][idx].total = newTotal;
+  saveValveSpecials(valves);
+  pushConfig();
+  renderValvesList();
+  showToast('✅ Total updated');
+}
+
+function deleteValveSpecial(idx) {
+  const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
+  const valves = getValveSpecials();
+  valves[proj].splice(idx, 1);
+  saveValveSpecials(valves);
+  pushConfig();
+  renderValvesList();
 }
 
 
