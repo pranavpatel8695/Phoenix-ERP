@@ -857,13 +857,14 @@ function renderHome() {
     const today = new Date().toISOString().slice(0,10);
     const att = getAttendance();
     const todayAtt = att.filter(a=>a.date===today&&a.atype==='attendance');
-    const pending = att.filter(a=>a.pmStatus==='pending').length;
+    const uniqueToday = new Set(todayAtt.map(a=>a.user)).size;
+    const pending = att.filter(a=>a.pmStatus==='pending'&&a.atype==='attendance').length;
     html += `
       <div class="section-header"><div class="section-title">Attendance Overview</div></div>
       <div class="stat-grid">
-        <div class="stat-card"><div class="val text-blue">${todayAtt.length}</div><div class="lbl">Marked Today</div></div>
+        <div class="stat-card"><div class="val text-blue">${uniqueToday}</div><div class="lbl">Marked Today</div></div>
         <div class="stat-card"><div class="val text-orange">${pending}</div><div class="lbl">Pending Approval</div></div>
-        <div class="stat-card"><div class="val text-green">${att.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='approved').length}</div><div class="lbl">Approved</div></div>
+        <div class="stat-card"><div class="val text-green">${att.filter(a=>a.adminStatus==='approved').length}</div><div class="lbl">Approved</div></div>
         <div class="stat-card"><div class="val text-purple">${att.filter(a=>a.atype==='leave').length}</div><div class="lbl">Leave Records</div></div>
       </div>`;
   }
@@ -4353,8 +4354,8 @@ function renderAttendanceEngineer() {
   html += `<div class="card mb-3">
     <div class="card-title">🏖️ Apply Leave</div>
     <div class="form-row mt-2">
-      <div class="field-group"><label>From Date</label><input type="date" id="lv-from" max="${today}"></div>
-      <div class="field-group"><label>To Date</label><input type="date" id="lv-to" max="${today}"></div>
+      <div class="field-group"><label>From Date</label><input type="date" id="lv-from"></div>
+      <div class="field-group"><label>To Date</label><input type="date" id="lv-to"></div>
     </div>
     <div class="field-group"><label>Leave Type</label>
       <select id="lv-type"><option>Casual Leave</option><option>Sick Leave</option><option>Earned Leave</option><option>Other</option></select>
@@ -4381,9 +4382,6 @@ function renderAttendanceEngineer() {
         </div>
       </div>`).join('');
   }
-
-  // Monthly summary
-  html += monthlyAttendanceSummary(currentUser, all);
   return html;
 }
 
@@ -4482,15 +4480,13 @@ function renderAttendancePM() {
   // Monthly report for selected engineer
   const selEng = document.getElementById('pm-eng-sel')?.value || myEngineers[0] || '';
   if (myEngineers.length) {
-    html += `<div class="card mb-3">
-      <div class="flex justify-between items-center mb-2">
-        <div class="card-title">📅 Monthly Report</div>
-        <select id="pm-eng-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-          ${myEngineers.map(u=>`<option value="${u}"${u===selEng?' selected':''}>${users[u]?.name||u}</option>`).join('')}
-        </select>
-      </div>
-      ${monthlyAttendanceSummary(selEng, getAttendance())}
+    html += `<div class="flex justify-between items-center mb-2">
+      <div class="card-title">📅 Monthly Report</div>
+      <select id="pm-eng-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+        ${myEngineers.map(u=>`<option value="${u}"${u===selEng?' selected':''}>${users[u]?.name||u}</option>`).join('')}
+      </select>
     </div>`;
+    html += monthlyAttendanceSummary(selEng, getAttendance());
   }
 
   if (pending.length) {
@@ -4519,15 +4515,13 @@ function renderAttendanceAdmin() {
   const allUsers = Object.entries(users).filter(([,u])=>u.role!=='admin').map(([u,d])=>({id:u,name:d.name||u}));
   const selUser = document.getElementById('admin-att-sel')?.value || allUsers[0]?.id || '';
   if (allUsers.length) {
-    html += `<div class="card mb-3">
-      <div class="flex justify-between items-center mb-2">
-        <div class="card-title">📅 Monthly Report</div>
-        <select id="admin-att-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-          ${allUsers.map(u=>`<option value="${u.id}"${u.id===selUser?' selected':''}>${u.name}</option>`).join('')}
-        </select>
-      </div>
-      ${monthlyAttendanceSummary(selUser, all)}
+    html += `<div class="flex justify-between items-center mb-2">
+      <div class="card-title">📅 Monthly Report</div>
+      <select id="admin-att-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+        ${allUsers.map(u=>`<option value="${u.id}"${u.id===selUser?' selected':''}>${u.name}</option>`).join('')}
+      </select>
     </div>`;
+    html += monthlyAttendanceSummary(selUser, all);
   }
 
   if (pmPending.length) html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval</div>`;
