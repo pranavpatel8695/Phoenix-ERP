@@ -71,7 +71,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 .role-badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;}
 .role-badge.admin{background:rgba(255,214,10,0.15);color:var(--yellow);border:1px solid rgba(255,214,10,0.3);}
 .role-badge.pm{background:rgba(48,209,88,0.15);color:var(--green);border:1px solid rgba(48,209,88,0.3);}
-.role-badge.supervisor{background:rgba(10,132,255,0.15);color:var(--blue);border:1px solid rgba(10,132,255,0.3);}
+.role-badge.supervisor,.role-badge.senior_engineer,.role-badge.junior_engineer,.role-badge.work_assistant{background:rgba(10,132,255,0.15);color:var(--blue);border:1px solid rgba(10,132,255,0.3);}
 #syncStatus{font-size:10px;padding:3px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;}
 #syncStatus.synced{color:var(--green);background:rgba(48,209,88,0.1);border-color:rgba(48,209,88,0.2);}
 #syncStatus.syncing{color:var(--orange);background:rgba(255,159,10,0.1);border-color:rgba(255,159,10,0.2);}
@@ -334,8 +334,14 @@ function getUserLabel(u) {
   if (!u) return 'Engineer';
   if (u.role === 'admin') return 'Admin';
   if (u.role === 'pm') return 'Project Manager';
-  return u.designation || 'Engineer';
+  if (u.role === 'senior_engineer') return 'Senior Engineer';
+  if (u.role === 'junior_engineer') return 'Junior Engineer';
+  if (u.role === 'work_assistant') return 'Work Assistant';
+  return u.designation || 'Engineer'; // backward compat
 }
+// All engineer-level roles (same access as old 'supervisor')
+const ENGINEER_ROLES = ['supervisor','senior_engineer','junior_engineer','work_assistant'];
+function isEngineer(role) { return ENGINEER_ROLES.includes(role); }
 const getProjects    = () => LS.get('phx_projects', []);
 const saveProjects   = v => LS.set('phx_projects', v);
 const getRoutes      = () => LS.get('phx_routes', {});
@@ -689,15 +695,15 @@ async function loginSuccess(user, userRecord) {
 
   // Update UI
   document.getElementById('roleBadgeEl').textContent =
-    currentRole === 'admin' ? 'Admin' : currentRole === 'pm' ? 'Project Manager' : (getUserLabel(getUsers()[currentUser]));
+    getUserLabel({role:currentRole, ...((getUsers()[currentUser])||{})});
   document.getElementById('roleBadgeEl').className = `role-badge ${currentRole}`;
   document.getElementById('avatarBtn').textContent = userRecord.name?.[0]?.toUpperCase() || user[0].toUpperCase();
   document.getElementById('topbarSub').textContent = userRecord.name || user;
 
   // Show/hide nav items
   document.getElementById('navSubmit').classList.toggle('hidden', false);
-  document.getElementById('navTracker').classList.toggle('hidden', currentRole === 'supervisor');
-  document.getElementById('navSettings').classList.toggle('hidden', currentRole === 'supervisor');
+  document.getElementById('navTracker').classList.toggle('hidden', isEngineer(currentRole));
+  document.getElementById('navSettings').classList.toggle('hidden', isEngineer(currentRole));
   document.getElementById('navUsers').classList.toggle('hidden', currentRole !== 'admin');
   document.getElementById('navAttendance')?.classList.toggle('hidden', false);
 
@@ -3341,7 +3347,7 @@ function findAllGapsFullRoute(targetReps, len) {
 
 // ── SETTINGS TAB ─────────────────────────────────────────────
 function renderSettingsTab() {
-  if (currentRole === 'supervisor') return `<div class="empty-state"><div class="icon">🔒</div><p>Settings not available.</p></div>`;
+  if (isEngineer(currentRole)) return `<div class="empty-state"><div class="icon">🔒</div><p>Settings not available.</p></div>`;
 
   let tabs = '';
   let content = '';
@@ -3838,7 +3844,7 @@ function renderUsersTab() {
   const users = getUsers();
   const projects = getProjects();
   const pms = Object.entries(users).filter(([,u]) => u.role === 'pm');
-  const supervisors = Object.entries(users).filter(([,u]) => u.role === 'supervisor');
+  const supervisors = Object.entries(users).filter(([,u]) => isEngineer(u.role) && u.role !== 'pm' && u.role !== 'admin');
 
   function userCard([username, u]) {
     const roleColor = u.role === 'pm' ? 'var(--green)' : 'var(--blue)';
@@ -4000,17 +4006,11 @@ function openAddUserUM() {
     </div>
     <div class="field-group">
       <label>Role <span class="req">*</span></label>
-      <select id="um-role" onchange="document.getElementById('um-desig-wrap').style.display=this.value==='supervisor'?'block':'none'">
-        <option value="supervisor">Engineer</option>
+      <select id="um-role">
+        <option value="junior_engineer">Junior Engineer</option>
+        <option value="senior_engineer">Senior Engineer</option>
+        <option value="work_assistant">Work Assistant</option>
         <option value="pm">Project Manager</option>
-      </select>
-    </div>
-    <div class="field-group" id="um-desig-wrap">
-      <label>Designation</label>
-      <select id="um-designation">
-        <option value="Senior Engineer">Senior Engineer</option>
-        <option value="Junior Engineer">Junior Engineer</option>
-        <option value="Work Assistant">Work Assistant</option>
       </select>
     </div>
     <div class="field-group">
@@ -4064,8 +4064,7 @@ function saveUserUM() {
   const name = (document.getElementById('um-name')||{}).value || '';
   const user = ((document.getElementById('um-user')||{}).value || '').trim().toLowerCase().replace(/\s+/g,'');
   const pass = (document.getElementById('um-pass')||{}).value || '';
-  const role = (document.getElementById('um-role')||{}).value || 'supervisor';
-  const designation = role==='supervisor' ? ((document.getElementById('um-designation')||{}).value||'Junior Engineer') : '';
+  const role = (document.getElementById('um-role')||{}).value || 'junior_engineer';
   const projs = window._umProjects || [];
 
   if (!name.trim()) { showToast('⚠️ Enter full name'); return; }
@@ -4074,13 +4073,13 @@ function saveUserUM() {
 
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
-  users[user] = { role, pass, name: name.trim(), projects: projs, designation };
+  users[user] = { role, pass, name: name.trim(), projects: projs };
   saveUsers(users);
   pushConfig();
 
   // Show credentials card
-  const roleLabel = role==='pm' ? 'Project Manager' : (designation||'Engineer');
-  window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nDesignation: ' + roleLabel;
+  const u_new = {role};
+  window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nRole: ' + getUserLabel(u_new);
   document.getElementById('formModalContent').innerHTML = `
     <div class="flex justify-between items-center mb-4">
       <div class="section-title">✅ User Created</div>
@@ -4159,17 +4158,11 @@ function openEditUser(username) {
     </div>
     <div class="field-group">
       <label>Role</label>
-      <select id="eu-role" onchange="document.getElementById('eu-desig-wrap').style.display=this.value==='supervisor'?'block':'none'">
-        <option value="supervisor"${u.role==='supervisor'?' selected':''}>Engineer</option>
+      <select id="eu-role">
+        <option value="junior_engineer"${u.role==='junior_engineer'||(u.role==='supervisor'&&(!u.designation||u.designation==='Junior Engineer'))?' selected':''}>Junior Engineer</option>
+        <option value="senior_engineer"${u.role==='senior_engineer'||(u.role==='supervisor'&&u.designation==='Senior Engineer')?' selected':''}>Senior Engineer</option>
+        <option value="work_assistant"${u.role==='work_assistant'||(u.designation==='Work Assistant')?' selected':''}>Work Assistant</option>
         <option value="pm"${u.role==='pm'?' selected':''}>Project Manager</option>
-      </select>
-    </div>
-    <div class="field-group" id="eu-desig-wrap" style="display:${u.role==='supervisor'?'block':'none'}">
-      <label>Designation</label>
-      <select id="eu-designation">
-        <option value="Senior Engineer"${(u.designation||'')==='Senior Engineer'?' selected':''}>Senior Engineer</option>
-        <option value="Junior Engineer"${(!u.designation||u.designation==='Junior Engineer')&&u.role==='supervisor'?' selected':''}>Junior Engineer</option>
-        <option value="Work Assistant"${(u.designation||'')==='Work Assistant'?' selected':''}>Work Assistant</option>
       </select>
     </div>
     <div class="flex gap-3 mt-4">
@@ -4183,14 +4176,13 @@ function openEditUser(username) {
 function updateUserUM(username) {
   const name = ((document.getElementById('eu-name')||{}).value || '').trim();
   const pass = (document.getElementById('eu-pass')||{}).value || '';
-  const role = (document.getElementById('eu-role')||{}).value || 'supervisor';
-  const designation = role==='supervisor' ? ((document.getElementById('eu-designation')||{}).value||'Junior Engineer') : '';
+  const role = (document.getElementById('eu-role')||{}).value || 'junior_engineer';
   if (!name) { showToast('⚠️ Name cannot be empty'); return; }
   const users = getUsers();
   if (!users[username]) return;
   users[username].name = name;
   users[username].role = role;
-  users[username].designation = designation;
+  delete users[username].designation;
   if (pass) users[username].pass = pass;
   saveUsers(users);
   pushConfig();
@@ -4287,7 +4279,7 @@ async function init() {
 // ── ATTENDANCE MODULE ────────────────────────────────────────
 
 function renderAttendanceTab() {
-  if (currentRole === 'supervisor') return renderAttendanceEngineer();
+  if (isEngineer(currentRole)) return renderAttendanceEngineer();
   if (currentRole === 'pm')        return renderAttendancePM();
   return renderAttendanceAdmin();
 }
@@ -4465,7 +4457,7 @@ function monthlyAttendanceSummary(user, records) {
 // ── PM VIEW ──
 function renderAttendancePM() {
   const users = getUsers();
-  const myEngineers = Object.entries(users).filter(([,u])=>u.role==='supervisor'&&(u.projects||[]).some(p=>getVisibleProjects().includes(p))).map(([u])=>u);
+  const myEngineers = Object.entries(users).filter(([,u])=>isEngineer(u.role)&&(u.projects||[]).some(p=>getVisibleProjects().includes(p))).map(([u])=>u);
   const all = getAttendance().filter(a=>myEngineers.includes(a.user));
   const pending = all.filter(a=>a.pmStatus==='pending');
   const done    = all.filter(a=>a.pmStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20);
@@ -4576,7 +4568,7 @@ function exportMonthlyAttendance(targetUser) {
 
   let all = getAttendance();
   if (targetUser) all = all.filter(a=>a.user===targetUser);
-  else if (currentRole==='supervisor') all = all.filter(a=>a.user===currentUser);
+  else if (isEngineer(currentRole)) all = all.filter(a=>a.user===currentUser);
 
   // Group by user
   const users = {};
