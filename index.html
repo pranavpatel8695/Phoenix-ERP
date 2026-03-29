@@ -339,6 +339,8 @@ const getAssignments = () => LS.get('phx_assignments', {});
 const saveAssignments= v => LS.set('phx_assignments', v);
 const getSpecials    = () => LS.get('phx_specials', {});
 const saveSpecials   = v => LS.set('phx_specials', v);
+const getValveSpecials  = () => LS.get('phx_valve_specials', {});
+const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
 
 function getReports() {
   return LS.get('phx_reports', []);
@@ -3699,8 +3701,6 @@ function deleteSpecial(idx) {
 }
 
 // ── VALVE SETTINGS (same pattern as Specials) ─────────────────
-const getValveSpecials  = () => LS.get('phx_valve_specials', {});
-const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
 
 function renderSettingsValves() {
   const vp = getVisibleProjects();
