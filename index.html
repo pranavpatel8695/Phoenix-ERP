@@ -2491,6 +2491,19 @@ function exportToPDF() {
   }
 }
 
+function buildTypeFilterBtns(module) {
+  const types = module === 'pipeline'
+    ? [['all','All','var(--muted)'],['excavation','⛏️ Excavation','var(--orange)'],['pipe','🔩 Pipe Laying','var(--blue)'],['refill','🪣 Refilling','var(--green)'],['valve','🔧 Valve','var(--red)'],['chamber','🏛️ Chamber','var(--orange)'],['fitting','🔗 Fitting','var(--cyan)'],['structure','🏗️ Concrete','var(--purple)']]
+    : [['all','All','var(--muted)'],['civil_dpr','📄 DPR','var(--orange)'],['civil_drawing','📐 Drawing','var(--blue)'],['civil_quality','✅ Quality','var(--green)'],['civil_material','📦 Material','var(--purple)'],['civil_labour','👷 Labour','var(--cyan)'],['civil_other','📝 Other','var(--muted)']];
+  return types.map(([t,l,c]) => {
+    const isAll = t === 'all';
+    const border = isAll ? 'var(--border)' : 'transparent';
+    const bg = isAll ? 'var(--surface)' : 'rgba(0,0,0,0)';
+    const cls = isAll ? 'rpt-type-btn rpt-type-active' : 'rpt-type-btn';
+    return '<button onclick="setReportTypeFilter(\'' + t + '\',this)" data-type="' + t + '" class="' + cls + '" style="padding:5px 10px;border-radius:20px;border:1px solid ' + border + ';background:' + bg + ';color:' + c + ';font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s">' + l + '</button>';
+  }).join('');
+}
+
 function renderReportsTab() {
   const vp = getVisibleProjects();
   let reports = getReports().filter(r => vp.includes(r.project));
@@ -2516,10 +2529,7 @@ function renderReportsTab() {
       <div class="chip active" id="rpt-count">${reports.length} total</div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:0 2px" id="rpt-type-filters">
-      ${(currentModule==='pipeline'
-        ? [['all','All','var(--muted)'],['excavation','⛏️ Excavation','var(--orange)'],['pipe','🔩 Pipe Laying','var(--blue)'],['refill','🪣 Refilling','var(--green)'],['valve','🔧 Valve','var(--red)'],['chamber','🏛️ Chamber','var(--orange)'],['fitting','🔗 Fitting','var(--cyan)'],['structure','🏗️ Concrete','var(--purple)']]
-        : [['all','All','var(--muted)'],['civil_dpr','📄 DPR','var(--orange)'],['civil_drawing','📐 Drawing','var(--blue)'],['civil_quality','✅ Quality','var(--green)'],['civil_material','📦 Material','var(--purple)'],['civil_labour','👷 Labour','var(--cyan)'],['civil_other','📝 Other','var(--muted)']]
-      ).map(([t,l,c])=>`<button onclick="setReportTypeFilter('${t}',this)" data-type="${t}" style="padding:5px 10px;border-radius:20px;border:1px solid ${t==='all'?'var(--border)':'transparent'};background:${t==='all'?'var(--surface)':'rgba(0,0,0,0)'};color:${c};font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s" class="rpt-type-btn${t==='all'?' rpt-type-active':''}">${l}</button>`).join('')}
+      ${buildTypeFilterBtns(currentModule)}
     </div>`;
 
   // Project filter
