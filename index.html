@@ -3843,11 +3843,17 @@ function renderUsersTab() {
   }
   const users = getUsers();
   const projects = getProjects();
-  const pms = Object.entries(users).filter(([,u]) => u.role === 'pm');
-  const supervisors = Object.entries(users).filter(([,u]) => isEngineer(u.role) && u.role !== 'pm' && u.role !== 'admin');
+
+  const roleGroups = [
+    { role:'pm',              label:'Project Managers', color:'var(--green)',  badge:'badge-green' },
+    { role:'senior_engineer', label:'Senior Engineers', color:'var(--blue)',   badge:'badge-blue' },
+    { role:'junior_engineer', label:'Junior Engineers', color:'var(--cyan)',   badge:'badge-blue' },
+    { role:'work_assistant',  label:'Work Assistants',  color:'var(--purple)', badge:'badge-blue' },
+  ];
 
   function userCard([username, u]) {
-    const roleColor = u.role === 'pm' ? 'var(--green)' : 'var(--blue)';
+    const grp = roleGroups.find(g=>g.role===u.role) || roleGroups[2];
+    const roleColor = grp.color;
     const roleLabel = getUserLabel(u);
     const ap = (u.projects || []);
     return `
@@ -3885,21 +3891,26 @@ function renderUsersTab() {
       </div>`;
   }
 
+  const tabsHtml = roleGroups.map((g,i) => {
+    const count = Object.values(users).filter(u=>u.role===g.role).length;
+    return `<div class="tab-item${i===0?' active':''}" onclick="switchUserMgmtTab('${g.role}',this)">${g.label} <span class="badge ${g.badge}" style="margin-left:4px">${count}</span></div>`;
+  }).join('');
+
+  const firstGroup = roleGroups[0];
+  const firstUsers = Object.entries(users).filter(([,u])=>u.role===firstGroup.role);
+
   let html = `
     <div class="section-header">
       <div class="section-title">👥 User Management</div>
       <button class="btn btn-primary btn-sm" onclick="openAddUserUM()">+ New User</button>
     </div>
-    <div class="tab-bar" id="userMgmtTabs">
-      <div class="tab-item active" onclick="switchUserMgmtTab('pm',this)">Project Managers <span class="badge badge-green" style="margin-left:4px">${pms.length}</span></div>
-      <div class="tab-item" onclick="switchUserMgmtTab('supervisor',this)">Engineers <span class="badge badge-blue" style="margin-left:4px">${supervisors.length}</span></div>
-    </div>
+    <div class="tab-bar" id="userMgmtTabs" style="overflow-x:auto;white-space:nowrap">${tabsHtml}</div>
     <div id="userMgmtContent">`;
 
-  if (!pms.length) {
-    html += `<div class="empty-state"><div class="icon">👤</div><p>No Project Managers yet.<br>Tap "+ New User" to add one.</p></div>`;
+  if (!firstUsers.length) {
+    html += `<div class="empty-state"><div class="icon">👤</div><p>No ${firstGroup.label} yet.<br>Tap "+ New User" to add one.</p></div>`;
   } else {
-    html += pms.map(userCard).join('');
+    html += firstUsers.map(userCard).join('');
   }
   html += `</div>`;
   return html;
@@ -3910,10 +3921,14 @@ function switchUserMgmtTab(role, el) {
   el.classList.add('active');
   const users = getUsers();
   const projects = getProjects();
-  const filtered = Object.entries(users).filter(([,u]) => u.role === role);
+  // Match exact role OR legacy supervisor→any engineer
+  const filtered = Object.entries(users).filter(([,u]) => u.role === role || (role==='junior_engineer' && u.role==='supervisor'));
+
+  const roleColors = {pm:'var(--green)',senior_engineer:'var(--blue)',junior_engineer:'var(--cyan)',work_assistant:'var(--purple)',supervisor:'var(--cyan)'};
+  const roleLabels = {pm:'Project Manager',senior_engineer:'Senior Engineer',junior_engineer:'Junior Engineer',work_assistant:'Work Assistant',supervisor:'Junior Engineer'};
 
   function userCard([username, u]) {
-    const roleColor = u.role === 'pm' ? 'var(--green)' : 'var(--blue)';
+    const roleColor = roleColors[u.role] || 'var(--blue)';
     const roleLabel = getUserLabel(u);
     const ap = (u.projects || []);
     return `
@@ -3952,8 +3967,9 @@ function switchUserMgmtTab(role, el) {
   }
 
   const content = document.getElementById('userMgmtContent');
+  const label = roleLabels[role] || 'User';
   if (!filtered.length) {
-    content.innerHTML = `<div class="empty-state"><div class="icon">👤</div><p>No ${role === 'pm' ? 'Project Managers' : 'Engineers'} yet.<br>Tap "+ New User" to add one.</p></div>`;
+    content.innerHTML = `<div class="empty-state"><div class="icon">👤</div><p>No ${label}s yet.<br>Tap "+ New User" to add one.</p></div>`;
   } else {
     content.innerHTML = filtered.map(userCard).join('');
   }
