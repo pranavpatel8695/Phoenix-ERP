@@ -730,7 +730,7 @@ function renderCurrentTab() {
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
     case 'submit':   main.innerHTML = renderSubmitTab(); break;
-    case 'reports':  _rptTypeFilter = 'all'; main.innerHTML = renderReportsTab(); break;
+    case 'reports':  _rptTypeFilter = 'all'; _rptProjFilter = ''; main.innerHTML = renderReportsTab(); break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
     case 'users':    main.innerHTML = renderUsersTab(); break;
@@ -2231,6 +2231,7 @@ async function submitReport(type) {
 
 // ── REPORTS TAB ───────────────────────────────────────────────
 let _rptTypeFilter = 'all';
+let _rptProjFilter = '';
 
 function setReportTypeFilter(type, btn) {
   _rptTypeFilter = type;
@@ -2240,6 +2241,11 @@ function setReportTypeFilter(type, btn) {
     b.style.border = active ? '1px solid var(--border)' : '1px solid transparent';
     b.classList.toggle('rpt-type-active', active);
   });
+  applyReportDateFilter();
+}
+
+function filterByProject(val) {
+  _rptProjFilter = val;
   applyReportDateFilter();
 }
 
@@ -2253,9 +2259,11 @@ function applyReportDateFilter() {
   list.querySelectorAll('.report-item').forEach(el => {
     const date = el.dataset.date || '';
     const type = el.dataset.type || '';
+    const proj = el.dataset.project || '';
     const dateOk = (!from || date >= from) && (!to || date <= to);
     const typeOk = _rptTypeFilter === 'all' || type === _rptTypeFilter;
-    const show = dateOk && typeOk;
+    const projOk = !_rptProjFilter || proj === _rptProjFilter;
+    const show = dateOk && typeOk && projOk;
     el.style.display = show ? '' : 'none';
     if (show) visible++;
   });
@@ -2672,7 +2680,7 @@ function reportItemHTML(r, showActions=true) {
   ].filter(p => p.src);
 
   return `
-    <div class="report-item" data-date="${r.date||''}" data-type="${r.type||''}">
+    <div class="report-item" data-date="${r.date||''}" data-type="${r.type||''}" data-project="${r.project||''}">`
       <div class="report-item-header">
         <div class="type-dot" style="background:${color}"></div>
         <div class="report-type-label" style="color:${color}">${icon} ${label}</div>
