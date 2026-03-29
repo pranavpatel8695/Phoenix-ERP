@@ -3845,10 +3845,10 @@ function renderUsersTab() {
   const projects = getProjects();
 
   const roleGroups = [
-    { role:'pm',              label:'Project Managers', color:'var(--green)',  badge:'badge-green' },
-    { role:'senior_engineer', label:'Senior Engineers', color:'var(--blue)',   badge:'badge-blue' },
-    { role:'junior_engineer', label:'Junior Engineers', color:'var(--cyan)',   badge:'badge-blue' },
-    { role:'work_assistant',  label:'Work Assistants',  color:'var(--purple)', badge:'badge-blue' },
+    { role:'pm',              label:'PM',     color:'var(--green)',  badge:'badge-green' },
+    { role:'senior_engineer', label:'Sr. Eng',color:'var(--blue)',   badge:'badge-blue' },
+    { role:'junior_engineer', label:'Jr. Eng', color:'var(--cyan)',  badge:'badge-blue' },
+    { role:'work_assistant',  label:'Asst.',   color:'var(--purple)',badge:'badge-blue' },
   ];
 
   function userCard([username, u]) {
@@ -3892,8 +3892,8 @@ function renderUsersTab() {
   }
 
   const tabsHtml = roleGroups.map((g,i) => {
-    const count = Object.values(users).filter(u=>u.role===g.role).length;
-    return `<div class="tab-item${i===0?' active':''}" onclick="switchUserMgmtTab('${g.role}',this)">${g.label} <span class="badge ${g.badge}" style="margin-left:4px">${count}</span></div>`;
+    const count = Object.values(users).filter(u=>u.role===g.role||(g.role==='junior_engineer'&&u.role==='supervisor')).length;
+    return `<div class="tab-item${i===0?' active':''}" onclick="switchUserMgmtTab('${g.role}',this)" style="font-size:11px;padding:8px 6px">${g.label} <span class="badge ${g.badge}" style="margin-left:3px">${count}</span></div>`;
   }).join('');
 
   const firstGroup = roleGroups[0];
@@ -3904,7 +3904,7 @@ function renderUsersTab() {
       <div class="section-title">👥 User Management</div>
       <button class="btn btn-primary btn-sm" onclick="openAddUserUM()">+ New User</button>
     </div>
-    <div class="tab-bar" id="userMgmtTabs" style="overflow-x:auto;white-space:nowrap">${tabsHtml}</div>
+    <div class="tab-bar" id="userMgmtTabs">${tabsHtml}</div>
     <div id="userMgmtContent">`;
 
   if (!firstUsers.length) {
@@ -4093,13 +4093,12 @@ function saveUserUM() {
   saveUsers(users);
   pushConfig();
 
-  // Show credentials card
-  const u_new = {role};
-  window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nRole: ' + getUserLabel(u_new);
+  const roleLabel = getUserLabel({role, name: name.trim()});
+  window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nRole: ' + roleLabel;
   document.getElementById('formModalContent').innerHTML = `
     <div class="flex justify-between items-center mb-4">
       <div class="section-title">✅ User Created</div>
-      <button class="btn btn-secondary btn-sm" onclick="closeFormModal();document.getElementById('main').innerHTML=renderUsersTab()">✕ Close</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal();renderCurrentTab()">✕</button>
     </div>
     <div style="background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.3);border-radius:12px;padding:16px;margin-bottom:16px">
       <div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">🔐 Login Credentials</div>
@@ -4113,11 +4112,11 @@ function saveUserUM() {
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px;text-align:center">Share these credentials with the user to let them log in.</div>
     <div class="flex gap-3">
-      <button class="btn btn-primary flex-1" onclick="copyCredentials()">📋 Copy Credentials</button>
-      <button class="btn btn-secondary flex-1" onclick="closeFormModal();document.getElementById('main').innerHTML=renderUsersTab()">Done</button>
+      <button class="btn btn-primary flex-1" onclick="copyCredentials()">📋 Copy</button>
+      <button class="btn btn-secondary flex-1" onclick="closeFormModal();renderCurrentTab()">Done</button>
     </div>`;
   document.getElementById('formModal').classList.remove('hidden');
-  document.getElementById('main').innerHTML = renderUsersTab();
+  renderCurrentTab();
 }
 
 function showUserCredentials(username) {
