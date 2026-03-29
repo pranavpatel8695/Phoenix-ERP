@@ -315,7 +315,7 @@ const APP_VERSION = '3.0';
 // ── STATE ───────────────────────────────────────────────────
 let currentUser = null;
 let currentRole = null; // 'admin' | 'pm' | 'supervisor'
-let currentModule = 'pipeline'; // 'pipeline' | 'civil' | 'electrical'
+let currentModule = 'pipeline'; // 'pipeline' | 'civil' | 'attendance'
 let activeTab = 'home';
 let _syncing = false;
 let _editId = null;
@@ -789,11 +789,6 @@ function renderHome() {
         <div class="name">Civil Work</div>
         <div class="count">${allReports.filter(r=>r.module==='civil').length} reports</div>
       </div>
-      <div class="module-card${currentModule==='electrical'?' selected':''}" onclick="currentModule='electrical';renderCurrentTab()" style="${currentModule==='electrical'?'border-color:var(--green);background:rgba(48,209,88,0.05)':''}">
-        <div class="icon">⚡</div>
-        <div class="name">Electrical Work</div>
-        <div class="count">${allReports.filter(r=>r.module==='electrical').length} reports</div>
-      </div>
       <div class="module-card${currentModule==='attendance'?' selected':''}" onclick="currentModule='attendance';renderCurrentTab()" style="${currentModule==='attendance'?'border-color:var(--cyan);background:rgba(90,200,250,0.05)':''}">
         <div class="icon">🕐</div>
         <div class="name">Attendance</div>
@@ -843,16 +838,6 @@ function renderHome() {
         <div class="stat-card"><div class="val text-blue">${civilR.filter(r=>r.type==='civil_dpr').length}</div><div class="lbl">DPR</div></div>
         <div class="stat-card"><div class="val text-green">${civilR.filter(r=>r.type==='civil_drawing').length}</div><div class="lbl">Drawings</div></div>
         <div class="stat-card"><div class="val text-purple">${civilR.filter(r=>r.type==='civil_quality').length}</div><div class="lbl">Quality</div></div>
-      </div>`;
-  } else if (currentModule === 'electrical') {
-    const elecR = allReports.filter(r => r.module === 'electrical' && vp.includes(r.project));
-    html += `
-      <div class="section-header"><div class="section-title">Electrical Work Overview</div></div>
-      <div class="stat-grid">
-        <div class="stat-card"><div class="val text-green">${elecR.length}</div><div class="lbl">Total Reports</div></div>
-        <div class="stat-card"><div class="val text-blue">${elecR.filter(r=>r.type==='elec_panel').length}</div><div class="lbl">Panel</div></div>
-        <div class="stat-card"><div class="val text-orange">${elecR.filter(r=>r.type==='elec_cable').length}</div><div class="lbl">Cable</div></div>
-        <div class="stat-card"><div class="val text-purple">${elecR.filter(r=>r.type==='elec_other').length}</div><div class="lbl">Other</div></div>
       </div>`;
   } else {
     // Attendance
@@ -909,17 +894,9 @@ function renderSubmitTab() {
     { id:'civil_labour',  icon:'👷', label:'Labour',       color:'var(--cyan)' },
     { id:'civil_other',   icon:'📝', label:'Other',        color:'var(--muted)' },
   ];
-  const elecTypes = [
-    { id:'elec_panel',    icon:'⚡', label:'Panel Work',   color:'var(--yellow)' },
-    { id:'elec_cable',    icon:'🔌', label:'Cable Laying', color:'var(--orange)' },
-    { id:'elec_motor',    icon:'⚙️', label:'Motor/Pump',   color:'var(--blue)' },
-    { id:'elec_testing',  icon:'🔬', label:'Testing',      color:'var(--green)' },
-    { id:'elec_earthing', icon:'🌍', label:'Earthing',     color:'var(--cyan)' },
-    { id:'elec_other',    icon:'📝', label:'Other',        color:'var(--muted)' },
-  ];
 
-  const types = currentModule === 'pipeline' ? pipeTypes : currentModule === 'civil' ? civilTypes : elecTypes;
-  const moduleLabel = currentModule === 'pipeline' ? '🔩 Pipeline Work' : currentModule === 'civil' ? '🏗️ Civil Work' : '⚡ Electrical Work';
+  const types = currentModule === 'pipeline' ? pipeTypes : civilTypes;
+  const moduleLabel = currentModule === 'pipeline' ? '🔩 Pipeline Work' : '🏗️ Civil Work';
 
   let html = `
     <div class="section-header">
@@ -1459,7 +1436,7 @@ function buildTypeFields(type, p={}) {
   }
 
   // ── CIVIL TYPES (unchanged) ─────────────────────────────────
-  if (type.startsWith('civil_') || type.startsWith('elec_')) {
+  if (type.startsWith('civil_')) {
     html += `
       <div class="field-group"><label>Description <span class="req">*</span></label>
         <textarea id="f-description" rows="3" placeholder="Describe the work…">${p.description||''}</textarea>
@@ -1470,10 +1447,10 @@ function buildTypeFields(type, p={}) {
           <select id="f-status">${['In Progress','Completed','Pending','On Hold'].map(v=>`<option${p.status===v?' selected':''}>${v}</option>`).join('')}</select>
         </div>
       </div>`;
-    if (type === 'civil_material' || type === 'elec_cable') {
+    if (type === 'civil_material') {
       html += `
         <div class="form-row">
-          <div class="field-group"><label>${type==='elec_cable'?'Cable Type':'Material Name'}</label><input type="text" id="f-material" value="${p.material||''}" placeholder="${type==='elec_cable'?'e.g. HT Cable 11KV':'e.g. Steel Bar 12mm'}"></div>
+          <div class="field-group"><label>Material Name</label><input type="text" id="f-material" value="${p.material||''}" placeholder="e.g. Steel Bar 12mm"></div>
           <div class="field-group"><label>Qty / Unit</label><input type="text" id="f-qty" value="${p.qty||''}" placeholder="e.g. 500 kg"></div>
         </div>`;
     }
@@ -1482,19 +1459,6 @@ function buildTypeFields(type, p={}) {
         <div class="form-row">
           <div class="field-group"><label>Skilled Workers</label><input type="number" id="f-skilled" value="${p.skilled||''}" placeholder="0"></div>
           <div class="field-group"><label>Unskilled Workers</label><input type="number" id="f-unskilled" value="${p.unskilled||''}" placeholder="0"></div>
-        </div>`;
-    }
-    if (type === 'elec_panel' || type === 'elec_motor') {
-      html += `
-        <div class="form-row">
-          <div class="field-group"><label>${type==='elec_motor'?'Motor/Pump':'Panel'} Tag No.</label><input type="text" id="f-material" value="${p.material||''}" placeholder="e.g. MCC-01"></div>
-          <div class="field-group"><label>Capacity / Rating</label><input type="text" id="f-qty" value="${p.qty||''}" placeholder="e.g. 37 kW"></div>
-        </div>`;
-    }
-    if (type === 'elec_testing') {
-      html += `
-        <div class="field-group"><label>Test Result</label>
-          <select id="f-material"><option${p.material==='Pass'?' selected':''}>Pass</option><option${p.material==='Fail'?' selected':''}>Fail</option><option${p.material==='Pending'?' selected':''}>Pending</option></select>
         </div>`;
     }
   }
@@ -2167,7 +2131,7 @@ async function submitReport(type) {
   const data = {
     id:         _editId || Date.now(),
     type,
-    module:     type.startsWith('civil_') ? 'civil' : type.startsWith('elec_') ? 'electrical' : 'pipeline',
+    module:     type.startsWith('civil_') ? 'civil' : 'pipeline',
     project,
     route:      route || '',
     date,
@@ -2251,13 +2215,13 @@ async function submitReport(type) {
     data.pipeVolConc  = gf('f-pipeVolConc');
     data.netVolConc   = gf('f-netVolConc');
   }
-  if (type.startsWith('civil_') || type.startsWith('elec_')) {
+  if (type.startsWith('civil_')) {
     const desc = g('f-description');
     if (!desc) { showToast('⚠️ Description is required'); return; }
     data.description = desc;
     data.location    = g('f-location');
     data.status      = g('f-status');
-    if (type==='civil_material'||type==='elec_cable'||type==='elec_panel'||type==='elec_motor'||type==='elec_testing') {
+    if (type==='civil_material') {
       data.material=g('f-material'); data.qty=g('f-qty');
     }
     if (type==='civil_labour') { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
@@ -2487,36 +2451,6 @@ function exportToPDF() {
     });
   }
 
-  // ── Electrical types ──
-  if (module === 'electrical' || module === 'all') {
-    const elecTypes = [
-      {type:'elec_panel',   bg:'#FFD60A',icon:'⚡',label:'Panel Work'},
-      {type:'elec_cable',   bg:'#FF9F0A',icon:'🔌',label:'Cable Laying'},
-      {type:'elec_motor',   bg:'#0A84FF',icon:'⚙️',label:'Motor/Pump'},
-      {type:'elec_testing', bg:'#30D158',icon:'🔬',label:'Testing'},
-      {type:'elec_earthing',bg:'#5AC8FA',icon:'🌍',label:'Earthing'},
-      {type:'elec_other',   bg:'#888899',icon:'📝',label:'Other'},
-    ];
-    elecTypes.forEach(({type,bg,icon,label})=>{
-      const recs = reports.filter(r=>r.type===type);
-      if (!recs.length) return;
-      sections += secHead(bg,icon,label,`${recs.length} records`);
-      sections += buildTable(bg, {
-        headers:['#','Date','Description','Location','Status','Material/Tag','Qty','Project','Engineer'],
-        body: recs.map((r,i)=>{const row=i%2?'#f8f9fc':'#fff';return`<tr style="background:${row}">${td(i+1,row)}${td(r.date,row)}${td(r.description,row)}${td(r.location,row)}${td(r.status,row)}${td(r.material,row)}${td(r.qty,row)}${td(r.project,row)}${td(r.supervisorName||r.supervisor,row)}</tr>`;}).join('')
-      });
-    });
-  }
-
-  // Summary stats
-  const excM  = reports.filter(r=>r.type==='excavation').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
-  const pipeM = reports.filter(r=>r.type==='pipe').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
-  const refM  = reports.filter(r=>r.type==='refill').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
-  const valC  = reports.filter(r=>r.type==='valve').length;
-  const chamC = reports.filter(r=>r.type==='chamber').length;
-  const strC  = reports.filter(r=>r.type==='structure').length;
-  const fitC  = reports.filter(r=>r.type==='fitting').length;
-
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>${moduleLabel} Report</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2585,9 +2519,7 @@ function exportToPDF() {
 function buildTypeFilterBtns(module) {
   const types = module === 'pipeline'
     ? [['all','All','var(--muted)'],['excavation','⛏️ Excavation','var(--orange)'],['pipe','🔩 Pipe Laying','var(--blue)'],['refill','🪣 Refilling','var(--green)'],['valve','🔧 Valve','var(--red)'],['chamber','🏛️ Chamber','var(--orange)'],['fitting','🔗 Fitting','var(--cyan)'],['structure','🏗️ Concrete','var(--purple)']]
-    : module === 'civil'
-    ? [['all','All','var(--muted)'],['civil_dpr','📄 DPR','var(--orange)'],['civil_drawing','📐 Drawing','var(--blue)'],['civil_quality','✅ Quality','var(--green)'],['civil_material','📦 Material','var(--purple)'],['civil_labour','👷 Labour','var(--cyan)'],['civil_other','📝 Other','var(--muted)']]
-    : [['all','All','var(--muted)'],['elec_panel','⚡ Panel','var(--yellow)'],['elec_cable','🔌 Cable','var(--orange)'],['elec_motor','⚙️ Motor','var(--blue)'],['elec_testing','🔬 Testing','var(--green)'],['elec_earthing','🌍 Earthing','var(--cyan)'],['elec_other','📝 Other','var(--muted)']];
+    : [['all','All','var(--muted)'],['civil_dpr','📄 DPR','var(--orange)'],['civil_drawing','📐 Drawing','var(--blue)'],['civil_quality','✅ Quality','var(--green)'],['civil_material','📦 Material','var(--purple)'],['civil_labour','👷 Labour','var(--cyan)'],['civil_other','📝 Other','var(--muted)']];
   return types.map(([t,l,c]) => {
     const isAll = t === 'all';
     const border = isAll ? 'var(--border)' : 'transparent';
@@ -2604,7 +2536,7 @@ function renderReportsTab() {
   // Filter by module
   if (currentModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
   else if (currentModule === 'civil') reports = reports.filter(r => r.module === 'civil');
-  else reports = reports.filter(r => r.module === 'electrical');
+  else reports = reports.filter(r => r.module === 'civil');
 
   reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
@@ -2651,22 +2583,17 @@ const TYPE_COLORS = {
   excavation:'var(--orange)',pipe:'var(--blue)',refill:'var(--green)',
   valve:'var(--red)',chamber:'var(--orange)',fitting:'var(--cyan)',structure:'var(--purple)',
   civil_dpr:'var(--orange)',civil_drawing:'var(--blue)',civil_quality:'var(--green)',
-  civil_material:'var(--purple)',civil_labour:'var(--cyan)',civil_other:'var(--muted)',
-  elec_panel:'var(--yellow)',elec_cable:'var(--orange)',elec_motor:'var(--blue)',
-  elec_testing:'var(--green)',elec_earthing:'var(--cyan)',elec_other:'var(--muted)'
+  civil_material:'var(--purple)',civil_labour:'var(--cyan)',civil_other:'var(--muted)'
 };
 const TYPE_ICONS = {
   excavation:'⛏️',pipe:'🔩',refill:'🪣',valve:'🔧',chamber:'🏛️',fitting:'🔗',structure:'🏗️',
-  civil_dpr:'📄',civil_drawing:'📐',civil_quality:'✅',civil_material:'📦',civil_labour:'👷',civil_other:'📝',
-  elec_panel:'⚡',elec_cable:'🔌',elec_motor:'⚙️',elec_testing:'🔬',elec_earthing:'🌍',elec_other:'📝'
+  civil_dpr:'📄',civil_drawing:'📐',civil_quality:'✅',civil_material:'📦',civil_labour:'👷',civil_other:'📝'
 };
 const TYPE_LABELS = {
   excavation:'Excavation',pipe:'Pipe Laying',refill:'Refilling',
   valve:'Valve',chamber:'Chamber',fitting:'Fitting',structure:'Concrete Work',
   civil_dpr:'DPR Entry',civil_drawing:'Drawing',civil_quality:'Quality Check',
-  civil_material:'Material',civil_labour:'Labour',civil_other:'Other',
-  elec_panel:'Panel Work',elec_cable:'Cable Laying',elec_motor:'Motor/Pump',
-  elec_testing:'Testing',elec_earthing:'Earthing',elec_other:'Other'
+  civil_material:'Material',civil_labour:'Labour',civil_other:'Other'
 };
 
 function reportItemHTML(r, showActions=true) {
@@ -2746,7 +2673,7 @@ function reportItemHTML(r, showActions=true) {
     details += row('Pipe Vol Deducted', r.pipeVolConc ? `${r.pipeVolConc} m³` : '');
     details += row('Net Volume', r.netVolConc ? `${r.netVolConc} m³` : '');
   }
-  if (r.type && (r.type.startsWith('civil_') || r.type.startsWith('elec_'))) {
+  if (r.type && r.type.startsWith('civil_')) {
     details += row('Description', r.description);
     details += row('Location', r.location);
     details += row('Status', r.status);
@@ -3459,7 +3386,6 @@ function renderSettingsExport() {
         <select id="exp-module">
           <option value="pipeline">🔩 Pipeline Work</option>
           <option value="civil">🏗️ Civil Work</option>
-          <option value="electrical">⚡ Electrical Work</option>
           <option value="all">All Modules</option>
         </select>
       </div>
@@ -4367,7 +4293,30 @@ function renderAttendanceEngineer() {
   }
   html += `</div>`;
 
-  // Apply leave
+  // Monthly report
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const monthEnd   = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+  const monthRecs  = all.filter(a => a.atype==='attendance' && a.date >= monthStart && a.date <= monthEnd);
+  const present = monthRecs.filter(a=>a.status==='present').length;
+  const absent  = monthRecs.filter(a=>a.status==='absent').length;
+  const half    = monthRecs.filter(a=>a.status==='half').length;
+  const monthLeaves = all.filter(a => a.atype==='leave' && a.leaveFrom >= monthStart && a.leaveFrom <= monthEnd).length;
+  const monthName = now.toLocaleString('en-IN',{month:'long',year:'numeric'});
+
+  html += `<div class="card mb-3">
+    <div class="card-title">📊 Monthly Report — ${monthName}</div>
+    <div class="stat-grid mt-2">
+      <div class="stat-card"><div class="val text-green">${present}</div><div class="lbl">Present</div></div>
+      <div class="stat-card"><div class="val text-red">${absent}</div><div class="lbl">Absent</div></div>
+      <div class="stat-card"><div class="val text-orange">${half}</div><div class="lbl">Half Day</div></div>
+      <div class="stat-card"><div class="val text-blue">${monthLeaves}</div><div class="lbl">Leaves</div></div>
+    </div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
+      Effective days: <strong style="color:var(--text)">${(present + half*0.5).toFixed(1)}</strong> of ${monthRecs.length} marked
+    </div>
+    <button class="btn btn-ghost btn-sm w-full mt-2" onclick="exportMonthlyAttendance()">📄 Export Month Report</button>
+  </div>`;
   html += `<div class="card mb-3">
     <div class="card-title">🏖️ Apply Leave</div>
     <div class="form-row mt-2">
@@ -4399,6 +4348,9 @@ function renderAttendanceEngineer() {
         </div>
       </div>`).join('');
   }
+
+  // Monthly summary
+  html += monthlyAttendanceSummary(currentUser, all);
   return html;
 }
 
@@ -4427,6 +4379,63 @@ function applyLeave() {
   showToast('✅ Leave applied'); renderCurrentTab();
 }
 
+// ── MONTHLY REPORT ──
+function monthlyAttendanceSummary(user, records) {
+  const now = new Date();
+  const selMonth = document.getElementById('att-month-sel')?.value || now.toISOString().slice(0,7);
+  const [yr, mo] = selMonth.split('-').map(Number);
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+
+  const monthRecs = records.filter(a => a.user===user && a.date?.startsWith(selMonth) && a.atype==='attendance');
+  const leaveRecs = records.filter(a => a.user===user && a.atype==='leave' && a.leaveFrom?.startsWith(selMonth));
+
+  const present = monthRecs.filter(a=>a.status==='present').length;
+  const absent  = monthRecs.filter(a=>a.status==='absent').length;
+  const half    = monthRecs.filter(a=>a.status==='half').length;
+  const leaves  = leaveRecs.length;
+
+  // Build calendar
+  const firstDay = new Date(yr, mo-1, 1).getDay();
+  const dayMap = {};
+  monthRecs.forEach(a=>{ dayMap[a.date]=a.status; });
+  leaveRecs.forEach(a=>{ dayMap[a.leaveFrom]='leave'; });
+
+  let cal = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px">';
+  ['S','M','T','W','T','F','S'].forEach(d=>{ cal+=`<div style="text-align:center;font-size:9px;font-weight:700;color:var(--muted);padding:2px">${d}</div>`; });
+  for(let i=0;i<firstDay;i++) cal+='<div></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=`${selMonth}-${String(d).padStart(2,'0')}`;
+    const st=dayMap[dateStr];
+    const bg=st==='present'?'rgba(48,209,88,0.2)':st==='absent'?'rgba(255,69,58,0.2)':st==='half'?'rgba(255,214,10,0.2)':st==='leave'?'rgba(90,200,250,0.2)':'var(--surface2)';
+    const col=st==='present'?'var(--green)':st==='absent'?'var(--red)':st==='half'?'var(--yellow)':st==='leave'?'var(--cyan)':'var(--muted)';
+    cal+=`<div style="text-align:center;padding:4px 2px;border-radius:6px;background:${bg};font-size:10px;font-weight:${st?'700':'400'};color:${col}">${d}</div>`;
+  }
+  cal+='</div>';
+
+  const months=[];
+  for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);months.push(d.toISOString().slice(0,7));}
+
+  return `
+    <div class="card mt-3">
+      <div class="flex justify-between items-center mb-2">
+        <div class="card-title">📅 Monthly Report</div>
+        <select id="att-month-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+          ${months.map(m=>`<option value="${m}"${m===selMonth?' selected':''}>${m}</option>`).join('')}
+        </select>
+      </div>
+      <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+        <div class="stat-card" style="padding:8px"><div class="val text-green" style="font-size:18px">${present}</div><div class="lbl">Present</div></div>
+        <div class="stat-card" style="padding:8px"><div class="val text-red" style="font-size:18px">${absent}</div><div class="lbl">Absent</div></div>
+        <div class="stat-card" style="padding:8px"><div class="val text-yellow" style="font-size:18px">${half}</div><div class="lbl">Half Day</div></div>
+        <div class="stat-card" style="padding:8px"><div class="val text-cyan" style="font-size:18px">${leaves}</div><div class="lbl">Leave</div></div>
+      </div>
+      ${cal}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        ${[['🟢','Present','var(--green)'],['🔴','Absent','var(--red)'],['🟡','Half Day','var(--yellow)'],['🔵','Leave','var(--cyan)']].map(([e,l,c])=>`<div style="font-size:10px;color:${c}">${e} ${l}</div>`).join('')}
+      </div>
+    </div>`;
+}
+
 // ── PM VIEW ──
 function renderAttendancePM() {
   const users = getUsers();
@@ -4437,16 +4446,28 @@ function renderAttendancePM() {
 
   let html = `<div class="section-title mb-4">🕐 Team Attendance</div>`;
 
+  // Monthly report for selected engineer
+  const selEng = document.getElementById('pm-eng-sel')?.value || myEngineers[0] || '';
+  if (myEngineers.length) {
+    html += `<div class="card mb-3">
+      <div class="flex justify-between items-center mb-2">
+        <div class="card-title">📅 Monthly Report</div>
+        <select id="pm-eng-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+          ${myEngineers.map(u=>`<option value="${u}"${u===selEng?' selected':''}>${users[u]?.name||u}</option>`).join('')}
+        </select>
+      </div>
+      ${monthlyAttendanceSummary(selEng, getAttendance())}
+    </div>`;
+  }
+
   if (pending.length) {
     html += `<div class="card-title mb-2" style="color:var(--orange)">⏳ Pending Approval (${pending.length})</div>`;
     html += pending.map(a => attendanceCard(a, 'pm')).join('');
   }
-
   if (done.length) {
     html += `<div class="card-title mb-2 mt-3">✅ Reviewed</div>`;
     html += done.map(a => attendanceCard(a, 'pm')).join('');
   }
-
   if (!all.length) html += `<div class="empty-state"><div class="icon">📋</div><p>No attendance records from your team yet.</p></div>`;
   return html;
 }
@@ -4459,6 +4480,22 @@ function renderAttendanceAdmin() {
   const done = all.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
 
   let html = `<div class="section-title mb-4">🕐 All Attendance</div>`;
+
+  // Monthly report with user selector
+  const users = getUsers();
+  const allUsers = Object.entries(users).filter(([,u])=>u.role!=='admin').map(([u,d])=>({id:u,name:d.name||u}));
+  const selUser = document.getElementById('admin-att-sel')?.value || allUsers[0]?.id || '';
+  if (allUsers.length) {
+    html += `<div class="card mb-3">
+      <div class="flex justify-between items-center mb-2">
+        <div class="card-title">📅 Monthly Report</div>
+        <select id="admin-att-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+          ${allUsers.map(u=>`<option value="${u.id}"${u.id===selUser?' selected':''}>${u.name}</option>`).join('')}
+        </select>
+      </div>
+      ${monthlyAttendanceSummary(selUser, all)}
+    </div>`;
+  }
 
   if (pmPending.length) html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval</div>`;
 
@@ -4505,7 +4542,69 @@ function reviewAttendance(id, role, decision) {
   renderCurrentTab();
 }
 
-// ── END ATTENDANCE MODULE ────────────────────────────────────
+function exportMonthlyAttendance(targetUser) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const monthEnd   = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+  const monthName  = now.toLocaleString('en-IN',{month:'long',year:'numeric'});
+
+  let all = getAttendance();
+  if (targetUser) all = all.filter(a=>a.user===targetUser);
+  else if (currentRole==='supervisor') all = all.filter(a=>a.user===currentUser);
+
+  // Group by user
+  const users = {};
+  all.forEach(a => {
+    if (!users[a.user]) users[a.user] = {name:a.userName||a.user, att:[], leaves:[]};
+    if (a.atype==='attendance' && a.date>=monthStart && a.date<=monthEnd) users[a.user].att.push(a);
+    if (a.atype==='leave' && a.leaveFrom>=monthStart) users[a.user].leaves.push(a);
+  });
+
+  const thS = 'padding:7px 10px;background:#1e1e28;color:#fff;font-size:11px;border:1px solid #333;text-align:left';
+  const tdS = 'padding:6px 10px;font-size:11px;border:1px solid #e8e8e8';
+
+  let rows = Object.values(users).map(u => {
+    const present = u.att.filter(a=>a.status==='present').length;
+    const absent  = u.att.filter(a=>a.status==='absent').length;
+    const half    = u.att.filter(a=>a.status==='half').length;
+    const leaves  = u.leaves.length;
+    const eff     = (present + half*0.5).toFixed(1);
+    return `<tr><td style="${tdS}">${u.name}</td><td style="${tdS};color:#30D158;font-weight:700">${present}</td><td style="${tdS};color:#FF453A;font-weight:700">${absent}</td><td style="${tdS};color:#FF9F0A;font-weight:700">${half}</td><td style="${tdS};color:#0A84FF;font-weight:700">${leaves}</td><td style="${tdS};font-weight:700">${eff}</td></tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Attendance Report ${monthName}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Noto Serif',serif;background:#f0f2f5}
+  .page{max-width:900px;margin:0 auto;background:#fff}
+  @media print{body{background:#fff}.no-print{display:none}}</style></head><body>
+  <div class="no-print" style="padding:12px;text-align:center;background:#f0f2f5">
+    <button onclick="window.print()" style="padding:8px 20px;background:#0A84FF;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨️ Print / Save PDF</button>
+    <button onclick="window.close()" style="padding:8px 20px;background:#666;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-left:8px">✕ Close</button>
+  </div>
+  <div class="page">
+    <div style="background:#1e1e28;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">
+      <div><div style="color:#E8192C;font-size:18px;font-weight:700">Phoenix ERP</div><div style="color:#aaa;font-size:11px">Attendance Module</div></div>
+      <div style="text-align:right"><div style="color:#fff;font-size:14px;font-weight:700">Monthly Attendance Report</div><div style="color:#aaa;font-size:11px">${monthName}</div></div>
+    </div>
+    <div style="padding:20px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="${thS}">Employee</th>
+          <th style="${thS}">Present</th>
+          <th style="${thS}">Absent</th>
+          <th style="${thS}">Half Day</th>
+          <th style="${thS}">Leaves</th>
+          <th style="${thS}">Effective Days</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="6" style="padding:12px;text-align:center;color:#888">No records found</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div></body></html>`;
+
+  const win = window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
+}
 
 // Safety net: always hide loader after 1s regardless of errors
 setTimeout(() => {
