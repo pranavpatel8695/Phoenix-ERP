@@ -2692,7 +2692,7 @@ function reportItemHTML(r, showActions=true) {
   ].filter(p => p.src);
 
   return `
-    <div class="report-item" data-date="${r.date||''}" data-type="${r.type||''}" data-project="${r.project||''}">`
+    <div class="report-item" data-date="${r.date||''}" data-type="${r.type||''}" data-project="${r.project||''}">
       <div class="report-item-header">
         <div class="type-dot" style="background:${color}"></div>
         <div class="report-type-label" style="color:${color}">${icon} ${label}</div>
