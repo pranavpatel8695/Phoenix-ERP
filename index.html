@@ -4040,7 +4040,7 @@ function saveUserUM() {
 
   // Show credentials card
   const roleLabel = role === 'admin' ? 'Admin' : role === 'pm' ? 'Project Manager' : 'Engineer';
-  const creds = `App: ${location.origin}\nUsername: ${user}\nPassword: ${pass}\nRole: ${roleLabel}`;
+  window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nRole: ' + roleLabel;
   document.getElementById('formModalContent').innerHTML = `
     <div class="flex justify-between items-center mb-4">
       <div class="section-title">✅ User Created</div>
@@ -4058,11 +4058,7 @@ function saveUserUM() {
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px;text-align:center">Share these credentials with the user to let them log in.</div>
     <div class="flex gap-3">
-      <button class="btn btn-primary flex-1" onclick="
-        navigator.clipboard?.writeText(\`${creds.replace(/`/g,'\\`')}\`)
-          .then(()=>showToast('✅ Credentials copied!'))
-          .catch(()=>showToast('⚠️ Copy failed — screenshot instead'));
-      ">📋 Copy Credentials</button>
+      <button class="btn btn-primary flex-1" onclick="copyCredentials()">📋 Copy Credentials</button>
       <button class="btn btn-secondary flex-1" onclick="closeFormModal();document.getElementById('main').innerHTML=renderUsersTab()">Done</button>
     </div>`;
   document.getElementById('formModal').classList.remove('hidden');
@@ -4074,29 +4070,30 @@ function showUserCredentials(username) {
   if (!u) return;
   const roleLabel = u.role === 'admin' ? 'Admin' : u.role === 'pm' ? 'Project Manager' : 'Engineer';
   const appUrl = window.location.origin + window.location.pathname;
-  const creds = `Phoenix ERP Login\nApp: ${appUrl}\nUsername: ${username}\nPassword: ${u.pass}\nRole: ${roleLabel}`;
+  window._credsToCopy = 'Phoenix ERP Login\nApp: ' + appUrl + '\nUsername: ' + username + '\nPassword: ' + u.pass + '\nRole: ' + roleLabel;
   document.getElementById('formModalContent').innerHTML = `
     <div class="flex justify-between items-center mb-4">
       <div class="section-title">🔑 User Credentials</div>
       <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
     </div>
     <div style="background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.3);border-radius:12px;padding:16px;margin-bottom:16px">
-      ${[['👤 Name', u.name||username], ['🔑 Username', username], ['🔒 Password', u.pass], ['🎭 Role', roleLabel], ['🌐 App URL', appUrl]].map(([l,v])=>`
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div style="font-size:11px;color:var(--muted);min-width:90px;flex-shrink:0">${l}</div>
-          <div style="font-size:12px;font-weight:700;color:var(--text);background:var(--surface);padding:5px 10px;border-radius:6px;flex:1;font-family:monospace;word-break:break-all">${v}</div>
-        </div>`).join('')}
+      ${[['👤 Name', u.name||username],['🔑 Username', username],['🔒 Password', u.pass],['🎭 Role', roleLabel],['🌐 App URL', appUrl]].map(([l,v])=>
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="font-size:11px;color:var(--muted);min-width:90px;flex-shrink:0">'+l+'</div><div style="font-size:12px;font-weight:700;color:var(--text);background:var(--surface);padding:5px 10px;border-radius:6px;flex:1;font-family:monospace;word-break:break-all">'+v+'</div></div>'
+      ).join('')}
     </div>
-    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:14px">Share these credentials with <strong>${u.name||username}</strong> to let them log in.</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:14px">Share with <strong>${u.name||username}</strong> to let them log in.</div>
     <div class="flex gap-3">
-      <button class="btn btn-primary flex-1" onclick="
-        navigator.clipboard?.writeText(\`${creds.replace(/`/g,'\\`').replace(/\\/g,'\\\\')}\`)
-          .then(()=>showToast('✅ Copied to clipboard!'))
-          .catch(()=>showToast('⚠️ Copy failed'));
-      ">📋 Copy All</button>
+      <button class="btn btn-primary flex-1" onclick="copyCredentials()">📋 Copy All</button>
       <button class="btn btn-secondary flex-1" onclick="closeFormModal()">Close</button>
     </div>`;
   document.getElementById('formModal').classList.remove('hidden');
+}
+
+function copyCredentials() {
+  const text = window._credsToCopy || '';
+  navigator.clipboard?.writeText(text)
+    .then(() => showToast('✅ Copied to clipboard!'))
+    .catch(() => showToast('⚠️ Copy failed'));
 }
 
 function openEditUser(username) {
