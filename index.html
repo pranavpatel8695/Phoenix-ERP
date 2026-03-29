@@ -342,6 +342,9 @@ const saveSpecials   = v => LS.set('phx_specials', v);
 const getValveSpecials  = () => LS.get('phx_valve_specials', {});
 const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
 
+let _rptTypeFilter = 'all';
+let _rptProjFilter = '';
+
 function getReports() {
   return LS.get('phx_reports', []);
 }
@@ -2232,9 +2235,6 @@ async function submitReport(type) {
 }
 
 // ── REPORTS TAB ───────────────────────────────────────────────
-let _rptTypeFilter = 'all';
-let _rptProjFilter = '';
-
 function setReportTypeFilter(type, btn) {
   _rptTypeFilter = type;
   document.querySelectorAll('.rpt-type-btn').forEach(b => {
