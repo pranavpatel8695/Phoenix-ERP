@@ -329,6 +329,13 @@ const LS = {
 
 const getUsers       = () => LS.get('phx_users', { admin: { role:'admin', pass:'admin', name:'Admin' } });
 const saveUsers      = v => LS.set('phx_users', v);
+// Returns display label for a user object
+function getUserLabel(u) {
+  if (!u) return 'Engineer';
+  if (u.role === 'admin') return 'Admin';
+  if (u.role === 'pm') return 'Project Manager';
+  return u.designation || 'Engineer';
+}
 const getProjects    = () => LS.get('phx_projects', []);
 const saveProjects   = v => LS.set('phx_projects', v);
 const getRoutes      = () => LS.get('phx_routes', {});
@@ -682,7 +689,7 @@ async function loginSuccess(user, userRecord) {
 
   // Update UI
   document.getElementById('roleBadgeEl').textContent =
-    currentRole === 'admin' ? 'Admin' : currentRole === 'pm' ? 'Project Manager' : 'Engineer';
+    currentRole === 'admin' ? 'Admin' : currentRole === 'pm' ? 'Project Manager' : (getUserLabel(getUsers()[currentUser]));
   document.getElementById('roleBadgeEl').className = `role-badge ${currentRole}`;
   document.getElementById('avatarBtn').textContent = userRecord.name?.[0]?.toUpperCase() || user[0].toUpperCase();
   document.getElementById('topbarSub').textContent = userRecord.name || user;
@@ -3835,7 +3842,7 @@ function renderUsersTab() {
 
   function userCard([username, u]) {
     const roleColor = u.role === 'pm' ? 'var(--green)' : 'var(--blue)';
-    const roleLabel = u.role === 'pm' ? 'Project Manager' : 'Engineer';
+    const roleLabel = getUserLabel(u);
     const ap = (u.projects || []);
     return `
       <div class="account-card" style="flex-direction:column;align-items:stretch;gap:10px">
@@ -3901,7 +3908,7 @@ function switchUserMgmtTab(role, el) {
 
   function userCard([username, u]) {
     const roleColor = u.role === 'pm' ? 'var(--green)' : 'var(--blue)';
-    const roleLabel = u.role === 'pm' ? 'Project Manager' : 'Engineer';
+    const roleLabel = getUserLabel(u);
     const ap = (u.projects || []);
     return `
       <div class="account-card" style="flex-direction:column;align-items:stretch;gap:10px">
@@ -3993,9 +4000,17 @@ function openAddUserUM() {
     </div>
     <div class="field-group">
       <label>Role <span class="req">*</span></label>
-      <select id="um-role">
+      <select id="um-role" onchange="document.getElementById('um-desig-wrap').style.display=this.value==='supervisor'?'block':'none'">
         <option value="supervisor">Engineer</option>
         <option value="pm">Project Manager</option>
+      </select>
+    </div>
+    <div class="field-group" id="um-desig-wrap">
+      <label>Designation</label>
+      <select id="um-designation">
+        <option value="Senior Engineer">Senior Engineer</option>
+        <option value="Junior Engineer">Junior Engineer</option>
+        <option value="Work Assistant">Work Assistant</option>
       </select>
     </div>
     <div class="field-group">
@@ -4050,6 +4065,7 @@ function saveUserUM() {
   const user = ((document.getElementById('um-user')||{}).value || '').trim().toLowerCase().replace(/\s+/g,'');
   const pass = (document.getElementById('um-pass')||{}).value || '';
   const role = (document.getElementById('um-role')||{}).value || 'supervisor';
+  const designation = role==='supervisor' ? ((document.getElementById('um-designation')||{}).value||'Junior Engineer') : '';
   const projs = window._umProjects || [];
 
   if (!name.trim()) { showToast('⚠️ Enter full name'); return; }
@@ -4058,13 +4074,13 @@ function saveUserUM() {
 
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
-  users[user] = { role, pass, name: name.trim(), projects: projs };
+  users[user] = { role, pass, name: name.trim(), projects: projs, designation };
   saveUsers(users);
   pushConfig();
 
   // Show credentials card
-  const roleLabel = role === 'admin' ? 'Admin' : role === 'pm' ? 'Project Manager' : 'Engineer';
-  window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nRole: ' + roleLabel;
+  const roleLabel = role==='pm' ? 'Project Manager' : (designation||'Engineer');
+  window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nDesignation: ' + roleLabel;
   document.getElementById('formModalContent').innerHTML = `
     <div class="flex justify-between items-center mb-4">
       <div class="section-title">✅ User Created</div>
@@ -4092,7 +4108,7 @@ function saveUserUM() {
 function showUserCredentials(username) {
   const u = getUsers()[username];
   if (!u) return;
-  const roleLabel = u.role === 'admin' ? 'Admin' : u.role === 'pm' ? 'Project Manager' : 'Engineer';
+  const roleLabel = getUserLabel(u);
   const appUrl = window.location.origin + window.location.pathname;
   window._credsToCopy = 'Phoenix ERP Login\nApp: ' + appUrl + '\nUsername: ' + username + '\nPassword: ' + u.pass + '\nRole: ' + roleLabel;
   document.getElementById('formModalContent').innerHTML = `
@@ -4143,9 +4159,17 @@ function openEditUser(username) {
     </div>
     <div class="field-group">
       <label>Role</label>
-      <select id="eu-role">
+      <select id="eu-role" onchange="document.getElementById('eu-desig-wrap').style.display=this.value==='supervisor'?'block':'none'">
         <option value="supervisor"${u.role==='supervisor'?' selected':''}>Engineer</option>
         <option value="pm"${u.role==='pm'?' selected':''}>Project Manager</option>
+      </select>
+    </div>
+    <div class="field-group" id="eu-desig-wrap" style="display:${u.role==='supervisor'?'block':'none'}">
+      <label>Designation</label>
+      <select id="eu-designation">
+        <option value="Senior Engineer"${(u.designation||'')==='Senior Engineer'?' selected':''}>Senior Engineer</option>
+        <option value="Junior Engineer"${(!u.designation||u.designation==='Junior Engineer')&&u.role==='supervisor'?' selected':''}>Junior Engineer</option>
+        <option value="Work Assistant"${(u.designation||'')==='Work Assistant'?' selected':''}>Work Assistant</option>
       </select>
     </div>
     <div class="flex gap-3 mt-4">
@@ -4160,11 +4184,13 @@ function updateUserUM(username) {
   const name = ((document.getElementById('eu-name')||{}).value || '').trim();
   const pass = (document.getElementById('eu-pass')||{}).value || '';
   const role = (document.getElementById('eu-role')||{}).value || 'supervisor';
+  const designation = role==='supervisor' ? ((document.getElementById('eu-designation')||{}).value||'Junior Engineer') : '';
   if (!name) { showToast('⚠️ Name cannot be empty'); return; }
   const users = getUsers();
   if (!users[username]) return;
   users[username].name = name;
   users[username].role = role;
+  users[username].designation = designation;
   if (pass) users[username].pass = pass;
   saveUsers(users);
   pushConfig();
