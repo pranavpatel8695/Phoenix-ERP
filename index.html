@@ -1597,15 +1597,70 @@ function handleExcavPhotoUpload(input, zone) {
   input.value = '';
 }
 
+// Photo store — keyed by unique photo ID, avoids large base64 in DOM
+const _photoStore = new Map();
+let _photoIdCounter = 0;
+
 function addExcavPhotoPreview(src, zone) {
   const prevId = zone === 'start' ? 'f-photo-prev-start' : 'f-photo-prev-end';
   const prev = document.getElementById(prevId);
   if (!prev) return;
   if (prev.querySelectorAll('.photo-thumb').length >= 1) { showToast('Max 1 photo per zone'); return; }
+  const pid = 'ph_' + (++_photoIdCounter);
+  _photoStore.set(pid, src);
   const wrap = document.createElement('div');
   wrap.className = 'photo-thumb';
-  wrap.innerHTML = `<img src="${src}" data-src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
+  wrap.dataset.pid = pid;
+  const img = document.createElement('img');
+  img.src = src;
+  const btn = document.createElement('button');
+  btn.className = 'rm';
+  btn.onclick = () => { _photoStore.delete(pid); wrap.remove(); };
+  wrap.appendChild(img);
+  wrap.appendChild(btn);
+  btn.textContent = '✕';
   prev.appendChild(wrap);
+}
+
+function addPhotoPreview(src) {
+  const prev = document.getElementById('f-photo-prev');
+  if (!prev) return;
+  if (prev.querySelectorAll('.photo-thumb').length >= 1) { showToast('Max 1 photo allowed'); return; }
+  const pid = 'ph_' + (++_photoIdCounter);
+  _photoStore.set(pid, src);
+  const wrap = document.createElement('div');
+  wrap.className = 'photo-thumb';
+  wrap.dataset.pid = pid;
+  const img = document.createElement('img');
+  img.src = src;
+  const btn = document.createElement('button');
+  btn.className = 'rm';
+  btn.onclick = () => { _photoStore.delete(pid); wrap.remove(); };
+  btn.textContent = '✕';
+  wrap.appendChild(img);
+  wrap.appendChild(btn);
+  prev.appendChild(wrap);
+}
+
+function getFormPhotos() {
+  const prev = document.getElementById('f-photo-prev');
+  if (!prev) return [];
+  return Array.from(prev.querySelectorAll('.photo-thumb')).map(wrap => {
+    const pid = wrap.dataset.pid;
+    const src = pid ? _photoStore.get(pid) : wrap.querySelector('img')?.src;
+    return src ? { src } : null;
+  }).filter(p => p && p.src && p.src.startsWith('data:'));
+}
+
+function getExcavPhotos(zone) {
+  const prevId = zone === 'start' ? 'f-photo-prev-start' : 'f-photo-prev-end';
+  const prev = document.getElementById(prevId);
+  if (!prev) return [];
+  return Array.from(prev.querySelectorAll('.photo-thumb')).map(wrap => {
+    const pid = wrap.dataset.pid;
+    const src = pid ? _photoStore.get(pid) : wrap.querySelector('img')?.src;
+    return src ? { src } : null;
+  }).filter(p => p && p.src && p.src.startsWith('data:'));
 }
 
 function updateFormRoutes(selectedRoute) {
@@ -1689,28 +1744,6 @@ function compressPhoto(dataUrl, targetKB=50) {
   });
 }
 
-function addPhotoPreview(src) {
-  const prev = document.getElementById('f-photo-prev');
-  if (!prev) return;
-  if (prev.querySelectorAll('.photo-thumb').length >= 1) { showToast('Max 1 photo allowed'); return; }
-  const wrap = document.createElement('div');
-  wrap.className = 'photo-thumb';
-  wrap.innerHTML = `<img src="${src}" data-src="${src}"><button class="rm" onclick="this.parentElement.remove()">✕</button>`;
-  prev.appendChild(wrap);
-}
-
-function getFormPhotos() {
-  const prev = document.getElementById('f-photo-prev');
-  if (!prev) return [];
-  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.dataset.src || img.src })).filter(p => p.src.startsWith('data:'));
-}
-
-function getExcavPhotos(zone) {
-  const prevId = zone === 'start' ? 'f-photo-prev-start' : 'f-photo-prev-end';
-  const prev = document.getElementById(prevId);
-  if (!prev) return [];
-  return Array.from(prev.querySelectorAll('img')).map(img => ({ src: img.dataset.src || img.src })).filter(p => p.src.startsWith('data:'));
-}
 
 // ── DEPENDENCY VALIDATION ─────────────────────────────────────
 function checkChainageDependency(type, project, route, from, to, date, excludeId) {
