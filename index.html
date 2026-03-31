@@ -354,6 +354,14 @@ const getValveSpecials  = () => LS.get('phx_valve_specials', {});
 const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
 const getAttendance     = () => LS.get('phx_attendance', []);
 const saveAttendance    = v  => LS.set('phx_attendance', v);
+const getMachinery      = () => LS.get('phx_machinery', []);
+const saveMachinery     = v  => LS.set('phx_machinery', v);
+const getMachLogs       = () => LS.get('phx_mach_logs', []);
+const saveMachLogs      = v  => LS.set('phx_mach_logs', v);
+const getMachService    = () => LS.get('phx_mach_service', []);
+const saveMachService   = v  => LS.set('phx_mach_service', v);
+const getMachIssues     = () => LS.get('phx_mach_issues', []);
+const saveMachIssues    = v  => LS.set('phx_mach_issues', v);
 
 let _rptTypeFilter = 'all';
 let _rptProjFilter = '';
@@ -537,6 +545,11 @@ async function pullConfig() {
       d.attendance.forEach(a=>{ if(!ids.has(a.id)) loc.push(a); });
       saveAttendance(loc);
     }
+    const mergeArr = (getter,saver,arr) => { if(!arr?.length) return; const loc=getter(); const ids=new Set(loc.map(x=>x.id)); arr.forEach(x=>{if(!ids.has(x.id))loc.push(x);}); saver(loc); };
+    mergeArr(getMachinery,   saveMachinery,  d.machinery);
+    mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
+    mergeArr(getMachService, saveMachService,d.machService);
+    mergeArr(getMachIssues,  saveMachIssues, d.machIssues);
     if (d.users) {
       const local = getUsers();
       const adminPass = local.admin?.pass || 'admin';
@@ -561,6 +574,10 @@ async function pushConfig() {
     specials:    getSpecials(),
     valveSpecials: getValveSpecials(),
     attendance:   getAttendance(),
+    machinery:    getMachinery(),
+    machLogs:     getMachLogs(),
+    machService:  getMachService(),
+    machIssues:   getMachIssues(),
     users:       getUsers(),
     updatedAt:   Date.now()
   };
@@ -755,8 +772,8 @@ function renderCurrentTab() {
   const main = document.getElementById('main');
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
-    case 'submit':   main.innerHTML = currentModule==='attendance' ? renderAttendanceTab() : renderSubmitTab(); break;
-    case 'reports':  if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;} _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); break;
+    case 'submit':   main.innerHTML = currentModule==='attendance' ? renderAttendanceTab() : currentModule==='machinery' ? renderMachineryTab() : renderSubmitTab(); break;
+    case 'reports':  if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;} if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;} _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
     case 'attendance': main.innerHTML = renderAttendanceTab(); break;
@@ -769,7 +786,7 @@ function renderCurrentTab() {
 function renderHome() {
   const vp = getVisibleProjects();
   const allReports = getReports().filter(r => vp.includes(r.project));
-  const today = new Date().toISOString().slice(0,10);
+  const today = localToday();
   const todayR = allReports.filter(r => r.date === today);
 
   const excM = allReports.filter(r=>r.type==='excavation').reduce((s,r)=>s+(r.meters||0),0);
@@ -806,6 +823,11 @@ function renderHome() {
         <div class="icon">🕐</div>
         <div class="name">Attendance</div>
         <div class="count">${getAttendance().length} records</div>
+      </div>
+      <div class="module-card${currentModule==='machinery'?' selected':''}" onclick="currentModule='machinery';renderCurrentTab()" style="${currentModule==='machinery'?'border-color:var(--orange);background:rgba(255,159,10,0.05)':''}">
+        <div class="icon">🚜</div>
+        <div class="name">Machinery</div>
+        <div class="count">${getMachinery().filter(m=>!m.project||getVisibleProjects().includes(m.project)).length} machines</div>
       </div>
     </div>`;
 
@@ -852,9 +874,8 @@ function renderHome() {
         <div class="stat-card"><div class="val text-green">${civilR.filter(r=>r.type==='civil_drawing').length}</div><div class="lbl">Drawings</div></div>
         <div class="stat-card"><div class="val text-purple">${civilR.filter(r=>r.type==='civil_quality').length}</div><div class="lbl">Quality</div></div>
       </div>`;
-  } else {
-    // Attendance
-    const today = new Date().toISOString().slice(0,10);
+  } else if (currentModule === 'attendance') {
+    const today = localToday();
     const att = getAttendance();
     const todayAtt = att.filter(a=>a.date===today&&a.atype==='attendance');
     const uniqueToday = new Set(todayAtt.map(a=>a.user)).size;
@@ -866,6 +887,23 @@ function renderHome() {
         <div class="stat-card"><div class="val text-orange">${pending}</div><div class="lbl">Pending Approval</div></div>
         <div class="stat-card"><div class="val text-green">${att.filter(a=>a.adminStatus==='approved').length}</div><div class="lbl">Approved</div></div>
         <div class="stat-card"><div class="val text-purple">${att.filter(a=>a.atype==='leave').length}</div><div class="lbl">Leave Records</div></div>
+      </div>`;
+  } else {
+    // Machinery
+    const vp2 = getVisibleProjects();
+    const mach = getMachinery().filter(m=>!m.project||vp2.includes(m.project));
+    const machIds = new Set(mach.map(m=>m.id));
+    const logs = getMachLogs().filter(l=>machIds.has(l.machineId));
+    const issues = getMachIssues().filter(i=>machIds.has(i.machineId));
+    const today2 = new Date().toISOString().slice(0,10);
+    const svcDue = getMachService().filter(s=>machIds.has(s.machineId)&&s.nextDue&&s.nextDue<=new Date(Date.now()+30*24*60*60*1000).toISOString().slice(0,10)).length;
+    html += `
+      <div class="section-header"><div class="section-title">Machinery Overview</div></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val text-orange">${mach.length}</div><div class="lbl">Total Machines</div></div>
+        <div class="stat-card"><div class="val text-blue">${logs.filter(l=>l.date===today2).length}</div><div class="lbl">Logged Today</div></div>
+        <div class="stat-card"><div class="val text-red">${issues.filter(i=>i.status==='open').length}</div><div class="lbl">Open Issues</div></div>
+        <div class="stat-card"><div class="val text-orange">${svcDue}</div><div class="lbl">Service Due</div></div>
       </div>`;
   }
 
@@ -2554,7 +2592,7 @@ function renderReportsTab() {
 
   reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = localToday();
   const monthAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
 
   let html = `
@@ -3359,6 +3397,7 @@ function renderSettingsTab() {
         <div class="tab-item active" onclick="showSettingsTab('projects',this)">Projects</div>
         <div class="tab-item" onclick="showSettingsTab('specials',this)">Fittings</div>
         <div class="tab-item" onclick="showSettingsTab('valves',this)">Valves</div>
+        <div class="tab-item" onclick="showSettingsTab('machinery',this)">🚜 Machines</div>
         <div class="tab-item" onclick="showSettingsTab('export',this)">📄 Export</div>
       </div>`;
     content = renderSettingsProjects();
@@ -3385,6 +3424,7 @@ function showSettingsTab(tab, el) {
   if (tab === 'accounts') c.innerHTML = renderSettingsAccounts();
   if (tab === 'specials') c.innerHTML = renderSettingsSpecials();
   if (tab === 'valves')   c.innerHTML = renderSettingsValves();
+  if (tab === 'machinery')c.innerHTML = renderSettingsMachinery();
   if (tab === 'export')   c.innerHTML = renderSettingsExport();
 }
 
@@ -4302,7 +4342,7 @@ function renderAttendanceTab() {
 
 // ── ENGINEER VIEW ──
 function renderAttendanceEngineer() {
-  const today = new Date().toISOString().slice(0,10);
+  const today = localToday();
   const all   = getAttendance().filter(a => a.user === currentUser);
   const todayRec = all.find(a => a.date === today && a.atype === 'attendance');
 
@@ -4385,8 +4425,13 @@ function renderAttendanceEngineer() {
   return html;
 }
 
+function localToday() {
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
 function markAttendance(status) {
-  const today = new Date().toISOString().slice(0,10);
+  const today = localToday();
   const all = getAttendance();
   if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { showToast('Already marked'); return; }
   all.push({ id:'ATT_'+Date.now(), user:currentUser, userName:getUsers()[currentUser]?.name||currentUser,
@@ -4411,9 +4456,14 @@ function applyLeave() {
 }
 
 // ── MONTHLY REPORT ──
+function localYearMonth() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
 function monthlyAttendanceSummary(user, records) {
   const now = new Date();
-  const selMonth = document.getElementById('att-month-sel')?.value || now.toISOString().slice(0,7);
+  const selMonth = document.getElementById('att-month-sel')?.value || localYearMonth();
   const [yr, mo] = selMonth.split('-').map(Number);
   const daysInMonth = new Date(yr, mo, 0).getDate();
 
@@ -4443,8 +4493,12 @@ function monthlyAttendanceSummary(user, records) {
   }
   cal+='</div>';
 
+  // Last 12 months using local time
   const months=[];
-  for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);months.push(d.toISOString().slice(0,7));}
+  for(let i=11;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    months.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
+  }
 
   return `
     <div class="card mt-3">
@@ -4632,6 +4686,620 @@ function exportMonthlyAttendance(targetUser) {
   win.document.write(html);
   win.document.close();
 }
+
+// ── MACHINERY MODULE ─────────────────────────────────────────
+
+let _machTab = 'logbook'; // 'logbook' | 'service' | 'issues' | 'report'
+
+function renderMachineryTab() {
+  const canManage = currentRole === 'admin' || currentRole === 'pm';
+  const tabs = [
+    ['logbook','📋 Logbook'],
+    ['service','🔧 Servicing'],
+    ['issues','⚠️ Issues'],
+    ['report','📊 Report'],
+  ];
+  const tabBar = tabs.map(([k,l])=>`<div class="tab-item${_machTab===k?' active':''}" onclick="_machTab='${k}';renderCurrentTab()" style="font-size:12px">${l}</div>`).join('');
+
+  let html = `<div class="section-header"><div class="section-title">🚜 Machinery</div>
+    ${_machTab==='logbook'?`<button class="btn btn-primary btn-sm" onclick="openAddMachLog()">+ Log</button>`:''}
+    ${_machTab==='service'&&canManage?`<button class="btn btn-primary btn-sm" onclick="openAddService()">+ Service</button>`:''}
+    ${_machTab==='issues'?`<button class="btn btn-primary btn-sm" onclick="openAddIssue()">+ Issue</button>`:''}
+  </div>
+  <div class="tab-bar mb-3">${tabBar}</div>`;
+
+  if (_machTab === 'logbook') html += renderMachLogbook();
+  if (_machTab === 'service') html += renderMachService();
+  if (_machTab === 'issues')  html += renderMachIssues();
+  if (_machTab === 'report')  html += renderMachReport();
+  return html;
+}
+
+// ── SETTINGS: MACHINERY REGISTRY (Admin only) ──
+function renderSettingsMachinery() {
+  const machines = getMachinery();
+  const projects = getProjects();
+  return `
+    <div class="section-header mt-2">
+      <div class="section-title" style="font-size:14px">🚜 Machine Registry</div>
+      <button class="btn btn-primary btn-sm" onclick="openAddMachine()">+ Add Machine</button>
+    </div>
+    ${!machines.length ? `<div class="empty-state"><div class="icon">🚜</div><p>No machines yet.</p></div>` :
+      machines.map(m => `
+        <div class="card mb-2" style="padding:10px 12px">
+          <div class="flex justify-between items-center">
+            <div>
+              <div style="font-size:13px;font-weight:700">${m.name} <span style="font-size:10px;color:var(--muted)">${m.type}</span></div>
+              <div style="font-size:11px;color:var(--orange)">📁 ${m.project||'Unassigned'}</div>
+              ${m.regNo?`<div style="font-size:10px;color:var(--muted)">${m.regNo}</div>`:''}
+            </div>
+            <div class="flex gap-2 items-center">
+              <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:${m.status==='active'?'rgba(48,209,88,0.15)':m.status==='under_repair'?'rgba(255,159,10,0.15)':'rgba(255,69,58,0.15)'};color:${m.status==='active'?'var(--green)':m.status==='under_repair'?'var(--orange)':'var(--red)'};font-weight:700">${m.status==='under_repair'?'Repair':m.status||'active'}</span>
+              <button class="btn btn-ghost btn-sm" onclick="openEditMachine('${m.id}')">✏️</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteMachine('${m.id}')">🗑️</button>
+            </div>
+          </div>
+        </div>`).join('')}`;
+}
+
+function deleteMachine(id) {
+  if (!confirm('Delete this machine? All logs and service records will remain.')) return;
+  saveMachinery(getMachinery().filter(m=>m.id!==id));
+  pushConfig();
+  document.getElementById('settingsContent').innerHTML = renderSettingsMachinery();
+}
+
+// ── MONTHLY REPORT ──
+function renderMachReport() {
+  const vp = getVisibleProjects();
+  const allMach = getMachinery().filter(m=>!m.project||vp.includes(m.project));
+  if (!allMach.length) return `<div class="empty-state"><div class="icon">📊</div><p>No machines found for your sites.</p></div>`;
+
+  const now = new Date();
+  const selMonth = document.getElementById('mach-month-sel')?.value || now.toISOString().slice(0,7);
+  const selProj  = document.getElementById('mach-proj-sel')?.value  || '';
+  const [yr, mo] = selMonth.split('-').map(Number);
+  const monthStart = `${selMonth}-01`;
+  const monthEnd   = new Date(yr, mo, 0).toISOString().slice(0,10);
+  const monthName  = new Date(yr, mo-1, 1).toLocaleString('en-IN',{month:'long',year:'numeric'});
+
+  const months = Array.from({length:6},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()-i,1);return d.toISOString().slice(0,7);});
+  const projects = [...new Set(allMach.map(m=>m.project).filter(Boolean))];
+
+  const filteredMach = selProj ? allMach.filter(m=>m.project===selProj) : allMach;
+  const machIds = new Set(filteredMach.map(m=>m.id));
+  const logs = getMachLogs().filter(l=>machIds.has(l.machineId)&&l.date>=monthStart&&l.date<=monthEnd);
+  const services = getMachService().filter(s=>machIds.has(s.machineId)&&s.date>=monthStart&&s.date<=monthEnd);
+  const issues = getMachIssues().filter(i=>machIds.has(i.machineId));
+
+  // Totals
+  const totalHours = logs.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+  const totalFuel  = logs.reduce((s,l)=>s+(parseFloat(l.fuel)||0),0);
+  const activeDays = new Set(logs.map(l=>l.date)).size;
+  const avgFuelPerHour = totalHours>0 ? (totalFuel/totalHours).toFixed(2) : '—';
+  const totalSvcCost = services.reduce((s,sv)=>s+(parseFloat(sv.cost)||0),0);
+  const openIssues = issues.filter(i=>i.status==='open').length;
+
+  const projOpts = projects.map(p=>'<option value="'+p+'"'+(p===selProj?' selected':'')+'>'+p+'</option>').join('');
+  const projSel = projects.length>1 ? '<select id="mach-proj-sel" onchange="renderCurrentTab()" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px"><option value="">All Sites</option>'+projOpts+'</select>' : '';
+  const monthOpts = months.map(m=>'<option value="'+m+'"'+(m===selMonth?' selected':'')+'>'+m+'</option>').join('');
+
+  let html = `
+    <div class="flex gap-2 mb-3" style="flex-wrap:wrap">
+      <select id="mach-month-sel" onchange="renderCurrentTab()" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">${monthOpts}</select>
+      ${projSel}
+    </div>
+    <div class="card-title mb-2">📊 ${monthName} Summary</div>
+    <div class="stat-grid mb-3">
+      <div class="stat-card"><div class="val text-blue">${totalHours.toFixed(1)}</div><div class="lbl">Total Hours</div></div>
+      <div class="stat-card"><div class="val text-orange">${totalFuel.toFixed(0)}</div><div class="lbl">Total Fuel (L)</div></div>
+      <div class="stat-card"><div class="val text-green">${avgFuelPerHour}</div><div class="lbl">L / Hour</div></div>
+      <div class="stat-card"><div class="val text-cyan">${activeDays}</div><div class="lbl">Active Days</div></div>
+      <div class="stat-card"><div class="val text-purple">${logs.length}</div><div class="lbl">Log Entries</div></div>
+      <div class="stat-card"><div class="val text-green">${totalSvcCost>0?'₹'+totalSvcCost.toLocaleString('en-IN'):'—'}</div><div class="lbl">Service Cost</div></div>
+    </div>`;
+
+  // Per-machine breakdown
+  if (filteredMach.length) {
+    html += `<div class="card-title mb-2">🚜 Per Machine Breakdown</div>`;
+    html += filteredMach.map(m => {
+      const mLogs = logs.filter(l=>l.machineId===m.id);
+      const mHours = mLogs.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+      const mFuel  = mLogs.reduce((s,l)=>s+(parseFloat(l.fuel)||0),0);
+      const mDays  = new Set(mLogs.map(l=>l.date)).size;
+      const mFPH   = mHours>0?(mFuel/mHours).toFixed(2):'—';
+      const mSvc   = services.filter(s=>s.machineId===m.id);
+      const mCost  = mSvc.reduce((s,sv)=>s+(parseFloat(sv.cost)||0),0);
+      const mIssues= issues.filter(i=>i.machineId===m.id&&i.status==='open').length;
+      if (!mLogs.length && !mSvc.length) return '';
+      return `<div class="card mb-2" style="padding:10px 12px">
+        <div class="flex justify-between items-center mb-2">
+          <div>
+            <div style="font-size:13px;font-weight:700">${m.name}</div>
+            <div style="font-size:10px;color:var(--muted)">${m.type}${m.project?' · '+m.project:''}</div>
+          </div>
+          ${mIssues?`<span style="font-size:10px;font-weight:700;color:var(--red)">⚠️ ${mIssues} open issue${mIssues>1?'s':''}</span>`:''}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+          ${[['Hours',mHours.toFixed(1),'var(--blue)'],['Fuel(L)',mFuel.toFixed(0),'var(--orange)'],['L/hr',mFPH,'var(--green)'],['Days',mDays,'var(--cyan)']].map(([l,v,c])=>`
+            <div style="padding:4px 6px;background:var(--surface2);border-radius:5px;text-align:center">
+              <div style="font-size:9px;color:var(--muted)">${l}</div>
+              <div style="font-size:12px;font-weight:700;color:${c}">${v}</div>
+            </div>`).join('')}
+        </div>
+        ${mCost?`<div style="font-size:11px;color:var(--muted);margin-top:6px">💰 Service cost: <strong style="color:var(--text)">₹${mCost.toLocaleString('en-IN')}</strong></div>`:''}
+      </div>`;
+    }).join('');
+  }
+
+  // Issues summary
+  if (openIssues) {
+    html += `<div style="background:rgba(255,69,58,0.1);border:1px solid rgba(255,69,58,0.3);border-radius:10px;padding:10px 12px;margin-top:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px">⚠️ ${openIssues} Open Issue${openIssues>1?'s':''}</div>
+      ${issues.filter(i=>i.status==='open'&&machIds.has(i.machineId)).map(i=>{
+        const m=filteredMach.find(x=>x.id===i.machineId);
+        const mname = m ? m.name : 'Unknown';
+        return '<div style="font-size:11px">🚜 ' + mname + ' — ' + i.description + '</div>';
+      }).join('')}
+    </div>`;
+  }
+
+  html += `<button class="btn btn-ghost w-full mt-3" onclick="exportMachReport(document.getElementById('mach-month-sel')?.value||'',document.getElementById('mach-proj-sel')?.value||'')">📄 Export PDF Report</button>`;
+  return html;
+}
+
+function exportMachReport(selMonth, selProj) {
+  const vp = getVisibleProjects();
+  const allMach = getMachinery().filter(m=>!m.project||vp.includes(m.project));
+  const [yr,mo] = selMonth.split('-').map(Number);
+  const monthStart=`${selMonth}-01`, monthEnd=new Date(yr,mo,0).toISOString().slice(0,10);
+  const monthName=new Date(yr,mo-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
+  const filteredMach = selProj ? allMach.filter(m=>m.project===selProj) : allMach;
+  const machIds = new Set(filteredMach.map(m=>m.id));
+  const logs = getMachLogs().filter(l=>machIds.has(l.machineId)&&l.date>=monthStart&&l.date<=monthEnd);
+  const services = getMachService().filter(s=>machIds.has(s.machineId)&&s.date>=monthStart&&s.date<=monthEnd);
+
+  const totalHours=logs.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+  const totalFuel=logs.reduce((s,l)=>s+(parseFloat(l.fuel)||0),0);
+  const totalCost=services.reduce((s,sv)=>s+(parseFloat(sv.cost)||0),0);
+
+  const thS='padding:7px 10px;background:#1e1e28;color:#fff;font-size:11px;border:1px solid #333';
+  const tdS='padding:6px 10px;font-size:11px;border:1px solid #e8e8e8';
+
+  const machRows = filteredMach.map((m,i) => {
+    const ml=logs.filter(l=>l.machineId===m.id);
+    const mh=ml.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+    const mf=ml.reduce((s,l)=>s+(parseFloat(l.fuel)||0),0);
+    const mc=services.filter(s=>s.machineId===m.id).reduce((s,sv)=>s+(parseFloat(sv.cost)||0),0);
+    const bg=i%2?'#f8f9fc':'#fff';
+    return `<tr style="background:${bg}"><td style="${tdS}">${m.name}</td><td style="${tdS}">${m.type}</td><td style="${tdS}">${m.project||'—'}</td><td style="${tdS};text-align:center">${mh.toFixed(1)}</td><td style="${tdS};text-align:center">${mf.toFixed(0)}</td><td style="${tdS};text-align:center">${mh>0?(mf/mh).toFixed(2):'—'}</td><td style="${tdS};text-align:center">${mc?'₹'+mc.toLocaleString('en-IN'):'—'}</td></tr>`;
+  }).join('');
+
+  const logRows = logs.slice(0,100).map((l,i) => {
+    const m=filteredMach.find(x=>x.id===l.machineId);
+    const bg=i%2?'#f8f9fc':'#fff';
+    return `<tr style="background:${bg}"><td style="${tdS}">${l.date}</td><td style="${tdS}">${m?.name||'?'}</td><td style="${tdS}">${l.operator||'—'}</td><td style="${tdS};text-align:center">${l.hours||0}</td><td style="${tdS};text-align:center">${l.fuel||0}</td><td style="${tdS}">${l.chainage||'—'}</td><td style="${tdS}">${l.workDone||''}</td></tr>`;
+  }).join('');
+
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Machinery Report ${monthName}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Noto Serif',serif;background:#f0f2f5}.page{max-width:960px;margin:0 auto;background:#fff}
+  @media print{body{background:#fff}.no-print{display:none}}</style></head><body>
+  <div class="no-print" style="padding:10px;text-align:center;background:#f0f2f5;gap:8px;display:flex;justify-content:center">
+    <button onclick="window.print()" style="padding:8px 20px;background:#0A84FF;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨️ Print / Save PDF</button>
+    <button onclick="window.close()" style="padding:8px 20px;background:#666;color:#fff;border:none;border-radius:8px;cursor:pointer">✕ Close</button>
+  </div>
+  <div class="page">
+    <div style="background:#1e1e28;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">
+      <div><div style="color:#E8192C;font-size:18px;font-weight:700">Phoenix ERP</div><div style="color:#aaa;font-size:11px">Machinery Module</div></div>
+      <div style="text-align:right"><div style="color:#fff;font-size:14px;font-weight:700">Monthly Machinery Report</div><div style="color:#aaa;font-size:11px">${monthName}${selProj?' · '+selProj:''}</div></div>
+    </div>
+    <div style="padding:20px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+        ${[['Total Hours',totalHours.toFixed(1)+'','#0A84FF'],['Total Fuel',totalFuel.toFixed(0)+' L','#FF9F0A'],['Avg L/Hr',totalHours>0?(totalFuel/totalHours).toFixed(2):'—','#30D158'],['Service Cost',totalCost?'₹'+totalCost.toLocaleString('en-IN'):'—','#BF5AF2']].map(([l,v,c])=>`
+          <div style="background:#f8f9fc;border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:${c}">${v}</div>
+            <div style="font-size:10px;color:#666;text-transform:uppercase">${l}</div>
+          </div>`).join('')}
+      </div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Machine-wise Summary</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+        <thead><tr><th style="${thS}">Machine</th><th style="${thS}">Type</th><th style="${thS}">Site</th><th style="${thS}">Hours</th><th style="${thS}">Fuel(L)</th><th style="${thS}">L/hr</th><th style="${thS}">Svc Cost</th></tr></thead>
+        <tbody>${machRows}</tbody>
+      </table>
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Daily Log Entries</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr><th style="${thS}">Date</th><th style="${thS}">Machine</th><th style="${thS}">Operator</th><th style="${thS}">Hours</th><th style="${thS}">Fuel(L)</th><th style="${thS}">Chainage</th><th style="${thS}">Work Done</th></tr></thead>
+        <tbody>${logRows}</tbody>
+      </table>
+    </div>
+  </div></body></html>`);
+  w.document.close();
+}
+
+// ── LOGBOOK ──
+function renderMachLogbook() {
+  const vp = getVisibleProjects();
+  const machines = getMachinery().filter(m => !m.project || vp.includes(m.project));
+  if (!machines.length) return `<div class="empty-state"><div class="icon">📋</div><p>No machines assigned to your sites.</p></div>`;
+  const machIds = new Set(machines.map(m=>m.id));
+  const logs = getMachLogs().filter(l=>machIds.has(l.machineId)).sort((a,b)=>b.date.localeCompare(a.date));
+  const today = localToday();
+
+  // Filter by machine
+  const selMach = document.getElementById('log-mach-sel')?.value || '';
+  const filtered = selMach ? logs.filter(l=>l.machineId===selMach) : logs;
+
+  let html = `<div class="flex gap-2 mb-3">
+    <select id="log-mach-sel" onchange="renderCurrentTab()" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
+      <option value="">All Machines</option>
+      ${machines.map(m=>`<option value="${m.id}"${m.id===selMach?' selected':''}>${m.name}${m.project?' — '+m.project:''}</option>`).join('')}
+    </select>
+  </div>`;
+
+  if (!filtered.length) return html + `<div class="empty-state"><div class="icon">📋</div><p>No log entries yet.</p></div>`;
+
+  html += filtered.slice(0,30).map(l => {
+    const mach = machines.find(m=>m.id===l.machineId);
+    return `<div class="card mb-2" style="padding:10px 12px">
+      <div class="flex justify-between items-center mb-1">
+        <div><div style="font-size:13px;font-weight:700">${mach?.name||'Unknown'}</div><div style="font-size:10px;color:var(--muted)">${mach?.project||''}</div></div>
+        <div style="font-size:11px;color:var(--muted)">${l.date}${l.date===today?' 🟢':''}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:6px">
+        <div style="padding:4px 6px;background:var(--surface2);border-radius:5px;text-align:center">
+          <div style="font-size:9px;color:var(--muted)">HOURS</div>
+          <div style="font-size:12px;font-weight:700;color:var(--blue)">${l.hours||0}</div>
+        </div>
+        <div style="padding:4px 6px;background:var(--surface2);border-radius:5px;text-align:center">
+          <div style="font-size:9px;color:var(--muted)">FUEL (L)</div>
+          <div style="font-size:12px;font-weight:700;color:var(--orange)">${l.fuel||0}</div>
+        </div>
+        <div style="padding:4px 6px;background:var(--surface2);border-radius:5px;text-align:center">
+          <div style="font-size:9px;color:var(--muted)">OPERATOR</div>
+          <div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.operator||'—'}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text)">${l.workDone||''}</div>
+      ${l.chainage?`<div style="font-size:10px;color:var(--muted);margin-top:2px">📍 ${l.chainage}</div>`:''}
+    </div>`;
+  }).join('');
+  return html;
+}
+
+// ── SERVICE HISTORY ──
+function renderMachService() {
+  const vp = getVisibleProjects();
+  const machines = getMachinery().filter(m => !m.project || vp.includes(m.project));
+  const machIds = new Set(machines.map(m=>m.id));
+  const services = getMachService().filter(s=>machIds.has(s.machineId)).sort((a,b)=>b.date.localeCompare(a.date));
+  const today = localToday();
+
+  // Upcoming due
+  const due = services.filter(s=>s.nextDue&&s.nextDue<=new Date(Date.now()+30*24*60*60*1000).toISOString().slice(0,10));
+  let html = '';
+  if (due.length) {
+    html += `<div style="background:rgba(255,159,10,0.1);border:1px solid rgba(255,159,10,0.3);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:6px">⏰ SERVICE DUE SOON</div>
+      ${due.map(s=>{const m=machines.find(x=>x.id===s.machineId);return `<div style="font-size:12px">🚜 ${m?.name||'?'} — Next due: <strong>${s.nextDue}</strong></div>`;}).join('')}
+    </div>`;
+  }
+
+  if (!services.length) return html + `<div class="empty-state"><div class="icon">🔧</div><p>No service records yet.</p></div>`;
+
+  const typeColor = t=>t==='breakdown'?'var(--red)':t==='major'?'var(--orange)':'var(--green)';
+  html += services.slice(0,30).map(s=>{
+    const mach = machines.find(m=>m.id===s.machineId);
+    return `<div class="card mb-2" style="padding:10px 12px">
+      <div class="flex justify-between items-center mb-1">
+        <div>
+          <div style="font-size:13px;font-weight:700">${mach?.name||'Unknown'}</div>
+          <div style="font-size:10px;color:var(--muted)">${s.date} · ${s.provider||'—'}</div>
+        </div>
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(0,0,0,0.3);color:${typeColor(s.type)};text-transform:uppercase">${s.type||'regular'}</span>
+      </div>
+      <div style="font-size:12px;margin:4px 0">${s.workDone||''}</div>
+      <div style="display:flex;gap:12px;font-size:11px;color:var(--muted)">
+        ${s.cost?`<span>💰 ₹${s.cost}</span>`:''}
+        ${s.nextDue?`<span>📅 Next: ${s.nextDue}</span>`:''}
+        ${s.odometerKm?`<span>🔢 ${s.odometerKm} hrs</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  return html;
+}
+
+// ── ISSUES ──
+function renderMachIssues() {
+  const vp = getVisibleProjects();
+  const machines = getMachinery().filter(m => !m.project || vp.includes(m.project));
+  const machIds = new Set(machines.map(m=>m.id));
+  const issues = getMachIssues().filter(i=>machIds.has(i.machineId)).sort((a,b)=>b.date.localeCompare(a.date));
+  const canManage = currentRole==='admin'||currentRole==='pm';
+
+  if (!issues.length) return `<div class="empty-state"><div class="icon">⚠️</div><p>No issues reported.</p></div>`;
+
+  const stColor = s=>s==='open'?'var(--red)':s==='in_progress'?'var(--orange)':'var(--green)';
+  const stLabel = s=>s==='open'?'🔴 Open':s==='in_progress'?'🟡 In Progress':'🟢 Resolved';
+
+  return issues.map(i=>{
+    const mach = machines.find(m=>m.id===i.machineId);
+    return `<div class="card mb-2" style="padding:10px 12px;${i.status==='open'?'border-left:3px solid var(--red)':''}">
+      <div class="flex justify-between items-center mb-1">
+        <div style="font-size:13px;font-weight:700">${mach?.name||'Unknown'}</div>
+        <span style="font-size:10px;font-weight:700;color:${stColor(i.status)}">${stLabel(i.status)}</span>
+      </div>
+      <div style="font-size:12px;margin-bottom:4px">${i.description}</div>
+      <div style="font-size:10px;color:var(--muted)">${i.date} · Reported by ${i.reportedBy||'—'}</div>
+      ${i.resolution?`<div style="font-size:11px;color:var(--green);margin-top:4px">✅ ${i.resolution}</div>`:''}
+      ${canManage&&i.status!=='resolved'?`<div class="flex gap-2 mt-2">
+        ${i.status==='open'?`<button class="btn btn-ghost btn-sm" onclick="updateIssueStatus('${i.id}','in_progress')">→ In Progress</button>`:''}
+        <button class="btn btn-primary btn-sm" onclick="resolveIssue('${i.id}')">✅ Resolve</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── FORMS ──
+function openAddMachine() {
+  const projects = getProjects();
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">🚜 Add Machine</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Assigned Site (Project) *</label>
+      <select id="mf-project">
+        <option value="">— Select Site —</option>
+        ${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Machine Name *</label><input type="text" id="mf-name" placeholder="e.g. JCB 3DX"></div>
+      <div class="field-group"><label>Type *</label>
+        <select id="mf-type"><option>Excavator</option><option>JCB</option><option>Tipper</option><option>Crane</option><option>Compactor</option><option>Generator</option><option>Water Tanker</option><option>Loader</option><option>Other</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Model</label><input type="text" id="mf-model" placeholder="e.g. 3DX Plus"></div>
+      <div class="field-group"><label>Reg / Chassis No.</label><input type="text" id="mf-reg" placeholder="e.g. GJ-01-AB-1234"></div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Owner</label><input type="text" id="mf-owner" placeholder="Company / Contractor name"></div>
+      <div class="field-group"><label>Purchase / Hire Date</label><input type="date" id="mf-date"></div>
+    </div>
+    <div class="field-group"><label>Status</label>
+      <select id="mf-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="under_repair">Under Repair</option></select>
+    </div>
+    <div class="field-group"><label>Remarks</label><textarea id="mf-remarks" rows="2" placeholder="Any notes..."></textarea></div>
+    <button class="btn btn-primary w-full mt-2" onclick="saveMachine()">Save Machine</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveMachine(editId) {
+  const name = document.getElementById('mf-name')?.value?.trim();
+  const project = document.getElementById('mf-project')?.value;
+  if (!name) { showToast('⚠️ Machine name required'); return; }
+  if (!project) { showToast('⚠️ Select a site/project'); return; }
+  const machines = getMachinery();
+  const obj = {
+    id: editId || 'MCH_'+Date.now(),
+    name, project,
+    type: document.getElementById('mf-type')?.value,
+    model: document.getElementById('mf-model')?.value||'',
+    regNo: document.getElementById('mf-reg')?.value||'',
+    owner: document.getElementById('mf-owner')?.value||'',
+    purchaseDate: document.getElementById('mf-date')?.value||'',
+    status: document.getElementById('mf-status')?.value||'active',
+    remarks: document.getElementById('mf-remarks')?.value||'',
+    createdBy: currentUser, timestamp: new Date().toISOString()
+  };
+  if (editId) { const i=machines.findIndex(m=>m.id===editId); if(i>-1) machines[i]=obj; }
+  else machines.push(obj);
+  saveMachinery(machines); pushConfig();
+  showToast('✅ Machine saved'); closeFormModal(); renderCurrentTab();
+}
+
+function openEditMachine(id) {
+  const m = getMachinery().find(x=>x.id===id);
+  if (!m) return;
+  const projects = getProjects();
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">✏️ Edit Machine</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Assigned Site (Project) *</label>
+      <select id="mf-project">
+        <option value="">— Select Site —</option>
+        ${projects.map(p=>`<option value="${p}"${p===m.project?' selected':''}>${p}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Machine Name *</label><input type="text" id="mf-name" value="${m.name}"></div>
+      <div class="field-group"><label>Type</label>
+        <select id="mf-type">${['Excavator','JCB','Tipper','Crane','Compactor','Generator','Water Tanker','Loader','Other'].map(t=>`<option${t===m.type?' selected':''}>${t}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Model</label><input type="text" id="mf-model" value="${m.model||''}"></div>
+      <div class="field-group"><label>Reg / Chassis No.</label><input type="text" id="mf-reg" value="${m.regNo||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Owner</label><input type="text" id="mf-owner" value="${m.owner||''}"></div>
+      <div class="field-group"><label>Purchase / Hire Date</label><input type="date" id="mf-date" value="${m.purchaseDate||''}"></div>
+    </div>
+    <div class="field-group"><label>Status</label>
+      <select id="mf-status">${[['active','Active'],['inactive','Inactive'],['under_repair','Under Repair']].map(([v,l])=>`<option value="${v}"${v===m.status?' selected':''}>${l}</option>`).join('')}</select>
+    </div>
+    <div class="field-group"><label>Remarks</label><textarea id="mf-remarks" rows="2">${m.remarks||''}</textarea></div>
+    <button class="btn btn-primary w-full mt-2" onclick="saveMachine('${m.id}')">Update Machine</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function openAddMachLog() {
+  const vp=getVisibleProjects();
+  const machines = getMachinery().filter(m=>!m.project||vp.includes(m.project));
+  if (!machines.length) { showToast('⚠️ No machines assigned to your sites'); return; }
+  const today = localToday();
+  const users = getUsers();
+  const engineers = Object.entries(users).filter(([,u])=>isEngineer(u.role)).map(([u,d])=>d.name||u);
+
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">📋 Daily Log Entry</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Machine *</label>
+      <select id="lf-mach">${machines.map(m=>`<option value="${m.id}">${m.name} (${m.type})</option>`).join('')}</select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Date *</label><input type="date" id="lf-date" value="${today}"></div>
+      <div class="field-group"><label>Operator Name</label><input type="text" id="lf-operator" placeholder="Operator name" list="eng-list">
+        <datalist id="eng-list">${engineers.map(e=>`<option>${e}</option>`).join('')}</datalist>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Hours Worked</label><input type="number" id="lf-hours" placeholder="0.0" step="0.5" min="0"></div>
+      <div class="field-group"><label>Fuel Consumed (L)</label><input type="number" id="lf-fuel" placeholder="0" min="0"></div>
+    </div>
+    <div class="field-group"><label>Work Done *</label><textarea id="lf-work" rows="3" placeholder="Describe work done, location, progress..."></textarea></div>
+    <div class="form-row">
+      <div class="field-group"><label>Chainage / Location</label><input type="text" id="lf-chainage" placeholder="e.g. Ch:1200–1800m"></div>
+      <div class="field-group"><label>Start Meter (hrs)</label><input type="number" id="lf-meter" placeholder="Meter reading"></div>
+    </div>
+    <div class="field-group"><label>Remarks</label><input type="text" id="lf-remarks" placeholder="Any issues or notes"></div>
+    <button class="btn btn-primary w-full mt-2" onclick="saveMachLog()">Save Log</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveMachLog() {
+  const machineId = document.getElementById('lf-mach')?.value;
+  const date = document.getElementById('lf-date')?.value;
+  const workDone = document.getElementById('lf-work')?.value?.trim();
+  if (!machineId||!date||!workDone) { showToast('⚠️ Machine, date & work done required'); return; }
+  const logs = getMachLogs();
+  logs.push({
+    id: 'LOG_'+Date.now(), machineId, date,
+    operator: document.getElementById('lf-operator')?.value||'',
+    hours: parseFloat(document.getElementById('lf-hours')?.value)||0,
+    fuel: parseFloat(document.getElementById('lf-fuel')?.value)||0,
+    workDone, chainage: document.getElementById('lf-chainage')?.value||'',
+    meterReading: document.getElementById('lf-meter')?.value||'',
+    remarks: document.getElementById('lf-remarks')?.value||'',
+    loggedBy: currentUser, timestamp: new Date().toISOString()
+  });
+  saveMachLogs(logs); pushConfig();
+  showToast('✅ Log saved'); closeFormModal(); renderCurrentTab();
+}
+
+function openAddService() {
+  const vp=getVisibleProjects();
+  const machines = getMachinery().filter(m=>!m.project||vp.includes(m.project));
+  if (!machines.length) { showToast('⚠️ No machines on your sites'); return; }
+  const today = localToday();
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">🔧 Service Record</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Machine *</label>
+      <select id="sf-mach">${machines.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}</select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Service Date *</label><input type="date" id="sf-date" value="${today}"></div>
+      <div class="field-group"><label>Service Type</label>
+        <select id="sf-type"><option value="regular">Regular/PM</option><option value="breakdown">Breakdown</option><option value="major">Major Overhaul</option><option value="oil">Oil Change</option><option value="tyre">Tyre</option></select>
+      </div>
+    </div>
+    <div class="field-group"><label>Work Done *</label><textarea id="sf-work" rows="3" placeholder="Describe service work done..."></textarea></div>
+    <div class="form-row">
+      <div class="field-group"><label>Service Provider</label><input type="text" id="sf-provider" placeholder="Garage / Mechanic name"></div>
+      <div class="field-group"><label>Cost (₹)</label><input type="number" id="sf-cost" placeholder="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Meter Reading (hrs)</label><input type="number" id="sf-meter" placeholder="Current meter"></div>
+      <div class="field-group"><label>Next Service Due</label><input type="date" id="sf-next"></div>
+    </div>
+    <div class="field-group"><label>Parts Replaced</label><input type="text" id="sf-parts" placeholder="e.g. Air filter, Engine oil"></div>
+    <button class="btn btn-primary w-full mt-2" onclick="saveService()">Save Service Record</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveService() {
+  const machineId = document.getElementById('sf-mach')?.value;
+  const date = document.getElementById('sf-date')?.value;
+  const workDone = document.getElementById('sf-work')?.value?.trim();
+  if (!machineId||!date||!workDone) { showToast('⚠️ Machine, date & work done required'); return; }
+  const services = getMachService();
+  services.push({
+    id: 'SVC_'+Date.now(), machineId, date,
+    type: document.getElementById('sf-type')?.value||'regular',
+    workDone, provider: document.getElementById('sf-provider')?.value||'',
+    cost: document.getElementById('sf-cost')?.value||'',
+    odometerKm: document.getElementById('sf-meter')?.value||'',
+    nextDue: document.getElementById('sf-next')?.value||'',
+    parts: document.getElementById('sf-parts')?.value||'',
+    recordedBy: currentUser, timestamp: new Date().toISOString()
+  });
+  saveMachService(services); pushConfig();
+  showToast('✅ Service record saved'); closeFormModal(); renderCurrentTab();
+}
+
+function openAddIssue() {
+  const vp=getVisibleProjects();
+  const machines = getMachinery().filter(m=>!m.project||vp.includes(m.project));
+  if (!machines.length) { showToast('⚠️ No machines on your sites'); return; }
+  const today = localToday();
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">⚠️ Report Issue</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Machine *</label>
+      <select id="if-mach">${machines.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}</select>
+    </div>
+    <div class="field-group"><label>Date</label><input type="date" id="if-date" value="${today}"></div>
+    <div class="field-group"><label>Issue Description *</label><textarea id="if-desc" rows="3" placeholder="Describe the problem..."></textarea></div>
+    <div class="field-group"><label>Priority</label>
+      <select id="if-priority"><option value="high">🔴 High — Machine Down</option><option value="medium" selected>🟡 Medium — Can Work</option><option value="low">🟢 Low — Minor</option></select>
+    </div>
+    <button class="btn btn-danger w-full mt-2" onclick="saveIssue()">Report Issue</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveIssue() {
+  const machineId = document.getElementById('if-mach')?.value;
+  const description = document.getElementById('if-desc')?.value?.trim();
+  if (!machineId||!description) { showToast('⚠️ Machine & description required'); return; }
+  const issues = getMachIssues();
+  issues.push({
+    id: 'ISS_'+Date.now(), machineId,
+    date: document.getElementById('if-date')?.value||new Date().toISOString().slice(0,10),
+    description, priority: document.getElementById('if-priority')?.value||'medium',
+    status: 'open', reportedBy: getUsers()[currentUser]?.name||currentUser,
+    timestamp: new Date().toISOString()
+  });
+  saveMachIssues(issues); pushConfig();
+  showToast('✅ Issue reported'); closeFormModal(); renderCurrentTab();
+}
+
+function updateIssueStatus(id, status) {
+  const issues = getMachIssues();
+  const i = issues.find(x=>x.id===id);
+  if (i) { i.status=status; saveMachIssues(issues); pushConfig(); renderCurrentTab(); }
+}
+
+function resolveIssue(id) {
+  const resolution = prompt('Resolution / work done:');
+  if (!resolution) return;
+  const issues = getMachIssues();
+  const i = issues.find(x=>x.id===id);
+  if (i) { i.status='resolved'; i.resolution=resolution; i.resolvedDate=new Date().toISOString().slice(0,10); saveMachIssues(issues); pushConfig(); renderCurrentTab(); }
+}
+
+// ── END MACHINERY MODULE ──────────────────────────────────────
 
 // Safety net: always hide loader after 1s regardless of errors
 setTimeout(() => {
