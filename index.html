@@ -2794,14 +2794,17 @@ function reportItemHTML(r, showActions=true) {
       </div>
       <div class="report-date" style="margin-bottom:6px">by ${r.supervisorName||r.supervisor||'—'} · ${r.project||''} ${routeName ? '· '+routeName : ''}</div>
       ${details ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:6px">${details}</div>` : ''}
-      ${allPhotos.length ? `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      ${allPhotos.length ? (() => {
+        const gid = 'ph_' + String(r.id).replace(/\W/g,'');
+        window['_ps_'+gid] = allPhotos.map(p=>p.src);
+        return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           ${allPhotos.map((p,i)=>`
-            <div style="position:relative;cursor:pointer" onclick="openPhotoLightbox(${JSON.stringify(allPhotos.map(x=>x.src))},${i})">
+            <div style="position:relative;cursor:pointer" onclick="openPhotoLightbox('${gid}',${i})">
               <img src="${p.src}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
               <div style="position:absolute;bottom:2px;left:2px;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">${p.label}</div>
             </div>`).join('')}
-        </div>` : ''}
+        </div>`;
+      })() : ''}
       ${actions}
     </div>`;
 }
@@ -5325,8 +5328,8 @@ function resolveIssue(id) {
 // ── PHOTO LIGHTBOX ───────────────────────────────────────────
 let _lbSrcs = [], _lbIdx = 0;
 
-function openPhotoLightbox(srcs, idx) {
-  _lbSrcs = srcs; _lbIdx = idx;
+function openPhotoLightbox(gid, idx) {
+  _lbSrcs = window['_ps_'+gid] || []; _lbIdx = idx || 0;
   const lb = document.getElementById('photoLightbox');
   lb.style.display = 'flex';
   lightboxShow();
