@@ -550,11 +550,17 @@ async function pullConfig() {
     mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
     mergeArr(getMachService, saveMachService,d.machService);
     mergeArr(getMachIssues,  saveMachIssues, d.machIssues);
+    if (d.deletedUsers?.length) {
+      const existing = LS.get('phx_deleted_users', []);
+      const merged = [...new Set([...existing, ...d.deletedUsers])];
+      LS.set('phx_deleted_users', merged);
+    }
     if (d.users) {
       const local = getUsers();
       const adminPass = local.admin?.pass || 'admin';
+      const deleted = LS.get('phx_deleted_users', []);
       Object.keys(d.users).forEach(u => {
-        if (d.users[u].role !== 'admin') {
+        if (d.users[u].role !== 'admin' && !deleted.includes(u)) {
           const localProjects = local[u]?.projects;
           local[u] = d.users[u];
           if (localProjects?.length && !local[u].projects?.length) local[u].projects = localProjects;
@@ -579,6 +585,7 @@ async function pushConfig() {
     machService:  getMachService(),
     machIssues:   getMachIssues(),
     users:       getUsers(),
+    deletedUsers: LS.get('phx_deleted_users', []),
     updatedAt:   Date.now()
   };
   const val = JSON.stringify(data).slice(0, 65000);
@@ -1126,7 +1133,7 @@ function buildTypeFields(type, p={}) {
 
   // ── 2. PIPE LAYING ─────────────────────────────────────────
   if (type === 'pipe') {
-    const proj = document.getElementById('f-project')?.value || '';
+    const proj = p.project || getVisibleProjects()[0] || '';
     const routeId = p.route || '';
     const routeList = getRoutes()[proj] || [];
     const matchedRoute = routeList.find(r => r.id === routeId);
@@ -1274,7 +1281,7 @@ function buildTypeFields(type, p={}) {
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔧 Valve Details</div>
         ${(() => {
-          const vProj = document.getElementById('f-project')?.value || '';
+          const vProj = p.project || getVisibleProjects()[0] || '';
           const valveItems = (getValveSpecials()[vProj] || []);
           const selectedVal = p.valType || '';
           if (valveItems.length) {
@@ -1309,7 +1316,7 @@ function buildTypeFields(type, p={}) {
 
   // ── 5. CHAMBER ─────────────────────────────────────────────
   if (type === 'chamber') {
-    const chamProj = document.getElementById('f-project')?.value || '';
+    const chamProj = p.project || getVisibleProjects()[0] || '';
     const valveReps = getReports()
       .filter(r => r.type === 'valve' && r.project === chamProj && r.chamberReq === 'Yes');
     // Store date in option data attribute for dependency check
@@ -1383,7 +1390,7 @@ function buildTypeFields(type, p={}) {
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔗 Fitting Details</div>
         ${(() => {
-          const fProj = document.getElementById('f-project')?.value || '';
+          const fProj = p.project || getVisibleProjects()[0] || '';
           const specItems = (getSpecials()[fProj] || []);
           const selectedSpec = p.fitType || '';
           if (specItems.length) {
@@ -1418,7 +1425,7 @@ function buildTypeFields(type, p={}) {
 
   // ── 7. CONCRETE WORK (structure) ───────────────────────────
   if (type === 'structure') {
-    const strProj = document.getElementById('f-project')?.value || '';
+    const strProj = p.project || getVisibleProjects()[0] || '';
     const allR    = getReports().filter(r => r.project === strProj);
 
     // Build options with source date embedded
@@ -4252,6 +4259,9 @@ function deleteUserUM(username) {
     const users = getUsers();
     delete users[username];
     saveUsers(users);
+    // Track deletion so pullConfig won't re-add from Appwrite
+    const deleted = LS.get('phx_deleted_users', []);
+    if (!deleted.includes(username)) { deleted.push(username); LS.set('phx_deleted_users', deleted); }
     pushConfig();
     showToast('🗑️ User deleted');
     document.getElementById('main').innerHTML = renderUsersTab();
