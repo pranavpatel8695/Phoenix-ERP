@@ -418,12 +418,11 @@ function savePhotosForReport(id, photosStart, photosEnd, photos) {
 }
 function getPhotosForReport(id) {
   try {
-    const v = localStorage.getItem('phx_photos_' + String(id));
+    const key = 'phx_photos_' + String(id);
+    const v = localStorage.getItem(key);
     if (!v) return null;
     const parsed = JSON.parse(v);
-    // Validate has actual data
-    if (!parsed.photosStart?.length && !parsed.photosEnd?.length && !parsed.photos?.length) return null;
-    return parsed;
+    return parsed || null;
   } catch(e) { return null; }
 }
 function deletePhotosForReport(id) {
@@ -2286,18 +2285,19 @@ async function submitReport(type) {
     if (type==='civil_labour') { data.skilled=gf('f-skilled'); data.unskilled=gf('f-unskilled'); }
   }
 
-  // Save photos directly in report (separate key per report to avoid 5MB limit)
+  // Save photos - both inline in report AND in separate key
   const reportId = String(data.id);
-  const hasPhotos = data.photosStart?.length || data.photosEnd?.length || data.photos?.length;
-  if (hasPhotos) {
+  // Don't strip photos from data for local storage - keep inline too
+  if (data.photosStart?.length || data.photosEnd?.length || data.photos?.length) {
     try {
       localStorage.setItem('phx_photos_' + reportId, JSON.stringify({
         photosStart: data.photosStart || [],
         photosEnd:   data.photosEnd   || [],
         photos:      data.photos      || []
       }));
-    } catch(e) { console.warn('Photo storage failed:', e); }
+    } catch(e) { console.warn('Photo key storage failed:', e); }
   }
+  // Keep photos inline in local report (strip only for Appwrite upload)
   const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
 
   // Save locally
@@ -2765,14 +2765,14 @@ function reportItemHTML(r, showActions=true) {
   const photoSrc = p => {
     if (!p) return '';
     if (typeof p === 'string') return p;
-    return p.src || p.data || '';
+    return p.src || p.data || p.url || '';
   };
 
   const allPhotos = [
     ...(r.photosStart||[]).map(p=>({src:photoSrc(p), label:'📍 Start'})),
     ...(r.photosEnd||[]).map(p=>({src:photoSrc(p), label:'🏁 End'})),
     ...(r.photos||[]).map(p=>({src:photoSrc(p), label:'📷'})),
-  ].filter(p => p.src);
+  ].filter(p => p.src && p.src.length > 10);
 
   return `
     <div class="report-item" data-date="${r.date||''}" data-type="${r.type||''}" data-project="${r.project||''}">
