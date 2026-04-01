@@ -254,6 +254,17 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 <!-- TOAST -->
 <div id="toast"></div>
 
+<!-- PHOTO LIGHTBOX -->
+<div id="photoLightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;flex-direction:column;align-items:center;justify-content:center" onclick="closePhotoLightbox()">
+  <div style="position:absolute;top:16px;right:16px;font-size:28px;color:#fff;cursor:pointer;line-height:1" onclick="closePhotoLightbox()">✕</div>
+  <div style="position:absolute;top:16px;left:50%;transform:translateX(-50%);color:#fff;font-size:12px;opacity:0.7" id="lightbox-counter"></div>
+  <img id="lightbox-img" src="" style="max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px" onclick="event.stopPropagation()">
+  <div style="display:flex;gap:24px;margin-top:16px">
+    <button id="lightbox-prev" onclick="event.stopPropagation();lightboxNav(-1)" style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:20px;cursor:pointer">‹</button>
+    <button id="lightbox-next" onclick="event.stopPropagation();lightboxNav(1)" style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:20px;cursor:pointer">›</button>
+  </div>
+</div>
+
 <!-- USER MENU MODAL -->
 <div id="userMenuModal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
   <div class="modal-sheet" style="max-height:50vh">
@@ -2785,8 +2796,8 @@ function reportItemHTML(r, showActions=true) {
       ${details ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:6px">${details}</div>` : ''}
       ${allPhotos.length ? `
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-          ${allPhotos.map(p=>`
-            <div style="position:relative">
+          ${allPhotos.map((p,i)=>`
+            <div style="position:relative;cursor:pointer" onclick="openPhotoLightbox(${JSON.stringify(allPhotos.map(x=>x.src))},${i})">
               <img src="${p.src}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
               <div style="position:absolute;bottom:2px;left:2px;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">${p.label}</div>
             </div>`).join('')}
@@ -5310,6 +5321,50 @@ function resolveIssue(id) {
 }
 
 // ── END MACHINERY MODULE ──────────────────────────────────────
+
+// ── PHOTO LIGHTBOX ───────────────────────────────────────────
+let _lbSrcs = [], _lbIdx = 0;
+
+function openPhotoLightbox(srcs, idx) {
+  _lbSrcs = srcs; _lbIdx = idx;
+  const lb = document.getElementById('photoLightbox');
+  lb.style.display = 'flex';
+  lightboxShow();
+  // Swipe support
+  lb._tx = null;
+  lb.ontouchstart = e => { lb._tx = e.touches[0].clientX; };
+  lb.ontouchend = e => {
+    if (lb._tx === null) return;
+    const dx = e.changedTouches[0].clientX - lb._tx;
+    if (Math.abs(dx) > 50) lightboxNav(dx < 0 ? 1 : -1);
+    lb._tx = null;
+  };
+}
+
+function lightboxShow() {
+  document.getElementById('lightbox-img').src = _lbSrcs[_lbIdx] || '';
+  document.getElementById('lightbox-counter').textContent = (_lbSrcs.length > 1) ? (_lbIdx+1) + ' / ' + _lbSrcs.length : '';
+  document.getElementById('lightbox-prev').style.visibility = _lbIdx > 0 ? 'visible' : 'hidden';
+  document.getElementById('lightbox-next').style.visibility = _lbIdx < _lbSrcs.length-1 ? 'visible' : 'hidden';
+}
+
+function lightboxNav(dir) {
+  _lbIdx = Math.max(0, Math.min(_lbSrcs.length-1, _lbIdx + dir));
+  lightboxShow();
+}
+
+function closePhotoLightbox() {
+  document.getElementById('photoLightbox').style.display = 'none';
+  document.getElementById('lightbox-img').src = '';
+  _lbSrcs = []; _lbIdx = 0;
+}
+
+// Close on Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePhotoLightbox();
+  if (e.key === 'ArrowLeft')  lightboxNav(-1);
+  if (e.key === 'ArrowRight') lightboxNav(1);
+});
 
 // Safety net: always hide loader after 1s regardless of errors
 setTimeout(() => {
