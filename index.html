@@ -889,7 +889,7 @@ function renderHome() {
       <div class="module-card${currentModule==='store'?' selected':''}" onclick="currentModule='store';renderCurrentTab()" style="${currentModule==='store'?'border-color:var(--green);background:rgba(48,209,88,0.05)':''}">
         <div class="icon">🏪</div>
         <div class="name">Store</div>
-        <div class="count">${getStoreItems().filter(i=>getVisibleProjects().includes(i.project)).length} items</div>
+        <div class="count">${getStoreItems().filter(i=>i.project!=='central').length} site items</div>
       </div>
     </div>`;
 
@@ -5491,10 +5491,9 @@ function renderStoreTab() {
 }
 
 function renderStoreInventory() {
-  const vp = getVisibleProjects();
   const allItems = getStoreItems();
   const centralItems = allItems.filter(i=>i.project==='central');
-  const siteItems    = allItems.filter(i=>i.project!=='central' && vp.includes(i.project));
+  const siteItems    = allItems.filter(i=>i.project!=='central');
 
   if (!centralItems.length && !siteItems.length) {
     return '<div class="empty-state"><div class="icon">📦</div><p>No items yet.</p></div>';
@@ -5525,8 +5524,14 @@ function renderStoreInventory() {
     if (canManageStore()) {
       card += '<div class="flex gap-2 mt-2">';
       card += '<button class="btn btn-ghost btn-sm" onclick="openEditStoreItem(\'' + item.id + '\')">✏️</button>';
-      if (showIssueBtn) card += '<button class="btn btn-primary btn-sm flex-1" onclick="openStoreTxn(\'issue\',\'' + item.id + '\')">→ Issue to Site</button>';
-      else card += '<button class="btn btn-ghost btn-sm flex-1" onclick="openStoreTxn(\'receive\',\'' + item.id + '\')">+ Receive</button>';
+      if (showIssueBtn) {
+        card += '<button class="btn btn-primary btn-sm flex-1" onclick="openStoreTxn(\'issue\',\'' + item.id + '\')">→ Issue to Site</button>';
+        card += '<button class="btn btn-ghost btn-sm" onclick="openStoreTxn(\'receive\',\'' + item.id + '\')">+ Receive</button>';
+      } else {
+        card += '<button class="btn btn-ghost btn-sm flex-1" onclick="openSiteTransfer(\'' + item.id + '\')">⇄ Transfer</button>';
+        card += '<button class="btn btn-secondary btn-sm flex-1" onclick="openReturnToCentral(\'' + item.id + '\')">↑ Return</button>';
+        card += '<button class="btn btn-danger btn-sm" onclick="deleteStoreItem(\'' + item.id + '\')">🗑️</button>';
+      }
       card += '</div>';
     }
     card += '</div>';
@@ -5534,12 +5539,13 @@ function renderStoreInventory() {
   }
 
   let html = '';
-  // Central Store
+  // Central Store — hide zero-qty items unless admin
+  const visibleCentral = isAdmin() ? centralItems : centralItems.filter(i=>parseFloat(i.qty)>0);
   html += '<div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">🏛️ Central Store</div>';
-  if (!centralItems.length) {
+  if (!visibleCentral.length) {
     html += '<div class="card mb-2" style="padding:10px;text-align:center;color:var(--muted);font-size:12px">No items in central store yet.</div>';
   } else {
-    centralItems.forEach(i=>{ html += itemCard(i, true); });
+    visibleCentral.forEach(i=>{ html += itemCard(i, true); });
   }
   // Site sections
   const projs = [...new Set(siteItems.map(i=>i.project))];
@@ -5554,9 +5560,7 @@ function renderStoreTxns() {
   const vp = getVisibleProjects();
   const items = getStoreItems();
   // Show txns for visible projects AND central store (admin) AND issue-from-central
-  const allTxns = getStoreTxns().filter(t=>
-    vp.includes(t.project) || t.project==='central' || (t.fromProject==='central' && vp.includes(t.issuedTo))
-  ).sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
+  const allTxns = getStoreTxns().sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
   if (!allTxns.length) return `<div class="empty-state"><div class="icon">📋</div><p>No transactions yet.</p></div>`;
 
   const selProj = document.getElementById('stxn-proj')?.value||'';
@@ -5581,9 +5585,10 @@ function renderStoreTxns() {
     const isIssue = t.type==='issue';
     const isTransfer = t.type==='transfer';
     const isPurchase = t.type==='purchase';
-    const txnColor = isIssue?'var(--red)':isPurchase?'var(--green)':isTransfer?'var(--cyan)':'var(--blue)';
+    const isReturn   = t.type==='return';
+    const txnColor = isIssue?'var(--red)':isPurchase?'var(--green)':isReturn?'var(--purple)':isTransfer?'var(--cyan)':'var(--blue)';
     const txnSign = isIssue?'−':'+';
-    const txnLabel = isIssue?'ISSUE':isPurchase?'PURCHASE':isTransfer?'TRANSFER':'RECEIVE';
+    const txnLabel = isIssue?'ISSUE':isPurchase?'PURCHASE':isReturn?'RETURN':isTransfer?'TRANSFER':'RECEIVE';
     return `<div class="card mb-2" style="padding:10px 12px">
       <div class="flex justify-between items-center">
         <div>
@@ -5945,6 +5950,126 @@ function saveStoreTxn(type) {
   saveStoreTxns(txns);
   pushConfig();
   showToast('✅ '+(type==='issue'?'Issued to '+issuedTo:'Received'));
+  closeFormModal(); renderCurrentTab();
+}
+
+function openReturnToCentral(itemId) {
+  const item = getStoreItems().find(i=>i.id===itemId);
+  if (!item) return;
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">↑ Return to Central Store</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div style="background:rgba(10,132,255,0.08);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px">
+      <strong>${item.name}</strong> — Available: ${item.qty} ${item.unit||'pcs'}<br>
+      <span style="color:var(--muted)">From: ${item.project}</span>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Quantity to Return *</label>
+        <input type="number" id="ret-qty" placeholder="0" min="1" max="${item.qty}">
+      </div>
+      <div class="field-group"><label>Date</label>
+        <input type="date" id="ret-date" value="${localToday()}">
+      </div>
+    </div>
+    <div class="field-group"><label>Reason</label>
+      <input type="text" id="ret-remarks" placeholder="e.g. Site completed, surplus stock">
+    </div>
+    <button class="btn btn-primary w-full mt-3" onclick="doReturnToCentral('${item.id}')">↑ Return to Central Store</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function doReturnToCentral(itemId) {
+  const qty = parseFloat(document.getElementById('ret-qty')?.value)||0;
+  const date = document.getElementById('ret-date')?.value||localToday();
+  const remarks = document.getElementById('ret-remarks')?.value||'';
+  if (!qty) { showToast('⚠️ Enter quantity'); return; }
+
+  const items = getStoreItems();
+  const src = items.find(i=>i.id===itemId);
+  if (!src || qty > parseFloat(src.qty)) { showToast('⚠️ Not enough stock'); return; }
+
+  // Deduct from site
+  src.qty = (parseFloat(src.qty)||0) - qty;
+
+  // Add back to central store
+  const central = items.find(i=>i.name===src.name && i.project==='central');
+  if (central) { central.qty = (parseFloat(central.qty)||0) + qty; }
+  else { items.push({...src, id:'SI_'+Date.now(), project:'central', qty}); }
+  saveStoreItems(items);
+
+  // Log transaction
+  const txns = getStoreTxns();
+  txns.push({ id:'STX_'+Date.now(), type:'return', itemId, itemName:src.name,
+    project:'central', fromProject:src.project, date, qty, remarks,
+    by:currentUser, byName:getUsers()[currentUser]?.name||currentUser,
+    timestamp:new Date().toISOString() });
+  saveStoreTxns(txns);
+  pushConfig();
+  showToast('✅ Returned to Central Store');
+  closeFormModal(); renderCurrentTab();
+}
+
+function openSiteTransfer(itemId) {
+  const item = getStoreItems().find(i=>i.id===itemId);
+  if (!item) return;
+  const allProj = getProjects().filter(p=>p!==item.project);
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">⇄ Transfer to Another Site</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div style="background:rgba(255,159,10,0.08);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px">
+      <strong>${item.name}</strong> — Available: ${item.qty} ${item.unit||'pcs'}<br>
+      <span style="color:var(--muted)">From: ${item.project}</span>
+    </div>
+    <div class="field-group"><label>Transfer To (Site) *</label>
+      <select id="tr-dest">
+        <option value="">— Select Site —</option>
+        ${allProj.map(p=>`<option value="${p}">${p}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Quantity *</label>
+        <input type="number" id="tr-qty2" placeholder="0" min="1" max="${item.qty}">
+      </div>
+      <div class="field-group"><label>Date</label>
+        <input type="date" id="tr-date2" value="${localToday()}">
+      </div>
+    </div>
+    <div class="field-group"><label>Remarks</label>
+      <input type="text" id="tr-remarks2" placeholder="Reason for transfer">
+    </div>
+    <button class="btn btn-primary w-full mt-3" onclick="doSiteTransfer('${item.id}')">⇄ Transfer</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function doSiteTransfer(itemId) {
+  const destProj = document.getElementById('tr-dest')?.value;
+  const qty = parseFloat(document.getElementById('tr-qty2')?.value)||0;
+  const date = document.getElementById('tr-date2')?.value||localToday();
+  const remarks = document.getElementById('tr-remarks2')?.value||'';
+  if (!destProj||!qty) { showToast('⚠️ Select destination and quantity'); return; }
+
+  const items = getStoreItems();
+  const src = items.find(i=>i.id===itemId);
+  if (!src || qty > parseFloat(src.qty)) { showToast('⚠️ Not enough stock'); return; }
+
+  src.qty = (parseFloat(src.qty)||0) - qty;
+  const dest = items.find(i=>i.name===src.name && i.project===destProj);
+  if (dest) { dest.qty = (parseFloat(dest.qty)||0) + qty; }
+  else { items.push({...src, id:'SI_'+Date.now(), project:destProj, qty}); }
+  saveStoreItems(items);
+
+  const txns = getStoreTxns();
+  txns.push({ id:'STX_'+Date.now(), type:'transfer', itemId, itemName:src.name,
+    project:destProj, fromProject:src.project, date, qty, remarks,
+    by:currentUser, byName:getUsers()[currentUser]?.name||currentUser,
+    timestamp:new Date().toISOString() });
+  saveStoreTxns(txns);
+  pushConfig();
+  showToast('✅ Transferred to '+destProj);
   closeFormModal(); renderCurrentTab();
 }
 
