@@ -827,7 +827,7 @@ function renderCurrentTab() {
     case 'reports':  if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;} if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;} if(currentModule==='store'){main.innerHTML=renderStoreTab();break;} _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
-    case 'attendance': main.innerHTML = renderAttendanceTab(); break;
+    case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':    main.innerHTML = renderUsersTab(); break;
   }
   if (activeTab === 'settings') initSettings();
@@ -4640,15 +4640,20 @@ function renderAttendancePM() {
 // ── ADMIN VIEW ──
 function renderAttendanceAdmin() {
   const all = getAttendance();
-  const pending = all.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending');
-  const pmPending = all.filter(a=>a.pmStatus==='pending');
-  const done = all.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
+  const deleted = LS.get('phx_deleted_users', []);
+  const active = all.filter(a=>!deleted.includes(a.user));
+  const pending = active.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending');
+  const pmPending = active.filter(a=>a.pmStatus==='pending');
+  const done = active.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
 
-  let html = `<div class="section-title mb-4">🕐 All Attendance</div>`;
+  let html = `<div class="flex justify-between items-center mb-4">
+    <div class="section-title">🕐 All Attendance</div>
+    <button class="btn btn-ghost btn-sm" onclick="pullConfig().then(()=>renderCurrentTab())">↻ Sync</button>
+  </div>`;
 
-  // Monthly report with user selector
+  // Monthly report with user selector - exclude deleted users
   const users = getUsers();
-  const allUsers = Object.entries(users).filter(([,u])=>u.role!=='admin').map(([u,d])=>({id:u,name:d.name||u}));
+  const allUsers = Object.entries(users).filter(([u,v])=>v.role!=='admin'&&!deleted.includes(u)).map(([u,d])=>({id:u,name:d.name||u}));
   const selUser = document.getElementById('admin-att-sel')?.value || allUsers[0]?.id || '';
   if (allUsers.length) {
     html += `<div class="flex justify-between items-center mb-2">
@@ -4657,7 +4662,7 @@ function renderAttendanceAdmin() {
         ${allUsers.map(u=>`<option value="${u.id}"${u.id===selUser?' selected':''}>${u.name}</option>`).join('')}
       </select>
     </div>`;
-    html += monthlyAttendanceSummary(selUser, all);
+    html += monthlyAttendanceSummary(selUser, active);
   }
 
   if (pmPending.length) html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval</div>`;
@@ -4670,7 +4675,7 @@ function renderAttendanceAdmin() {
     html += `<div class="card-title mb-2 mt-3">✅ Approved / Rejected</div>`;
     html += done.map(a => attendanceCard(a, 'admin')).join('');
   }
-  if (!all.length) html += `<div class="empty-state"><div class="icon">📋</div><p>No attendance records yet.</p></div>`;
+  if (!active.length) html += `<div class="empty-state"><div class="icon">📋</div><p>No attendance records yet.</p></div>`;
   return html;
 }
 
