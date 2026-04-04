@@ -573,7 +573,25 @@ async function pullConfig() {
     mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
     mergeArr(getMachService, saveMachService,d.machService);
     mergeArr(getMachIssues,  saveMachIssues, d.machIssues, ['status','resolution','resolvedDate']);
-    mergeArr(getStoreItems,  saveStoreItems, d.storeItems, ['qty']);
+    // Store items: full replace on existing (not just qty) so edits sync properly
+    if (d.storeItems?.length) {
+      let loc = getStoreItems();
+      const locMap = {};
+      loc.forEach((x,i)=>{ locMap[x.id]=i; });
+      d.storeItems.forEach(x=>{
+        if(locMap[x.id]===undefined){ loc.push(x); }
+        else { loc[locMap[x.id]] = x; } // full replace
+      });
+      // Remove duplicates (same name+project) keeping highest timestamp
+      const seen = {};
+      loc = loc.filter(item=>{
+        const key = item.name+'||'+item.project;
+        if(!seen[key]){ seen[key]=item; return true; }
+        if((item.timestamp||'') > (seen[key].timestamp||'')){ seen[key]=item; return true; }
+        return false;
+      });
+      saveStoreItems(loc);
+    }
     mergeArr(getStoreTxns,   saveStoreTxns,  d.storeTxns);
 
     // Process deletedUsers FIRST so attendance merge can use updated list
@@ -5471,7 +5489,6 @@ function renderStoreTab() {
   let actionBtns = '';
   if (_storeTab==='inventory') {
     if (isAdmin()) {
-      // Admin: add to central store
       actionBtns = `<button class="btn btn-primary btn-sm" onclick="openAddStoreItem('central')">+ Add to Central</button>`;
     } else if (canManageStore()) {
       // Site store manager: purchase → direct issue to their site
