@@ -5806,10 +5806,34 @@ function saveStoreItem(editId, txnType) {
   if (!name||!proj) { showToast('⚠️ Name and site required'); return; }
   const qty = parseFloat(document.getElementById('si-qty')?.value)||0;
   const items = getStoreItems();
-  // For purchase: check if item already exists for this project
+
+  if (editId) {
+    // EDIT: find strictly by ID, update in place — never create duplicate
+    const idx = items.findIndex(x=>x.id===editId);
+    if (idx < 0) { showToast('⚠️ Item not found'); return; }
+    items[idx] = { ...items[idx], name, project:proj,
+      category: document.getElementById('si-cat')?.value||items[idx].category,
+      qty, unit: document.getElementById('si-unit')?.value||items[idx].unit,
+      minQty: parseFloat(document.getElementById('si-min')?.value)||0,
+      location: document.getElementById('si-loc')?.value||'',
+      description: document.getElementById('si-desc')?.value||'',
+      condition: document.getElementById('si-condition')?.value||'working',
+      status: document.getElementById('si-status')?.value||'idle',
+      photo: document.getElementById('si-new-photo')?.querySelector('img')?.src
+          || document.getElementById('si-existing-photo')?.querySelector('img')?.src
+          || items[idx].photo || '',
+      updatedBy: currentUser, timestamp: new Date().toISOString()
+    };
+    saveStoreItems(items); pushConfig();
+    showToast('✅ Updated'); closeFormModal(); renderCurrentTab();
+    return;
+  }
+
+  // ADD NEW or PURCHASE
   const existingIdx = txnType==='purchase' ? items.findIndex(i=>i.name===name&&i.project===proj) : -1;
   const obj = {
-    id: editId||(existingIdx>-1?items[existingIdx].id:'SI_'+Date.now()), name, project:proj,
+    id: existingIdx>-1 ? items[existingIdx].id : 'SI_'+Date.now(),
+    name, project:proj,
     category: document.getElementById('si-cat')?.value||'Material',
     qty: existingIdx>-1 ? (parseFloat(items[existingIdx].qty)||0)+qty : qty,
     unit: document.getElementById('si-unit')?.value||'pcs',
@@ -5819,17 +5843,11 @@ function saveStoreItem(editId, txnType) {
     condition: document.getElementById('si-condition')?.value||'working',
     status: document.getElementById('si-status')?.value||'idle',
     photo: document.getElementById('si-new-photo')?.querySelector('img')?.src
-        || document.getElementById('si-existing-photo')?.querySelector('img')?.src
-        || (editId ? (getStoreItems().find(i=>i.id===editId)?.photo||'') : '')
         || (existingIdx>-1 ? items[existingIdx].photo||'' : ''),
     updatedBy: currentUser, timestamp: new Date().toISOString()
   };
-  if (editId) { const i=items.findIndex(x=>x.id===editId); if(i>-1) items[i]=obj; }
-  else if (existingIdx>-1) { items[existingIdx]=obj; }
-  else items.push(obj);
+  if (existingIdx>-1) { items[existingIdx]=obj; } else items.push(obj);
   saveStoreItems(items);
-
-  // Log transaction for purchase
   if (txnType==='purchase' && qty>0) {
     const txns = getStoreTxns();
     txns.push({ id:'STX_'+Date.now(), type:'purchase', itemId:obj.id, itemName:name,
@@ -5840,7 +5858,7 @@ function saveStoreItem(editId, txnType) {
     saveStoreTxns(txns);
   }
   pushConfig();
-  showToast(txnType==='purchase'?'✅ Purchase saved':editId?'✅ Updated':'✅ Item added');
+  showToast(txnType==='purchase'?'✅ Purchase saved':'✅ Item added');
   closeFormModal(); renderCurrentTab();
 }
 
