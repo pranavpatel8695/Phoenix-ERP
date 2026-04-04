@@ -5458,72 +5458,96 @@ document.addEventListener('keydown', e => {
 
 let _storeTab = 'inventory';
 const canManageStore = () => currentRole === 'admin' || currentRole === 'store_manager';
+const isAdmin = () => currentRole === 'admin';
 
 function renderStoreTab() {
   const tabs = [
     ['inventory','📦 Inventory'],
     ['transactions','📋 Transactions'],
-    ['transfer','🔄 Transfer'],
   ];
   const tabBar = tabs.map(([k,l])=>`<div class="tab-item${_storeTab===k?' active':''}" onclick="_storeTab='${k}';renderCurrentTab()" style="font-size:12px">${l}</div>`).join('');
-  let html = `<div class="section-header"><div class="section-title">🏪 Store</div>
-    ${canManageStore()&&_storeTab==='inventory'?`<button class="btn btn-primary btn-sm" onclick="openAddStoreItem()">+ Item</button>`:''}
-    ${canManageStore()&&_storeTab==='transactions'?`<button class="btn btn-primary btn-sm" onclick="openStoreTxn('issue')">+ Issue</button><button class="btn btn-ghost btn-sm" onclick="openStoreTxn('receive')" style="margin-left:4px">+ Receive</button>`:''}
-  </div>
+
+  // Buttons differ by role
+  let actionBtns = '';
+  if (_storeTab==='inventory') {
+    if (isAdmin()) {
+      // Admin: add to central store
+      actionBtns = `<button class="btn btn-primary btn-sm" onclick="openAddStoreItem('central')">+ Add to Central</button>`;
+    } else if (canManageStore()) {
+      // Site store manager: purchase → direct issue to their site
+      actionBtns = `<button class="btn btn-primary btn-sm" onclick="openSitePurchase()">+ Purchase</button>`;
+    }
+  }
+  if (_storeTab==='transactions' && isAdmin()) {
+    actionBtns = `<button class="btn btn-primary btn-sm" onclick="openStoreTxn('issue')">Issue to Site</button>`;
+  }
+
+  let html = `<div class="section-header"><div class="section-title">🏪 Store</div>${actionBtns}</div>
   <div class="tab-bar mb-3">${tabBar}</div>`;
+
   if (_storeTab==='inventory')    html += renderStoreInventory();
   if (_storeTab==='transactions') html += renderStoreTxns();
-  if (_storeTab==='transfer')     html += renderStoreTransfer();
   return html;
 }
 
 function renderStoreInventory() {
   const vp = getVisibleProjects();
-  const items = getStoreItems().filter(i=>vp.includes(i.project));
-  if (!items.length) return `<div class="empty-state"><div class="icon">📦</div><p>No items yet.${canManageStore()?' Tap "+ Item" to add.':''}</p></div>`;
+  const allItems = getStoreItems();
+  const centralItems = allItems.filter(i=>i.project==='central');
+  const siteItems    = allItems.filter(i=>i.project!=='central' && vp.includes(i.project));
 
-  // Group by project
-  const byProj = {};
-  items.forEach(i=>{ if(!byProj[i.project]) byProj[i.project]=[]; byProj[i.project].push(i); });
+  if (!centralItems.length && !siteItems.length) {
+    return '<div class="empty-state"><div class="icon">📦</div><p>No items yet.</p></div>';
+  }
 
-  return Object.entries(byProj).map(([proj, its])=>`
-    <div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;margin:10px 0 6px">📁 ${proj}</div>
-    ${its.map(item=>{
-      const qty = parseFloat(item.qty)||0;
-      const minQty = parseFloat(item.minQty)||0;
-      const low = qty <= minQty;
-      return `<div class="card mb-2" style="padding:10px 12px${low?';border-left:3px solid var(--red)':''}">
-        ${item.photo?`<img src="${item.photo}" onclick="window['_ps_store_'+item.id]=[item.photo];openPhotoLightbox('store_'+item.id,0)" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;cursor:pointer">`:''}
-        <div class="flex justify-between items-center">
-          <div>
-            <div style="font-size:13px;font-weight:700">${item.name} ${low?'<span style="font-size:10px;color:var(--red)">⚠️ Low Stock</span>':''}</div>
-            <div style="font-size:11px;color:var(--muted)">${item.category||'General'}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:18px;font-weight:700;color:${low?'var(--red)':'var(--green)'}">${qty}</div>
-            <div style="font-size:10px;color:var(--muted)">${item.unit||'pcs'}</div>
-          </div>
-        </div>
-        ${item.description?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${item.description}</div>`:''}
-        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${item.condition==='not_working'?'rgba(255,69,58,0.15)':item.condition==='under_repair'?'rgba(255,159,10,0.15)':'rgba(48,209,88,0.15)'};color:${item.condition==='not_working'?'var(--red)':item.condition==='under_repair'?'var(--orange)':'var(--green)'}">
-            ${item.condition==='not_working'?'❌ Not Working':item.condition==='under_repair'?'🔧 Under Repair':'✅ Working'}
-          </span>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${item.status==='in_use'?'rgba(10,132,255,0.15)':'rgba(142,142,147,0.15)'};color:${item.status==='in_use'?'var(--blue)':'var(--muted)'}">
-            ${item.status==='in_use'?'⚡ In Use':'💤 Idle'}
-          </span>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px;font-size:10px;color:var(--muted)">
-          ${item.minQty?`<span>Min: ${item.minQty} ${item.unit||'pcs'}</span>`:''}
-          ${item.location?`<span>📍 ${item.location}</span>`:''}
-        </div>
-        ${canManageStore()?`<div class="flex gap-2 mt-2">
-          <button class="btn btn-ghost btn-sm" onclick="openEditStoreItem('${item.id}')">✏️ Edit</button>
-          <button class="btn btn-primary btn-sm flex-1" onclick="openStoreTxn('issue','${item.id}')">↑ Issue</button>
-          <button class="btn btn-ghost btn-sm flex-1" onclick="openStoreTxn('receive','${item.id}')">↓ Receive</button>
-        </div>`:''}
-      </div>`;
-    }).join('')}`).join('');
+  function itemCard(item, showIssueBtn) {
+    const qty = parseFloat(item.qty)||0;
+    const minQty = parseFloat(item.minQty)||0;
+    const low = qty <= minQty && minQty > 0;
+    const pid = 'store_' + item.id;
+    if (item.photo) window['_ps_'+pid] = [item.photo];
+    let card = '<div class="card mb-2" style="padding:10px 12px' + (low ? ';border-left:3px solid var(--red)' : '') + '">';
+    if (item.photo) card += '<img src="' + item.photo + '" onclick="openPhotoLightbox(\'' + pid + '\',0)" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;cursor:pointer">';
+    card += '<div class="flex justify-between items-center">';
+    card += '<div><div style="font-size:13px;font-weight:700">' + item.name + (low ? ' <span style="font-size:10px;color:var(--red)">⚠️ Low Stock</span>' : '') + '</div>';
+    card += '<div style="font-size:11px;color:var(--muted)">' + (item.category||'General') + '</div></div>';
+    card += '<div style="text-align:right"><div style="font-size:18px;font-weight:700;color:' + (low?'var(--red)':'var(--green)') + '">' + qty + '</div>';
+    card += '<div style="font-size:10px;color:var(--muted)">' + (item.unit||'pcs') + '</div></div></div>';
+    const condColor = item.condition==='not_working'?'var(--red)':item.condition==='under_repair'?'var(--orange)':'var(--green)';
+    const condBg = item.condition==='not_working'?'rgba(255,69,58,0.15)':item.condition==='under_repair'?'rgba(255,159,10,0.15)':'rgba(48,209,88,0.15)';
+    const condLabel = item.condition==='not_working'?'❌ Not Working':item.condition==='under_repair'?'🔧 Under Repair':'✅ Working';
+    card += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+    card += '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:' + condBg + ';color:' + condColor + '">' + condLabel + '</span>';
+    const statColor = item.status==='in_use'?'var(--blue)':'var(--muted)';
+    const statBg = item.status==='in_use'?'rgba(10,132,255,0.15)':'rgba(142,142,147,0.15)';
+    card += '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:' + statBg + ';color:' + statColor + '">' + (item.status==='in_use'?'⚡ In Use':'💤 Idle') + '</span></div>';
+    if (item.location) card += '<div style="font-size:10px;color:var(--muted);margin-top:4px">📍 ' + item.location + '</div>';
+    if (canManageStore()) {
+      card += '<div class="flex gap-2 mt-2">';
+      card += '<button class="btn btn-ghost btn-sm" onclick="openEditStoreItem(\'' + item.id + '\')">✏️</button>';
+      if (showIssueBtn) card += '<button class="btn btn-primary btn-sm flex-1" onclick="openStoreTxn(\'issue\',\'' + item.id + '\')">→ Issue to Site</button>';
+      else card += '<button class="btn btn-ghost btn-sm flex-1" onclick="openStoreTxn(\'receive\',\'' + item.id + '\')">+ Receive</button>';
+      card += '</div>';
+    }
+    card += '</div>';
+    return card;
+  }
+
+  let html = '';
+  // Central Store
+  html += '<div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">🏛️ Central Store</div>';
+  if (!centralItems.length) {
+    html += '<div class="card mb-2" style="padding:10px;text-align:center;color:var(--muted);font-size:12px">No items in central store yet.</div>';
+  } else {
+    centralItems.forEach(i=>{ html += itemCard(i, true); });
+  }
+  // Site sections
+  const projs = [...new Set(siteItems.map(i=>i.project))];
+  projs.forEach(proj => {
+    html += '<div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">📁 '+proj+'</div>';
+    siteItems.filter(i=>i.project===proj).forEach(i=>{ html += itemCard(i, false); });
+  });
+  return html;
 }
 
 function renderStoreTxns() {
@@ -5554,6 +5578,10 @@ function renderStoreTxns() {
     const item = items.find(i=>i.id===t.itemId);
     const isIssue = t.type==='issue';
     const isTransfer = t.type==='transfer';
+    const isPurchase = t.type==='purchase';
+    const txnColor = isIssue?'var(--red)':isPurchase?'var(--green)':isTransfer?'var(--cyan)':'var(--blue)';
+    const txnSign = isIssue?'−':'+';
+    const txnLabel = isIssue?'ISSUE':isPurchase?'PURCHASE':isTransfer?'TRANSFER':'RECEIVE';
     return `<div class="card mb-2" style="padding:10px 12px">
       <div class="flex justify-between items-center">
         <div>
@@ -5564,8 +5592,8 @@ function renderStoreTxns() {
           ${t.remarks?`<div style="font-size:11px;color:var(--muted)">${t.remarks}</div>`:''}
         </div>
         <div style="text-align:right">
-          <div style="font-size:16px;font-weight:700;color:${isIssue?'var(--red)':isTransfer?'var(--cyan)':'var(--green)'}">${isIssue?'−':'+'}${t.qty} ${item?.unit||''}</div>
-          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">${t.type}</div>
+          <div style="font-size:16px;font-weight:700;color:${txnColor}">${txnSign}${t.qty} ${item?.unit||''}</div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">${txnLabel}</div>
         </div>
       </div>
     </div>`;
@@ -5654,55 +5682,37 @@ function doTransfer() {
 }
 
 // ── STORE ITEM FORMS ──
-function openAddStoreItem() {
-  const projects = getVisibleProjects();
-  document.getElementById('formModalContent').innerHTML = `
-    <div class="flex justify-between items-center mb-4">
-      <div class="section-title">📦 Add Store Item</div>
-      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
-    </div>
-    <div class="field-group"><label>Site (Project) *</label>
-      <select id="si-proj">${projects.map(p=>`<option>${p}</option>`).join('')}</select>
-    </div>
-    <div class="form-row">
-      <div class="field-group"><label>Item Name *</label><input type="text" id="si-name" placeholder="e.g. Cement Bags"></div>
-      <div class="field-group"><label>Category</label>
-        <select id="si-cat"><option>Material</option><option>Tool</option><option>Equipment</option><option>Safety</option><option>Electrical</option><option>Plumbing</option><option>Other</option></select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="field-group"><label>Quantity *</label><input type="number" id="si-qty" placeholder="0" min="0"></div>
-      <div class="field-group"><label>Unit</label><input type="text" id="si-unit" placeholder="e.g. bags, pcs, m"></div>
-    </div>
-    <div class="form-row">
-      <div class="field-group"><label>Min Stock Alert</label><input type="number" id="si-min" placeholder="0" min="0"></div>
-      <div class="field-group"><label>Location in Store</label><input type="text" id="si-loc" placeholder="e.g. Rack A3"></div>
-    </div>
-    <div class="field-group"><label>Description</label><textarea id="si-desc" rows="2" placeholder="Optional details..."></textarea></div>
-    <div class="form-row">
-      <div class="field-group"><label>Condition</label>
-        <select id="si-condition">
-          <option value="working">✅ Working</option>
-          <option value="not_working">❌ Not Working</option>
-          <option value="under_repair">🔧 Under Repair</option>
-        </select>
-      </div>
-      <div class="field-group"><label>Status</label>
-        <select id="si-status">
-          <option value="idle">💤 Idle</option>
-          <option value="in_use">⚡ In Use</option>
-        </select>
-      </div>
-    </div>
-    <div class="field-group"><label>Photo</label>
-      <div class="photo-zone" onclick="document.getElementById('si-photo').click()">
-        <div class="pi">📷</div>Tap to add photo
-        <input type="file" id="si-photo" accept="image/*" style="display:none" onchange="handleStorePhotoUpload(this)">
-      </div>
-      <div class="photo-prev-grid" id="si-photo-prev"></div>
-    </div>
-    <button class="btn btn-primary w-full mt-2" onclick="saveStoreItem()">Save Item</button>`;
+function openAddStoreItem(proj) {
+  const targetProj = proj || 'central';
+  document.getElementById('formModalContent').innerHTML = '<div class="flex justify-between items-center mb-4"><div class="section-title">📦 Add to Central Store</div><button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button></div>'
+    + '<input type="hidden" id="si-proj" value="'+targetProj+'">'
+    + '<div class="form-row"><div class="field-group"><label>Item Name *</label><input type="text" id="si-name" placeholder="e.g. Cement Bags"></div><div class="field-group"><label>Category</label><select id="si-cat"><option>Material</option><option>Tool</option><option>Equipment</option><option>Safety</option><option>Electrical</option><option>Plumbing</option><option>Other</option></select></div></div>'
+    + '<div class="form-row"><div class="field-group"><label>Quantity *</label><input type="number" id="si-qty" placeholder="0" min="0"></div><div class="field-group"><label>Unit</label><input type="text" id="si-unit" placeholder="e.g. bags, pcs, m"></div></div>'
+    + '<div class="form-row"><div class="field-group"><label>Min Stock Alert</label><input type="number" id="si-min" placeholder="0" min="0"></div><div class="field-group"><label>Location in Store</label><input type="text" id="si-loc" placeholder="e.g. Rack A3"></div></div>'
+    + '<div class="field-group"><label>Description</label><textarea id="si-desc" rows="2" placeholder="Optional details..."></textarea></div>'
+    + '<div class="form-row"><div class="field-group"><label>Condition</label><select id="si-condition"><option value="working">✅ Working</option><option value="not_working">❌ Not Working</option><option value="under_repair">🔧 Under Repair</option></select></div><div class="field-group"><label>Status</label><select id="si-status"><option value="idle">💤 Idle</option><option value="in_use">⚡ In Use</option></select></div></div>'
+    + '<div class="field-group"><label>Photo</label><div class="photo-zone" onclick=\"document.getElementById(\'si-photo\').click()\"><div class="pi">📷</div>Tap to add photo<input type="file" id="si-photo" accept="image/*" style="display:none" onchange="handleStorePhotoUpload(this)"></div><div class="photo-prev-grid" id="si-photo-prev"></div></div>'
+    + '<button class="btn btn-primary w-full mt-2" onclick="saveStoreItem()">Add to Central Store</button>';
   document.getElementById('formModal').classList.remove('hidden');
+}
+
+function openSitePurchase() {
+  const myProj = getVisibleProjects()[0] || '';
+  document.getElementById('formModalContent').innerHTML = '<div class="flex justify-between items-center mb-4"><div class="section-title">🛒 Site Purchase</div><button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button></div>'
+    + '<div style="background:rgba(48,209,88,0.08);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--green)">📁 Will be added directly to: <strong>'+myProj+'</strong></div>'
+    + '<input type="hidden" id="si-proj" value="'+myProj+'">'
+    + '<div class="form-row"><div class="field-group"><label>Item Name *</label><input type="text" id="si-name" placeholder="e.g. Cement Bags"></div><div class="field-group"><label>Category</label><select id="si-cat"><option>Material</option><option>Tool</option><option>Equipment</option><option>Safety</option><option>Electrical</option><option>Plumbing</option><option>Other</option></select></div></div>'
+    + '<div class="form-row"><div class="field-group"><label>Quantity *</label><input type="number" id="si-qty" placeholder="0" min="0"></div><div class="field-group"><label>Unit</label><input type="text" id="si-unit" placeholder="e.g. bags, pcs, m"></div></div>'
+    + '<div class="form-row"><div class="field-group"><label>Vendor / Source</label><input type="text" id="si-loc" placeholder="Supplier name"></div><div class="field-group"><label>Min Stock Alert</label><input type="number" id="si-min" placeholder="0" min="0"></div></div>'
+    + '<div class="field-group"><label>Description / Bill No.</label><textarea id="si-desc" rows="2" placeholder="Bill number, notes..."></textarea></div>'
+    + '<div class="form-row"><div class="field-group"><label>Condition</label><select id="si-condition"><option value="working">✅ Working</option><option value="not_working">❌ Not Working</option><option value="under_repair">🔧 Under Repair</option></select></div><div class="field-group"><label>Status</label><select id="si-status"><option value="idle">💤 Idle</option><option value="in_use">⚡ In Use</option></select></div></div>'
+    + '<div class="field-group"><label>Photo / Bill</label><div class="photo-zone" onclick=\"document.getElementById(\'si-photo\').click()\"><div class="pi">📷</div>Tap to add photo<input type="file" id="si-photo" accept="image/*" style="display:none" onchange="handleStorePhotoUpload(this)"></div><div class="photo-prev-grid" id="si-photo-prev"></div></div>'
+    + '<button class="btn btn-primary w-full mt-2" onclick="saveSitePurchase()">Save Purchase</button>';
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveSitePurchase() {
+  saveStoreItem(null, 'purchase');
 }
 
 function openEditStoreItem(id) {
@@ -5748,7 +5758,7 @@ function openEditStoreItem(id) {
       </div>
     </div>
     <div class="field-group"><label>Photo</label>
-      <div class="photo-zone" onclick="document.getElementById('si-photo').click()">
+      <div class="photo-zone" onclick=\"document.getElementById(\'si-photo\').click()\">
         <div class="pi">📷</div>Tap to change photo
         <input type="file" id="si-photo" accept="image/*" style="display:none" onchange="handleStorePhotoUpload(this)">
       </div>
@@ -5787,16 +5797,19 @@ function handleStorePhotoUpload(input) {
   input.value = '';
 }
 
-function saveStoreItem(editId) {
+function saveStoreItem(editId, txnType) {
   const name = document.getElementById('si-name')?.value?.trim();
   const proj = document.getElementById('si-proj')?.value;
   if (!name||!proj) { showToast('⚠️ Name and site required'); return; }
   const qty = parseFloat(document.getElementById('si-qty')?.value)||0;
   const items = getStoreItems();
+  // For purchase: check if item already exists for this project
+  const existingIdx = txnType==='purchase' ? items.findIndex(i=>i.name===name&&i.project===proj) : -1;
   const obj = {
-    id: editId||'SI_'+Date.now(), name, project:proj,
+    id: editId||(existingIdx>-1?items[existingIdx].id:'SI_'+Date.now()), name, project:proj,
     category: document.getElementById('si-cat')?.value||'Material',
-    qty, unit: document.getElementById('si-unit')?.value||'pcs',
+    qty: existingIdx>-1 ? (parseFloat(items[existingIdx].qty)||0)+qty : qty,
+    unit: document.getElementById('si-unit')?.value||'pcs',
     minQty: parseFloat(document.getElementById('si-min')?.value)||0,
     location: document.getElementById('si-loc')?.value||'',
     description: document.getElementById('si-desc')?.value||'',
@@ -5804,13 +5817,27 @@ function saveStoreItem(editId) {
     status: document.getElementById('si-status')?.value||'idle',
     photo: document.getElementById('si-new-photo')?.querySelector('img')?.src
         || document.getElementById('si-existing-photo')?.querySelector('img')?.src
-        || (editId ? (getStoreItems().find(i=>i.id===editId)?.photo||'') : ''),
+        || (editId ? (getStoreItems().find(i=>i.id===editId)?.photo||'') : '')
+        || (existingIdx>-1 ? items[existingIdx].photo||'' : ''),
     updatedBy: currentUser, timestamp: new Date().toISOString()
   };
   if (editId) { const i=items.findIndex(x=>x.id===editId); if(i>-1) items[i]=obj; }
+  else if (existingIdx>-1) { items[existingIdx]=obj; }
   else items.push(obj);
-  saveStoreItems(items); pushConfig();
-  showToast(editId?'✅ Updated':'✅ Item added');
+  saveStoreItems(items);
+
+  // Log transaction for purchase
+  if (txnType==='purchase' && qty>0) {
+    const txns = getStoreTxns();
+    txns.push({ id:'STX_'+Date.now(), type:'purchase', itemId:obj.id, itemName:name,
+      project:proj, date:localToday(), qty,
+      remarks: document.getElementById('si-desc')?.value||'',
+      by:currentUser, byName:getUsers()[currentUser]?.name||currentUser,
+      timestamp:new Date().toISOString() });
+    saveStoreTxns(txns);
+  }
+  pushConfig();
+  showToast(txnType==='purchase'?'✅ Purchase saved':editId?'✅ Updated':'✅ Item added');
   closeFormModal(); renderCurrentTab();
 }
 
@@ -5822,9 +5849,12 @@ function deleteStoreItem(id) {
 
 function openStoreTxn(type, itemId='') {
   const vp = getVisibleProjects();
-  const items = getStoreItems().filter(i=>vp.includes(i.project));
-  if (!items.length) { showToast('⚠️ No items in store'); return; }
-  const label = type==='issue'?'↑ Issue Item':'↓ Receive Item';
+  // For issue: only central store items; for receive: project items
+  const items = type==='issue'
+    ? getStoreItems().filter(i=>i.project==='central')
+    : getStoreItems().filter(i=>vp.includes(i.project));
+  if (!items.length) { showToast(type==='issue'?'⚠️ No items in central store':'⚠️ No items found'); return; }
+  const label = type==='issue'?'→ Issue from Central Store':'+ Receive Stock';
   document.getElementById('formModalContent').innerHTML = `
     <div class="flex justify-between items-center mb-4">
       <div class="section-title">${label}</div>
@@ -5866,8 +5896,22 @@ function saveStoreTxn(type) {
     showToast('⚠️ Not enough stock. Available: '+item.qty+' '+item.unit); return;
   }
 
-  item.qty = (parseFloat(item.qty)||0) + (type==='issue' ? -qty : qty);
-  saveStoreItems(items);
+  const items2 = getStoreItems();
+  const src = items2.find(i=>i.id===itemId);
+  if (!src) return;
+
+  if (type==='issue') {
+    // Deduct from central store
+    src.qty = (parseFloat(src.qty)||0) - qty;
+    // Add to project site inventory
+    const destProj = document.getElementById('txn-to')?.value;
+    const dest = items2.find(i=>i.name===src.name&&i.project===destProj);
+    if (dest) { dest.qty = (parseFloat(dest.qty)||0)+qty; }
+    else { items2.push({...src, id:'SI_'+Date.now(), project:destProj, qty}); }
+  } else {
+    src.qty = (parseFloat(src.qty)||0) + qty;
+  }
+  saveStoreItems(items2);
 
   const txns = getStoreTxns();
   txns.push({
