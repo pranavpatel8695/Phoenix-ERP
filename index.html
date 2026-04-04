@@ -366,6 +366,10 @@ const getValveSpecials  = () => LS.get('phx_valve_specials', {});
 const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
 const getAttendance     = () => LS.get('phx_attendance', []);
 const saveAttendance    = v  => LS.set('phx_attendance', v);
+const getStoreItems     = () => LS.get('phx_store_items', []);
+const saveStoreItems    = v  => LS.set('phx_store_items', v);
+const getStoreTxns      = () => LS.get('phx_store_txns', []);
+const saveStoreTxns     = v  => LS.set('phx_store_txns', v);
 const getMachinery      = () => LS.get('phx_machinery', []);
 const saveMachinery     = v  => LS.set('phx_machinery', v);
 const getMachLogs       = () => LS.get('phx_mach_logs', []);
@@ -561,6 +565,8 @@ async function pullConfig() {
     mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
     mergeArr(getMachService, saveMachService,d.machService);
     mergeArr(getMachIssues,  saveMachIssues, d.machIssues);
+    mergeArr(getStoreItems,  saveStoreItems, d.storeItems);
+    mergeArr(getStoreTxns,   saveStoreTxns,  d.storeTxns);
     if (d.deletedUsers?.length) {
       const existing = LS.get('phx_deleted_users', []);
       const merged = [...new Set([...existing, ...d.deletedUsers])];
@@ -591,6 +597,8 @@ async function pushConfig() {
     specials:    getSpecials(),
     valveSpecials: getValveSpecials(),
     attendance:   getAttendance(),
+    storeItems:   getStoreItems(),
+    storeTxns:    getStoreTxns(),
     machinery:    getMachinery(),
     machLogs:     getMachLogs(),
     machService:  getMachService(),
@@ -790,8 +798,8 @@ function renderCurrentTab() {
   const main = document.getElementById('main');
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
-    case 'submit':   main.innerHTML = currentModule==='attendance' ? renderAttendanceTab() : currentModule==='machinery' ? renderMachineryTab() : renderSubmitTab(); break;
-    case 'reports':  if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;} if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;} _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); break;
+    case 'submit':   main.innerHTML = currentModule==='attendance' ? renderAttendanceTab() : currentModule==='machinery' ? renderMachineryTab() : currentModule==='store' ? renderStoreTab() : renderSubmitTab(); break;
+    case 'reports':  if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;} if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;} if(currentModule==='store'){main.innerHTML=renderStoreTab();break;} _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
     case 'attendance': main.innerHTML = renderAttendanceTab(); break;
@@ -846,6 +854,11 @@ function renderHome() {
         <div class="icon">🚜</div>
         <div class="name">Machinery</div>
         <div class="count">${getMachinery().filter(m=>!m.project||getVisibleProjects().includes(m.project)).length} machines</div>
+      </div>
+      <div class="module-card${currentModule==='store'?' selected':''}" onclick="currentModule='store';renderCurrentTab()" style="${currentModule==='store'?'border-color:var(--green);background:rgba(48,209,88,0.05)':''}">
+        <div class="icon">🏪</div>
+        <div class="name">Store</div>
+        <div class="count">${getStoreItems().filter(i=>getVisibleProjects().includes(i.project)).length} items</div>
       </div>
     </div>`;
 
@@ -906,8 +919,7 @@ function renderHome() {
         <div class="stat-card"><div class="val text-green">${att.filter(a=>a.adminStatus==='approved').length}</div><div class="lbl">Approved</div></div>
         <div class="stat-card"><div class="val text-purple">${att.filter(a=>a.atype==='leave').length}</div><div class="lbl">Leave Records</div></div>
       </div>`;
-  } else {
-    // Machinery
+  } else if (currentModule === 'machinery') {
     const vp2 = getVisibleProjects();
     const mach = getMachinery().filter(m=>!m.project||vp2.includes(m.project));
     const machIds = new Set(mach.map(m=>m.id));
@@ -922,6 +934,20 @@ function renderHome() {
         <div class="stat-card"><div class="val text-blue">${logs.filter(l=>l.date===today2).length}</div><div class="lbl">Logged Today</div></div>
         <div class="stat-card"><div class="val text-red">${issues.filter(i=>i.status==='open').length}</div><div class="lbl">Open Issues</div></div>
         <div class="stat-card"><div class="val text-orange">${svcDue}</div><div class="lbl">Service Due</div></div>
+      </div>`;
+  } else {
+    // Store
+    const vp3 = getVisibleProjects();
+    const sItems = getStoreItems().filter(i=>vp3.includes(i.project));
+    const sTxns  = getStoreTxns().filter(t=>vp3.includes(t.project));
+    const lowStock = sItems.filter(i=>(parseFloat(i.qty)||0) <= (parseFloat(i.minQty)||0));
+    html += `
+      <div class="section-header"><div class="section-title">Store Overview</div></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val text-green">${sItems.length}</div><div class="lbl">Total Items</div></div>
+        <div class="stat-card"><div class="val text-red">${lowStock.length}</div><div class="lbl">Low Stock</div></div>
+        <div class="stat-card"><div class="val text-blue">${sTxns.filter(t=>t.date===localToday()).length}</div><div class="lbl">Today's Txns</div></div>
+        <div class="stat-card"><div class="val text-orange">${sTxns.filter(t=>t.type==='issue').length}</div><div class="lbl">Total Issues</div></div>
       </div>`;
   }
 
@@ -5372,6 +5398,346 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft')  lightboxNav(-1);
   if (e.key === 'ArrowRight') lightboxNav(1);
 });
+
+// ── STORE MODULE ─────────────────────────────────────────────
+
+let _storeTab = 'inventory';
+const canManageStore = () => currentRole === 'admin' || currentRole === 'store_manager';
+
+function renderStoreTab() {
+  const tabs = [
+    ['inventory','📦 Inventory'],
+    ['transactions','📋 Transactions'],
+    ['transfer','🔄 Transfer'],
+  ];
+  const tabBar = tabs.map(([k,l])=>`<div class="tab-item${_storeTab===k?' active':''}" onclick="_storeTab='${k}';renderCurrentTab()" style="font-size:12px">${l}</div>`).join('');
+  let html = `<div class="section-header"><div class="section-title">🏪 Store</div>
+    ${canManageStore()&&_storeTab==='inventory'?`<button class="btn btn-primary btn-sm" onclick="openAddStoreItem()">+ Item</button>`:''}
+    ${canManageStore()&&_storeTab==='transactions'?`<button class="btn btn-primary btn-sm" onclick="openStoreTxn('issue')">+ Issue</button><button class="btn btn-ghost btn-sm" onclick="openStoreTxn('receive')" style="margin-left:4px">+ Receive</button>`:''}
+  </div>
+  <div class="tab-bar mb-3">${tabBar}</div>`;
+  if (_storeTab==='inventory')    html += renderStoreInventory();
+  if (_storeTab==='transactions') html += renderStoreTxns();
+  if (_storeTab==='transfer')     html += renderStoreTransfer();
+  return html;
+}
+
+function renderStoreInventory() {
+  const vp = getVisibleProjects();
+  const items = getStoreItems().filter(i=>vp.includes(i.project));
+  if (!items.length) return `<div class="empty-state"><div class="icon">📦</div><p>No items yet.${canManageStore()?' Tap "+ Item" to add.':''}</p></div>`;
+
+  // Group by project
+  const byProj = {};
+  items.forEach(i=>{ if(!byProj[i.project]) byProj[i.project]=[]; byProj[i.project].push(i); });
+
+  return Object.entries(byProj).map(([proj, its])=>`
+    <div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;margin:10px 0 6px">📁 ${proj}</div>
+    ${its.map(item=>{
+      const qty = parseFloat(item.qty)||0;
+      const minQty = parseFloat(item.minQty)||0;
+      const low = qty <= minQty;
+      return `<div class="card mb-2" style="padding:10px 12px${low?';border-left:3px solid var(--red)':''}">
+        <div class="flex justify-between items-center">
+          <div>
+            <div style="font-size:13px;font-weight:700">${item.name} ${low?'<span style="font-size:10px;color:var(--red)">⚠️ Low Stock</span>':''}</div>
+            <div style="font-size:11px;color:var(--muted)">${item.category||'General'}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700;color:${low?'var(--red)':'var(--green)'}">${qty}</div>
+            <div style="font-size:10px;color:var(--muted)">${item.unit||'pcs'}</div>
+          </div>
+        </div>
+        ${item.description?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${item.description}</div>`:''}
+        <div style="display:flex;gap:8px;margin-top:8px;font-size:10px;color:var(--muted)">
+          ${item.minQty?`<span>Min: ${item.minQty} ${item.unit||'pcs'}</span>`:''}
+          ${item.location?`<span>📍 ${item.location}</span>`:''}
+        </div>
+        ${canManageStore()?`<div class="flex gap-2 mt-2">
+          <button class="btn btn-ghost btn-sm" onclick="openEditStoreItem('${item.id}')">✏️ Edit</button>
+          <button class="btn btn-primary btn-sm flex-1" onclick="openStoreTxn('issue','${item.id}')">↑ Issue</button>
+          <button class="btn btn-ghost btn-sm flex-1" onclick="openStoreTxn('receive','${item.id}')">↓ Receive</button>
+        </div>`:''}
+      </div>`;
+    }).join('')}`).join('');
+}
+
+function renderStoreTxns() {
+  const vp = getVisibleProjects();
+  const items = getStoreItems();
+  const txns = getStoreTxns().filter(t=>vp.includes(t.project)).sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
+  if (!txns.length) return `<div class="empty-state"><div class="icon">📋</div><p>No transactions yet.</p></div>`;
+
+  // Filter
+  const selProj = document.getElementById('stxn-proj')?.value||'';
+  const selType = document.getElementById('stxn-type')?.value||'';
+  const projOpts = ['',...vp].map(p=>`<option value="${p}"${p===selProj?' selected':''}>${p||'All Sites'}</option>`).join('');
+  let filtered = txns;
+  if (selProj) filtered = filtered.filter(t=>t.project===selProj);
+  if (selType) filtered = filtered.filter(t=>t.type===selType);
+
+  let html = `<div class="flex gap-2 mb-3" style="flex-wrap:wrap">
+    <select id="stxn-proj" onchange="renderCurrentTab()" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">${projOpts}</select>
+    <select id="stxn-type" onchange="renderCurrentTab()" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+      <option value="">All Types</option>
+      <option value="issue"${selType==='issue'?' selected':''}>Issue</option>
+      <option value="receive"${selType==='receive'?' selected':''}>Receive</option>
+      <option value="transfer"${selType==='transfer'?' selected':''}>Transfer</option>
+    </select>
+  </div>`;
+
+  html += filtered.slice(0,50).map(t=>{
+    const item = items.find(i=>i.id===t.itemId);
+    const isIssue = t.type==='issue';
+    const isTransfer = t.type==='transfer';
+    return `<div class="card mb-2" style="padding:10px 12px">
+      <div class="flex justify-between items-center">
+        <div>
+          <div style="font-size:13px;font-weight:700">${item?.name||t.itemName||'Unknown'}</div>
+          <div style="font-size:10px;color:var(--muted)">${t.date} · ${t.project} · by ${t.byName||t.by}</div>
+          ${t.issuedTo?`<div style="font-size:11px;color:var(--muted)">To: ${t.issuedTo}</div>`:''}
+          ${t.toProject?`<div style="font-size:11px;color:var(--cyan)">→ ${t.toProject}</div>`:''}
+          ${t.remarks?`<div style="font-size:11px;color:var(--muted)">${t.remarks}</div>`:''}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:16px;font-weight:700;color:${isIssue?'var(--red)':isTransfer?'var(--cyan)':'var(--green)'}">${isIssue?'−':'+'}${t.qty} ${item?.unit||''}</div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">${t.type}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  return html;
+}
+
+function renderStoreTransfer() {
+  if (!canManageStore()) return `<div class="empty-state"><div class="icon">🔒</div><p>Only Store Manager or Admin can transfer items.</p></div>`;
+  const vp = getVisibleProjects();
+  const items = getStoreItems().filter(i=>vp.includes(i.project));
+  if (!items.length) return `<div class="empty-state"><div class="icon">🔄</div><p>No items to transfer.</p></div>`;
+  const allProj = getProjects();
+
+  return `<div class="card">
+    <div class="card-title mb-3">🔄 Transfer Item Between Sites</div>
+    <div class="field-group"><label>Item *</label>
+      <select id="tr-item" onchange="onTransferItemChange()">
+        <option value="">— Select Item —</option>
+        ${items.map(i=>`<option value="${i.id}">${i.name} (${i.project}) — ${i.qty} ${i.unit||'pcs'}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>From Site</label><input type="text" id="tr-from" readonly style="color:var(--muted)"></div>
+      <div class="field-group"><label>To Site *</label>
+        <select id="tr-to">
+          <option value="">— Select Site —</option>
+          ${allProj.map(p=>`<option value="${p}">${p}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Quantity *</label><input type="number" id="tr-qty" placeholder="0" min="1"></div>
+      <div class="field-group"><label>Date</label><input type="date" id="tr-date" value="${localToday()}"></div>
+    </div>
+    <div class="field-group"><label>Remarks</label><input type="text" id="tr-remarks" placeholder="Reason for transfer"></div>
+    <button class="btn btn-primary w-full mt-3" onclick="doTransfer()">🔄 Transfer</button>
+  </div>`;
+}
+
+function onTransferItemChange() {
+  const sel = document.getElementById('tr-item')?.value;
+  const item = getStoreItems().find(i=>i.id===sel);
+  const fromEl = document.getElementById('tr-from');
+  if (fromEl) fromEl.value = item?.project||'';
+  const toSel = document.getElementById('tr-to');
+  if (toSel && item) {
+    Array.from(toSel.options).forEach(o=>{ o.disabled = o.value===item.project; });
+  }
+}
+
+function doTransfer() {
+  const itemId = document.getElementById('tr-item')?.value;
+  const toProj = document.getElementById('tr-to')?.value;
+  const qty    = parseFloat(document.getElementById('tr-qty')?.value)||0;
+  const date   = document.getElementById('tr-date')?.value||localToday();
+  const remarks= document.getElementById('tr-remarks')?.value||'';
+
+  if (!itemId||!toProj||!qty) { showToast('⚠️ Fill all required fields'); return; }
+  const items = getStoreItems();
+  const item  = items.find(i=>i.id===itemId);
+  if (!item) return;
+  if (qty > parseFloat(item.qty)) { showToast('⚠️ Not enough stock'); return; }
+  if (toProj === item.project) { showToast('⚠️ Same site'); return; }
+
+  // Deduct from source
+  item.qty = (parseFloat(item.qty)||0) - qty;
+
+  // Add/update in destination
+  const destItem = items.find(i=>i.name===item.name&&i.project===toProj);
+  if (destItem) {
+    destItem.qty = (parseFloat(destItem.qty)||0) + qty;
+  } else {
+    items.push({...item, id:'SI_'+Date.now(), project:toProj, qty});
+  }
+  saveStoreItems(items);
+
+  // Log transaction
+  const txns = getStoreTxns();
+  const base = {itemId, itemName:item.name, project:item.project, date, by:currentUser, byName:getUsers()[currentUser]?.name||currentUser, timestamp:new Date().toISOString(), qty, remarks};
+  txns.push({...base, id:'STX_'+Date.now(), type:'transfer', toProject:toProj});
+  saveStoreTxns(txns);
+  pushConfig();
+  showToast('✅ Transferred successfully');
+  renderCurrentTab();
+}
+
+// ── STORE ITEM FORMS ──
+function openAddStoreItem() {
+  const projects = getVisibleProjects();
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">📦 Add Store Item</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Site (Project) *</label>
+      <select id="si-proj">${projects.map(p=>`<option>${p}</option>`).join('')}</select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Item Name *</label><input type="text" id="si-name" placeholder="e.g. Cement Bags"></div>
+      <div class="field-group"><label>Category</label>
+        <select id="si-cat"><option>Material</option><option>Tool</option><option>Equipment</option><option>Safety</option><option>Electrical</option><option>Plumbing</option><option>Other</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Quantity *</label><input type="number" id="si-qty" placeholder="0" min="0"></div>
+      <div class="field-group"><label>Unit</label><input type="text" id="si-unit" placeholder="e.g. bags, pcs, m"></div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Min Stock Alert</label><input type="number" id="si-min" placeholder="0" min="0"></div>
+      <div class="field-group"><label>Location in Store</label><input type="text" id="si-loc" placeholder="e.g. Rack A3"></div>
+    </div>
+    <div class="field-group"><label>Description</label><textarea id="si-desc" rows="2" placeholder="Optional details..."></textarea></div>
+    <button class="btn btn-primary w-full mt-2" onclick="saveStoreItem()">Save Item</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function openEditStoreItem(id) {
+  const item = getStoreItems().find(i=>i.id===id);
+  if (!item) return;
+  const projects = getProjects();
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">✏️ Edit Item</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Site *</label>
+      <select id="si-proj">${projects.map(p=>`<option${p===item.project?' selected':''}>${p}</option>`).join('')}</select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Item Name *</label><input type="text" id="si-name" value="${item.name}"></div>
+      <div class="field-group"><label>Category</label>
+        <select id="si-cat">${['Material','Tool','Equipment','Safety','Electrical','Plumbing','Other'].map(c=>`<option${c===item.category?' selected':''}>${c}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Quantity *</label><input type="number" id="si-qty" value="${item.qty||0}"></div>
+      <div class="field-group"><label>Unit</label><input type="text" id="si-unit" value="${item.unit||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Min Stock Alert</label><input type="number" id="si-min" value="${item.minQty||0}"></div>
+      <div class="field-group"><label>Location</label><input type="text" id="si-loc" value="${item.location||''}"></div>
+    </div>
+    <div class="field-group"><label>Description</label><textarea id="si-desc" rows="2">${item.description||''}</textarea></div>
+    <div class="flex gap-2 mt-2">
+      <button class="btn btn-danger flex-1" onclick="deleteStoreItem('${item.id}')">🗑️ Delete</button>
+      <button class="btn btn-primary flex-1" onclick="saveStoreItem('${item.id}')">Update</button>
+    </div>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveStoreItem(editId) {
+  const name = document.getElementById('si-name')?.value?.trim();
+  const proj = document.getElementById('si-proj')?.value;
+  if (!name||!proj) { showToast('⚠️ Name and site required'); return; }
+  const qty = parseFloat(document.getElementById('si-qty')?.value)||0;
+  const items = getStoreItems();
+  const obj = {
+    id: editId||'SI_'+Date.now(), name, project:proj,
+    category: document.getElementById('si-cat')?.value||'Material',
+    qty, unit: document.getElementById('si-unit')?.value||'pcs',
+    minQty: parseFloat(document.getElementById('si-min')?.value)||0,
+    location: document.getElementById('si-loc')?.value||'',
+    description: document.getElementById('si-desc')?.value||'',
+    updatedBy: currentUser, timestamp: new Date().toISOString()
+  };
+  if (editId) { const i=items.findIndex(x=>x.id===editId); if(i>-1) items[i]=obj; }
+  else items.push(obj);
+  saveStoreItems(items); pushConfig();
+  showToast(editId?'✅ Updated':'✅ Item added');
+  closeFormModal(); renderCurrentTab();
+}
+
+function deleteStoreItem(id) {
+  if (!confirm('Delete this item?')) return;
+  saveStoreItems(getStoreItems().filter(i=>i.id!==id)); pushConfig();
+  showToast('🗑️ Deleted'); closeFormModal(); renderCurrentTab();
+}
+
+function openStoreTxn(type, itemId='') {
+  const vp = getVisibleProjects();
+  const items = getStoreItems().filter(i=>vp.includes(i.project));
+  if (!items.length) { showToast('⚠️ No items in store'); return; }
+  const label = type==='issue'?'↑ Issue Item':'↓ Receive Item';
+  document.getElementById('formModalContent').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="section-title">${label}</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
+    </div>
+    <div class="field-group"><label>Item *</label>
+      <select id="txn-item">
+        ${items.map(i=>`<option value="${i.id}"${i.id===itemId?' selected':''}>${i.name} (${i.project}) — ${i.qty} ${i.unit||'pcs'}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="field-group"><label>Quantity *</label><input type="number" id="txn-qty" placeholder="0" min="1"></div>
+      <div class="field-group"><label>Date</label><input type="date" id="txn-date" value="${localToday()}"></div>
+    </div>
+    ${type==='issue'?`<div class="field-group"><label>Issued To</label><input type="text" id="txn-to" placeholder="Person / department name"></div>`:''}
+    <div class="field-group"><label>Remarks</label><input type="text" id="txn-remarks" placeholder="Optional reason"></div>
+    <button class="btn btn-primary w-full mt-2" onclick="saveStoreTxn('${type}')">Save</button>`;
+  document.getElementById('formModal').classList.remove('hidden');
+}
+
+function saveStoreTxn(type) {
+  const itemId = document.getElementById('txn-item')?.value;
+  const qty    = parseFloat(document.getElementById('txn-qty')?.value)||0;
+  const date   = document.getElementById('txn-date')?.value||localToday();
+  if (!itemId||!qty) { showToast('⚠️ Select item and quantity'); return; }
+
+  const items = getStoreItems();
+  const item  = items.find(i=>i.id===itemId);
+  if (!item) return;
+
+  if (type==='issue' && qty > (parseFloat(item.qty)||0)) {
+    showToast('⚠️ Not enough stock. Available: '+item.qty+' '+item.unit); return;
+  }
+
+  item.qty = (parseFloat(item.qty)||0) + (type==='issue' ? -qty : qty);
+  saveStoreItems(items);
+
+  const txns = getStoreTxns();
+  txns.push({
+    id:'STX_'+Date.now(), type, itemId, itemName:item.name,
+    project: item.project, date, qty,
+    issuedTo: document.getElementById('txn-to')?.value||'',
+    remarks:  document.getElementById('txn-remarks')?.value||'',
+    by: currentUser, byName: getUsers()[currentUser]?.name||currentUser,
+    timestamp: new Date().toISOString()
+  });
+  saveStoreTxns(txns); pushConfig();
+  showToast('✅ '+(type==='issue'?'Issued':'Received'));
+  closeFormModal(); renderCurrentTab();
+}
+
+// ── END STORE MODULE ──────────────────────────────────────────
 
 // Safety net: always hide loader after 1s regardless of errors
 setTimeout(() => {
