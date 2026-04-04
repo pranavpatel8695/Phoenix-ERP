@@ -554,19 +554,44 @@ async function pullConfig() {
     if (d.assignments)                       saveAssignments(d.assignments);
     if (d.specials)                          saveSpecials(d.specials);
     if (d.valveSpecials)                     saveValveSpecials(d.valveSpecials);
-    if (d.attendance?.length) {
-      const loc = getAttendance();
-      const ids = new Set(loc.map(a=>a.id));
-      d.attendance.forEach(a=>{ if(!ids.has(a.id)) loc.push(a); });
-      saveAttendance(loc);
-    }
-    const mergeArr = (getter,saver,arr) => { if(!arr?.length) return; const loc=getter(); const ids=new Set(loc.map(x=>x.id)); arr.forEach(x=>{if(!ids.has(x.id))loc.push(x);}); saver(loc); };
+    // mergeArr: adds new records AND updates existing ones (for approval status changes)
+    const mergeArr = (getter,saver,arr,updateFields) => {
+      if(!arr?.length) return;
+      const loc=getter();
+      const locMap = {};
+      loc.forEach((x,i)=>{ locMap[x.id]=i; });
+      arr.forEach(x=>{
+        if(locMap[x.id]===undefined){ loc.push(x); }
+        else if(updateFields) {
+          // Only update specific fields (e.g. approval status)
+          updateFields.forEach(f=>{ if(x[f]!==undefined) loc[locMap[x.id]][f]=x[f]; });
+        }
+      });
+      saver(loc);
+    };
     mergeArr(getMachinery,   saveMachinery,  d.machinery);
     mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
     mergeArr(getMachService, saveMachService,d.machService);
-    mergeArr(getMachIssues,  saveMachIssues, d.machIssues);
-    mergeArr(getStoreItems,  saveStoreItems, d.storeItems);
+    mergeArr(getMachIssues,  saveMachIssues, d.machIssues, ['status','resolution','resolvedDate']);
+    mergeArr(getStoreItems,  saveStoreItems, d.storeItems, ['qty']);
     mergeArr(getStoreTxns,   saveStoreTxns,  d.storeTxns);
+    // Attendance: update approval status fields from remote
+    if (d.attendance?.length) {
+      const loc = getAttendance();
+      const locMap = {};
+      loc.forEach((a,i)=>{ locMap[a.id]=i; });
+      const deleted = LS.get('phx_deleted_users', []);
+      d.attendance.forEach(a=>{
+        if (deleted.includes(a.user)) return; // skip deleted users
+        if (locMap[a.id]===undefined) { loc.push(a); }
+        else {
+          // Update approval statuses from remote
+          loc[locMap[a.id]].pmStatus    = a.pmStatus;
+          loc[locMap[a.id]].adminStatus = a.adminStatus;
+        }
+      });
+      saveAttendance(loc);
+    }
     if (d.deletedUsers?.length) {
       const existing = LS.get('phx_deleted_users', []);
       const merged = [...new Set([...existing, ...d.deletedUsers])];
@@ -4306,6 +4331,8 @@ function deleteUserUM(username) {
     // Track deletion so pullConfig won't re-add from Appwrite
     const deleted = LS.get('phx_deleted_users', []);
     if (!deleted.includes(username)) { deleted.push(username); LS.set('phx_deleted_users', deleted); }
+    // Remove their attendance records locally
+    saveAttendance(getAttendance().filter(a=>a.user!==username));
     pushConfig();
     showToast('🗑️ User deleted');
     document.getElementById('main').innerHTML = renderUsersTab();
@@ -4578,7 +4605,8 @@ function monthlyAttendanceSummary(user, records) {
 // ── PM VIEW ──
 function renderAttendancePM() {
   const users = getUsers();
-  const myEngineers = Object.entries(users).filter(([,u])=>isEngineer(u.role)&&(u.projects||[]).some(p=>getVisibleProjects().includes(p))).map(([u])=>u);
+  const deleted = LS.get('phx_deleted_users', []);
+  const myEngineers = Object.entries(users).filter(([u,v])=>isEngineer(v.role)&&!deleted.includes(u)&&(v.projects||[]).some(p=>getVisibleProjects().includes(p))).map(([u])=>u);
   const all = getAttendance().filter(a=>myEngineers.includes(a.user));
   const pending = all.filter(a=>a.pmStatus==='pending');
   const done    = all.filter(a=>a.pmStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20);
