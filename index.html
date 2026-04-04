@@ -573,21 +573,23 @@ async function pullConfig() {
     mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
     mergeArr(getMachService, saveMachService,d.machService);
     mergeArr(getMachIssues,  saveMachIssues, d.machIssues, ['status','resolution','resolvedDate']);
-    // Store items: full replace on existing (not just qty) so edits sync properly
+    // Store items: full replace on existing, preserve local photos
     if (d.storeItems?.length) {
       let loc = getStoreItems();
       const locMap = {};
       loc.forEach((x,i)=>{ locMap[x.id]=i; });
       d.storeItems.forEach(x=>{
-        if(locMap[x.id]===undefined){ loc.push(x); }
-        else { loc[locMap[x.id]] = x; } // full replace
+        const localPhoto = locMap[x.id]!==undefined ? loc[locMap[x.id]].photo : '';
+        const merged = {...x, photo: x.photo || localPhoto || ''}; // keep local photo if remote stripped it
+        if(locMap[x.id]===undefined){ loc.push(merged); }
+        else { loc[locMap[x.id]] = merged; }
       });
-      // Remove duplicates (same name+project) keeping highest timestamp
+      // Remove duplicates keeping latest timestamp
       const seen = {};
       loc = loc.filter(item=>{
         const key = item.name+'||'+item.project;
         if(!seen[key]){ seen[key]=item; return true; }
-        if((item.timestamp||'') > (seen[key].timestamp||'')){ seen[key]=item; return true; }
+        if((item.timestamp||'') >= (seen[key].timestamp||'')){ seen[key]=item; return true; }
         return false;
       });
       saveStoreItems(loc);
@@ -639,6 +641,8 @@ async function pullConfig() {
 }
 
 async function pushConfig() {
+  // Strip large base64 photos before pushing to Appwrite
+  const storeItemsLean = getStoreItems().map(i => { const {photo,...rest}=i; return rest; });
   const data = {
     projects:    getProjects(),
     routes:      getRoutes(),
@@ -646,7 +650,7 @@ async function pushConfig() {
     specials:    getSpecials(),
     valveSpecials: getValveSpecials(),
     attendance:   getAttendance(),
-    storeItems:   getStoreItems(),
+    storeItems:   storeItemsLean,
     storeTxns:    getStoreTxns(),
     machinery:    getMachinery(),
     machLogs:     getMachLogs(),
@@ -656,11 +660,18 @@ async function pushConfig() {
     deletedUsers: LS.get('phx_deleted_users', []),
     updatedAt:   Date.now()
   };
-  const val = JSON.stringify(data).slice(0, 65000);
-  let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`, { data: { key: 'adminData', value: val } });
+  const val = JSON.stringify(data);
+  if (val.length > 65000) {
+    // If still too big, trim old logs/txns keeping latest 50
+    data.machLogs    = (data.machLogs||[]).slice(-50);
+    data.storeTxns   = (data.storeTxns||[]).slice(-100);
+    data.attendance  = (data.attendance||[]).slice(-200);
+  }
+  const finalVal = JSON.stringify(data).slice(0, 65000);
+  let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`, { data: { key: 'adminData', value: finalVal } });
   if (!res) await aw('POST', `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
     documentId: 'adminData',
-    data: { key: 'adminData', value: val },
+    data: { key: 'adminData', value: finalVal },
     permissions: ['read("any")','update("any")','delete("any")']
   });
 }
