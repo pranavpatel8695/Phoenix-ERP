@@ -575,27 +575,33 @@ async function pullConfig() {
     mergeArr(getMachIssues,  saveMachIssues, d.machIssues, ['status','resolution','resolvedDate']);
     mergeArr(getStoreItems,  saveStoreItems, d.storeItems, ['qty']);
     mergeArr(getStoreTxns,   saveStoreTxns,  d.storeTxns);
-    // Attendance: update approval status fields from remote
-    if (d.attendance?.length) {
-      const loc = getAttendance();
-      const locMap = {};
-      loc.forEach((a,i)=>{ locMap[a.id]=i; });
-      const deleted = LS.get('phx_deleted_users', []);
-      d.attendance.forEach(a=>{
-        if (deleted.includes(a.user)) return; // skip deleted users
-        if (locMap[a.id]===undefined) { loc.push(a); }
-        else {
-          // Update approval statuses from remote
-          loc[locMap[a.id]].pmStatus    = a.pmStatus;
-          loc[locMap[a.id]].adminStatus = a.adminStatus;
-        }
-      });
-      saveAttendance(loc);
-    }
+
+    // Process deletedUsers FIRST so attendance merge can use updated list
     if (d.deletedUsers?.length) {
       const existing = LS.get('phx_deleted_users', []);
       const merged = [...new Set([...existing, ...d.deletedUsers])];
       LS.set('phx_deleted_users', merged);
+    }
+    const deletedUsers = LS.get('phx_deleted_users', []);
+
+    // Attendance: update approval status fields from remote, skip deleted users
+    {
+      let loc = getAttendance();
+      // Purge any local records from deleted users
+      loc = loc.filter(a => !deletedUsers.includes(a.user));
+      if (d.attendance?.length) {
+        const locMap = {};
+        loc.forEach((a,i)=>{ locMap[a.id]=i; });
+        d.attendance.forEach(a=>{
+          if (deletedUsers.includes(a.user)) return;
+          if (locMap[a.id]===undefined) { loc.push(a); }
+          else {
+            loc[locMap[a.id]].pmStatus    = a.pmStatus;
+            loc[locMap[a.id]].adminStatus = a.adminStatus;
+          }
+        });
+      }
+      saveAttendance(loc);
     }
     if (d.users) {
       const local = getUsers();
@@ -5471,6 +5477,7 @@ function renderStoreInventory() {
       const minQty = parseFloat(item.minQty)||0;
       const low = qty <= minQty;
       return `<div class="card mb-2" style="padding:10px 12px${low?';border-left:3px solid var(--red)':''}">
+        ${item.photo?`<img src="${item.photo}" onclick="window['_ps_store_'+item.id]=[item.photo];openPhotoLightbox('store_'+item.id,0)" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;cursor:pointer">`:''}
         <div class="flex justify-between items-center">
           <div>
             <div style="font-size:13px;font-weight:700">${item.name} ${low?'<span style="font-size:10px;color:var(--red)">⚠️ Low Stock</span>':''}</div>
@@ -5482,6 +5489,14 @@ function renderStoreInventory() {
           </div>
         </div>
         ${item.description?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${item.description}</div>`:''}
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${item.condition==='not_working'?'rgba(255,69,58,0.15)':item.condition==='under_repair'?'rgba(255,159,10,0.15)':'rgba(48,209,88,0.15)'};color:${item.condition==='not_working'?'var(--red)':item.condition==='under_repair'?'var(--orange)':'var(--green)'}">
+            ${item.condition==='not_working'?'❌ Not Working':item.condition==='under_repair'?'🔧 Under Repair':'✅ Working'}
+          </span>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${item.status==='in_use'?'rgba(10,132,255,0.15)':'rgba(142,142,147,0.15)'};color:${item.status==='in_use'?'var(--blue)':'var(--muted)'}">
+            ${item.status==='in_use'?'⚡ In Use':'💤 Idle'}
+          </span>
+        </div>
         <div style="display:flex;gap:8px;margin-top:8px;font-size:10px;color:var(--muted)">
           ${item.minQty?`<span>Min: ${item.minQty} ${item.unit||'pcs'}</span>`:''}
           ${item.location?`<span>📍 ${item.location}</span>`:''}
@@ -5648,6 +5663,28 @@ function openAddStoreItem() {
       <div class="field-group"><label>Location in Store</label><input type="text" id="si-loc" placeholder="e.g. Rack A3"></div>
     </div>
     <div class="field-group"><label>Description</label><textarea id="si-desc" rows="2" placeholder="Optional details..."></textarea></div>
+    <div class="form-row">
+      <div class="field-group"><label>Condition</label>
+        <select id="si-condition">
+          <option value="working">✅ Working</option>
+          <option value="not_working">❌ Not Working</option>
+          <option value="under_repair">🔧 Under Repair</option>
+        </select>
+      </div>
+      <div class="field-group"><label>Status</label>
+        <select id="si-status">
+          <option value="idle">💤 Idle</option>
+          <option value="in_use">⚡ In Use</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-group"><label>Photo</label>
+      <div class="photo-zone" onclick="document.getElementById('si-photo').click()">
+        <div class="pi">📷</div>Tap to add photo
+        <input type="file" id="si-photo" accept="image/*" style="display:none" onchange="handleStorePhotoUpload(this)">
+      </div>
+      <div class="photo-prev-grid" id="si-photo-prev"></div>
+    </div>
     <button class="btn btn-primary w-full mt-2" onclick="saveStoreItem()">Save Item</button>`;
   document.getElementById('formModal').classList.remove('hidden');
 }
@@ -5679,11 +5716,59 @@ function openEditStoreItem(id) {
       <div class="field-group"><label>Location</label><input type="text" id="si-loc" value="${item.location||''}"></div>
     </div>
     <div class="field-group"><label>Description</label><textarea id="si-desc" rows="2">${item.description||''}</textarea></div>
+    <div class="form-row">
+      <div class="field-group"><label>Condition</label>
+        <select id="si-condition">
+          <option value="working"${(item.condition||'working')==='working'?' selected':''}>✅ Working</option>
+          <option value="not_working"${item.condition==='not_working'?' selected':''}>❌ Not Working</option>
+          <option value="under_repair"${item.condition==='under_repair'?' selected':''}>🔧 Under Repair</option>
+        </select>
+      </div>
+      <div class="field-group"><label>Status</label>
+        <select id="si-status">
+          <option value="idle"${(item.status||'idle')==='idle'?' selected':''}>💤 Idle</option>
+          <option value="in_use"${item.status==='in_use'?' selected':''}>⚡ In Use</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-group"><label>Photo</label>
+      <div class="photo-zone" onclick="document.getElementById('si-photo').click()">
+        <div class="pi">📷</div>Tap to change photo
+        <input type="file" id="si-photo" accept="image/*" style="display:none" onchange="handleStorePhotoUpload(this)">
+      </div>
+      <div class="photo-prev-grid" id="si-photo-prev">
+        ${item.photo?`<div class="photo-thumb" id="si-existing-photo"><img src="${item.photo}" style="width:72px;height:72px;object-fit:cover;border-radius:8px"><button class="rm" onclick="document.getElementById('si-existing-photo').remove()">✕</button></div>`:''}
+      </div>
+    </div>
     <div class="flex gap-2 mt-2">
       <button class="btn btn-danger flex-1" onclick="deleteStoreItem('${item.id}')">🗑️ Delete</button>
       <button class="btn btn-primary flex-1" onclick="saveStoreItem('${item.id}')">Update</button>
     </div>`;
   document.getElementById('formModal').classList.remove('hidden');
+}
+
+function handleStorePhotoUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    compressPhoto(e.target.result, 80).then(src => {
+      const prev = document.getElementById('si-photo-prev');
+      if (!prev) return;
+      prev.querySelectorAll('.photo-thumb').forEach(el=>el.remove());
+      const wrap = document.createElement('div');
+      wrap.className = 'photo-thumb'; wrap.id = 'si-new-photo';
+      const img = document.createElement('img');
+      img.src = src; img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px';
+      const btn = document.createElement('button');
+      btn.className = 'rm'; btn.textContent = '✕';
+      btn.onclick = () => wrap.remove();
+      wrap.appendChild(img); wrap.appendChild(btn);
+      prev.appendChild(wrap);
+    });
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
 }
 
 function saveStoreItem(editId) {
@@ -5699,6 +5784,11 @@ function saveStoreItem(editId) {
     minQty: parseFloat(document.getElementById('si-min')?.value)||0,
     location: document.getElementById('si-loc')?.value||'',
     description: document.getElementById('si-desc')?.value||'',
+    condition: document.getElementById('si-condition')?.value||'working',
+    status: document.getElementById('si-status')?.value||'idle',
+    photo: document.getElementById('si-new-photo')?.querySelector('img')?.src
+        || document.getElementById('si-existing-photo')?.querySelector('img')?.src
+        || (editId ? (getStoreItems().find(i=>i.id===editId)?.photo||'') : ''),
     updatedBy: currentUser, timestamp: new Date().toISOString()
   };
   if (editId) { const i=items.findIndex(x=>x.id===editId); if(i>-1) items[i]=obj; }
