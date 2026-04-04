@@ -71,7 +71,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 .role-badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;}
 .role-badge.admin{background:rgba(255,214,10,0.15);color:var(--yellow);border:1px solid rgba(255,214,10,0.3);}
 .role-badge.pm{background:rgba(48,209,88,0.15);color:var(--green);border:1px solid rgba(48,209,88,0.3);}
-.role-badge.supervisor,.role-badge.senior_engineer,.role-badge.junior_engineer,.role-badge.work_assistant{background:rgba(10,132,255,0.15);color:var(--blue);border:1px solid rgba(10,132,255,0.3);}
+.role-badge.supervisor,.role-badge.senior_engineer,.role-badge.junior_engineer,.role-badge.work_assistant,.role-badge.store_manager{background:rgba(10,132,255,0.15);color:var(--blue);border:1px solid rgba(10,132,255,0.3);}
 #syncStatus{font-size:10px;padding:3px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;}
 #syncStatus.synced{color:var(--green);background:rgba(48,209,88,0.1);border-color:rgba(48,209,88,0.2);}
 #syncStatus.syncing{color:var(--orange);background:rgba(255,159,10,0.1);border-color:rgba(255,159,10,0.2);}
@@ -348,10 +348,11 @@ function getUserLabel(u) {
   if (u.role === 'senior_engineer') return 'Senior Engineer';
   if (u.role === 'junior_engineer') return 'Junior Engineer';
   if (u.role === 'work_assistant') return 'Work Assistant';
+  if (u.role === 'store_manager') return 'Store Manager';
   return u.designation || 'Engineer'; // backward compat
 }
 // All engineer-level roles (same access as old 'supervisor')
-const ENGINEER_ROLES = ['supervisor','senior_engineer','junior_engineer','work_assistant'];
+const ENGINEER_ROLES = ['supervisor','senior_engineer','junior_engineer','work_assistant','store_manager'];
 function isEngineer(role) { return ENGINEER_ROLES.includes(role); }
 const getProjects    = () => LS.get('phx_projects', []);
 const saveProjects   = v => LS.set('phx_projects', v);
@@ -3911,6 +3912,7 @@ function renderUsersTab() {
     { role:'senior_engineer', label:'Sr. Eng',color:'var(--blue)',   badge:'badge-blue' },
     { role:'junior_engineer', label:'Jr. Eng', color:'var(--cyan)',  badge:'badge-blue' },
     { role:'work_assistant',  label:'Asst.',   color:'var(--purple)',badge:'badge-blue' },
+    { role:'store_manager',   label:'Store Mgr',color:'var(--orange)', badge:'badge-blue' },
   ];
 
   function userCard([username, u]) {
@@ -3986,8 +3988,8 @@ function switchUserMgmtTab(role, el) {
   // Match exact role OR legacy supervisor→any engineer
   const filtered = Object.entries(users).filter(([,u]) => u.role === role || (role==='junior_engineer' && u.role==='supervisor'));
 
-  const roleColors = {pm:'var(--green)',senior_engineer:'var(--blue)',junior_engineer:'var(--cyan)',work_assistant:'var(--purple)',supervisor:'var(--cyan)'};
-  const roleLabels = {pm:'Project Manager',senior_engineer:'Senior Engineer',junior_engineer:'Junior Engineer',work_assistant:'Work Assistant',supervisor:'Junior Engineer'};
+  const roleColors = {pm:'var(--green)',senior_engineer:'var(--blue)',junior_engineer:'var(--cyan)',work_assistant:'var(--purple)',store_manager:'var(--orange)',supervisor:'var(--cyan)'};
+  const roleLabels = {pm:'Project Manager',senior_engineer:'Senior Engineer',junior_engineer:'Junior Engineer',work_assistant:'Work Assistant',store_manager:'Store Manager',supervisor:'Junior Engineer'};
 
   function userCard([username, u]) {
     const roleColor = roleColors[u.role] || 'var(--blue)';
@@ -4088,6 +4090,7 @@ function openAddUserUM() {
         <option value="junior_engineer">Junior Engineer</option>
         <option value="senior_engineer">Senior Engineer</option>
         <option value="work_assistant">Work Assistant</option>
+        <option value="store_manager">Store Manager</option>
         <option value="pm">Project Manager</option>
       </select>
     </div>
@@ -4239,6 +4242,7 @@ function openEditUser(username) {
         <option value="junior_engineer"${u.role==='junior_engineer'||(u.role==='supervisor'&&(!u.designation||u.designation==='Junior Engineer'))?' selected':''}>Junior Engineer</option>
         <option value="senior_engineer"${u.role==='senior_engineer'||(u.role==='supervisor'&&u.designation==='Senior Engineer')?' selected':''}>Senior Engineer</option>
         <option value="work_assistant"${u.role==='work_assistant'||(u.designation==='Work Assistant')?' selected':''}>Work Assistant</option>
+        <option value="store_manager"${u.role==='store_manager'?' selected':''}>Store Manager</option>
         <option value="pm"${u.role==='pm'?' selected':''}>Project Manager</option>
       </select>
     </div>
