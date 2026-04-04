@@ -5559,7 +5559,7 @@ function renderStoreTxns() {
         <div>
           <div style="font-size:13px;font-weight:700">${item?.name||t.itemName||'Unknown'}</div>
           <div style="font-size:10px;color:var(--muted)">${t.date} · ${t.project} · by ${t.byName||t.by}</div>
-          ${t.issuedTo?`<div style="font-size:11px;color:var(--muted)">To: ${t.issuedTo}</div>`:''}
+          ${t.issuedTo?`<div style="font-size:11px;color:var(--muted)">To Site: <strong style="color:var(--text)">${t.issuedTo}</strong></div>`:''}
           ${t.toProject?`<div style="font-size:11px;color:var(--cyan)">→ ${t.toProject}</div>`:''}
           ${t.remarks?`<div style="font-size:11px;color:var(--muted)">${t.remarks}</div>`:''}
         </div>
@@ -5839,7 +5839,12 @@ function openStoreTxn(type, itemId='') {
       <div class="field-group"><label>Quantity *</label><input type="number" id="txn-qty" placeholder="0" min="1"></div>
       <div class="field-group"><label>Date</label><input type="date" id="txn-date" value="${localToday()}"></div>
     </div>
-    ${type==='issue'?`<div class="field-group"><label>Issued To</label><input type="text" id="txn-to" placeholder="Person / department name"></div>`:''}
+    ${type==='issue'?`<div class="field-group"><label>Issue To (Site) *</label>
+      <select id="txn-to">
+        <option value="">— Select Site —</option>
+        ${getProjects().map(p=>`<option value="${p}">${p}</option>`).join('')}
+      </select>
+    </div>`:''}
     <div class="field-group"><label>Remarks</label><input type="text" id="txn-remarks" placeholder="Optional reason"></div>
     <button class="btn btn-primary w-full mt-2" onclick="saveStoreTxn('${type}')">Save</button>`;
   document.getElementById('formModal').classList.remove('hidden');
@@ -5849,7 +5854,9 @@ function saveStoreTxn(type) {
   const itemId = document.getElementById('txn-item')?.value;
   const qty    = parseFloat(document.getElementById('txn-qty')?.value)||0;
   const date   = document.getElementById('txn-date')?.value||localToday();
+  const issuedTo = document.getElementById('txn-to')?.value||'';
   if (!itemId||!qty) { showToast('⚠️ Select item and quantity'); return; }
+  if (type==='issue' && !issuedTo) { showToast('⚠️ Select site to issue to'); return; }
 
   const items = getStoreItems();
   const item  = items.find(i=>i.id===itemId);
