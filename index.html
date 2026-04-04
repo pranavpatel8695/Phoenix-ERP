@@ -847,8 +847,25 @@ function renderCurrentTab() {
   const main = document.getElementById('main');
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
-    case 'submit':   main.innerHTML = currentModule==='attendance' ? renderAttendanceTab() : currentModule==='machinery' ? renderMachineryTab() : currentModule==='store' ? renderStoreTab() : renderSubmitTab(); break;
-    case 'reports':  if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;} if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;} if(currentModule==='store'){main.innerHTML=renderStoreTab();break;} _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); break;
+    case 'submit':
+      if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); }
+      else if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); }
+      else if (currentModule==='store') {
+        main.innerHTML=renderStoreTab();
+        pullConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
+      }
+      else { main.innerHTML=renderSubmitTab(); }
+      break;
+    case 'reports':
+      if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;}
+      if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;}
+      if(currentModule==='store'){
+        main.innerHTML=renderStoreTab();
+        pullConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
+        break;
+      }
+      _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab();
+      break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
@@ -5499,7 +5516,12 @@ function renderStoreTab() {
     actionBtns = `<button class="btn btn-primary btn-sm" onclick="openStoreTxn('issue')">Issue to Site</button>`;
   }
 
-  let html = `<div class="section-header"><div class="section-title">🏪 Store</div>${actionBtns}</div>
+  let html = `<div class="section-header"><div class="section-title">🏪 Store</div>
+    <div class="flex gap-2">
+      <button class="btn btn-ghost btn-sm" onclick="pullConfig().then(()=>renderCurrentTab())">↻</button>
+      ${actionBtns}
+    </div>
+  </div>
   <div class="tab-bar mb-3">${tabBar}</div>`;
 
   if (_storeTab==='inventory')    html += renderStoreInventory();
