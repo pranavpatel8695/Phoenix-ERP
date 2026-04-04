@@ -3165,12 +3165,28 @@ function renderTrackerTab() {
   }
 
   const vp = getVisibleProjects();
-  const reports = getReports().filter(r => vp.includes(r.project) && (!r.module || r.module==='pipeline'));
-  let html = `<div class="section-title mb-4">📏 Chainage Tracker</div>`;
+  const selProj = document.getElementById('tracker-proj-sel')?.value || '';
+  const filteredProjs = selProj ? [selProj] : vp;
+  const reports = getReports().filter(r => filteredProjs.includes(r.project) && (!r.module || r.module==='pipeline'));
 
-  vp.forEach(proj => {
+  const projOpts = vp.map(p=>`<option value="${p}"${p===selProj?' selected':''}>${p}</option>`).join('');
+  let html = `<div class="section-header mb-3">
+    <div class="section-title">📏 Chainage Tracker</div>
+  </div>
+  <div class="field-group mb-3">
+    <select id="tracker-proj-sel" onchange="renderCurrentTab()" style="padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;width:100%">
+      <option value="">All Projects</option>
+      ${projOpts}
+    </select>
+  </div>`;
+
+  filteredProjs.forEach(proj => {
     const routes = getRoutes()[proj] || [];
     if (!routes.length) return;
+    // Show project heading when multiple projects visible
+    if (!selProj && filteredProjs.length > 1) {
+      html += `<div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px;padding:0 2px">📁 ${proj}</div>`;
+    }
 
     routes.forEach(rt => {
       const reps  = reports.filter(r => r.project === proj && r.route === rt.id);
