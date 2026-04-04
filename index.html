@@ -5553,15 +5553,17 @@ function renderStoreInventory() {
 function renderStoreTxns() {
   const vp = getVisibleProjects();
   const items = getStoreItems();
-  const txns = getStoreTxns().filter(t=>vp.includes(t.project)).sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
-  if (!txns.length) return `<div class="empty-state"><div class="icon">📋</div><p>No transactions yet.</p></div>`;
+  // Show txns for visible projects AND central store (admin) AND issue-from-central
+  const allTxns = getStoreTxns().filter(t=>
+    vp.includes(t.project) || t.project==='central' || (t.fromProject==='central' && vp.includes(t.issuedTo))
+  ).sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
+  if (!allTxns.length) return `<div class="empty-state"><div class="icon">📋</div><p>No transactions yet.</p></div>`;
 
-  // Filter
   const selProj = document.getElementById('stxn-proj')?.value||'';
   const selType = document.getElementById('stxn-type')?.value||'';
-  const projOpts = ['',...vp].map(p=>`<option value="${p}"${p===selProj?' selected':''}>${p||'All Sites'}</option>`).join('');
-  let filtered = txns;
-  if (selProj) filtered = filtered.filter(t=>t.project===selProj);
+  const projOpts = ['',...vp,'central'].map(p=>`<option value="${p}"${p===selProj?' selected':''}>${p||'All Sites'}</option>`).join('');
+  let filtered = allTxns;
+  if (selProj) filtered = filtered.filter(t=>t.project===selProj||t.fromProject===selProj);
   if (selType) filtered = filtered.filter(t=>t.type===selType);
 
   let html = `<div class="flex gap-2 mb-3" style="flex-wrap:wrap">
@@ -5588,6 +5590,7 @@ function renderStoreTxns() {
           <div style="font-size:13px;font-weight:700">${item?.name||t.itemName||'Unknown'}</div>
           <div style="font-size:10px;color:var(--muted)">${t.date} · ${t.project} · by ${t.byName||t.by}</div>
           ${t.issuedTo?`<div style="font-size:11px;color:var(--muted)">To Site: <strong style="color:var(--text)">${t.issuedTo}</strong></div>`:''}
+          ${t.fromProject?`<div style="font-size:11px;color:var(--muted)">From: <strong style="color:var(--cyan)">${t.fromProject}</strong></div>`:''}
           ${t.toProject?`<div style="font-size:11px;color:var(--cyan)">→ ${t.toProject}</div>`:''}
           ${t.remarks?`<div style="font-size:11px;color:var(--muted)">${t.remarks}</div>`:''}
         </div>
@@ -5881,49 +5884,49 @@ function openStoreTxn(type, itemId='') {
 }
 
 function saveStoreTxn(type) {
-  const itemId = document.getElementById('txn-item')?.value;
-  const qty    = parseFloat(document.getElementById('txn-qty')?.value)||0;
-  const date   = document.getElementById('txn-date')?.value||localToday();
+  const itemId  = document.getElementById('txn-item')?.value;
+  const qty     = parseFloat(document.getElementById('txn-qty')?.value)||0;
+  const date    = document.getElementById('txn-date')?.value||localToday();
   const issuedTo = document.getElementById('txn-to')?.value||'';
+  const remarks = document.getElementById('txn-remarks')?.value||'';
+
   if (!itemId||!qty) { showToast('⚠️ Select item and quantity'); return; }
   if (type==='issue' && !issuedTo) { showToast('⚠️ Select site to issue to'); return; }
 
   const items = getStoreItems();
-  const item  = items.find(i=>i.id===itemId);
-  if (!item) return;
-
-  if (type==='issue' && qty > (parseFloat(item.qty)||0)) {
-    showToast('⚠️ Not enough stock. Available: '+item.qty+' '+item.unit); return;
-  }
-
-  const items2 = getStoreItems();
-  const src = items2.find(i=>i.id===itemId);
+  const src = items.find(i=>i.id===itemId);
   if (!src) return;
 
   if (type==='issue') {
-    // Deduct from central store
+    if (qty > (parseFloat(src.qty)||0)) {
+      showToast('⚠️ Not enough stock. Available: '+src.qty+' '+src.unit); return;
+    }
+    // Deduct from central
     src.qty = (parseFloat(src.qty)||0) - qty;
-    // Add to project site inventory
-    const destProj = document.getElementById('txn-to')?.value;
-    const dest = items2.find(i=>i.name===src.name&&i.project===destProj);
-    if (dest) { dest.qty = (parseFloat(dest.qty)||0)+qty; }
-    else { items2.push({...src, id:'SI_'+Date.now(), project:destProj, qty}); }
+    // Add to destination project
+    const dest = items.find(i=>i.name===src.name && i.project===issuedTo);
+    if (dest) {
+      dest.qty = (parseFloat(dest.qty)||0) + qty;
+    } else {
+      items.push({...src, id:'SI_'+Date.now(), project:issuedTo, qty});
+    }
   } else {
     src.qty = (parseFloat(src.qty)||0) + qty;
   }
-  saveStoreItems(items2);
+  saveStoreItems(items);
 
   const txns = getStoreTxns();
   txns.push({
-    id:'STX_'+Date.now(), type, itemId, itemName:item.name,
-    project: item.project, date, qty,
-    issuedTo: document.getElementById('txn-to')?.value||'',
-    remarks:  document.getElementById('txn-remarks')?.value||'',
+    id: 'STX_'+Date.now(), type, itemId, itemName: src.name,
+    project: type==='issue' ? issuedTo : src.project, // use dest project for issue
+    fromProject: type==='issue' ? src.project : '',
+    date, qty, issuedTo, remarks,
     by: currentUser, byName: getUsers()[currentUser]?.name||currentUser,
     timestamp: new Date().toISOString()
   });
-  saveStoreTxns(txns); pushConfig();
-  showToast('✅ '+(type==='issue'?'Issued':'Received'));
+  saveStoreTxns(txns);
+  pushConfig();
+  showToast('✅ '+(type==='issue'?'Issued to '+issuedTo:'Received'));
   closeFormModal(); renderCurrentTab();
 }
 
