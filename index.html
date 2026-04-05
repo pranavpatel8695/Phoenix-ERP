@@ -545,136 +545,186 @@ async function doSync() {
 }
 
 async function pullConfig() {
-  const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`);
-  if (!res?.value) return;
-  try {
-    const d = JSON.parse(res.value);
-    if (d.projects?.length)                 saveProjects(d.projects);
-    if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
-    if (d.assignments)                       saveAssignments(d.assignments);
-    if (d.specials)                          saveSpecials(d.specials);
-    if (d.valveSpecials)                     saveValveSpecials(d.valveSpecials);
-    // mergeArr: adds new records AND updates existing ones (for approval status changes)
-    const mergeArr = (getter,saver,arr,updateFields) => {
-      if(!arr?.length) return;
-      const loc=getter();
-      const locMap = {};
-      loc.forEach((x,i)=>{ locMap[x.id]=i; });
-      arr.forEach(x=>{
-        if(locMap[x.id]===undefined){ loc.push(x); }
-        else if(updateFields) {
-          // Only update specific fields (e.g. approval status)
-          updateFields.forEach(f=>{ if(x[f]!==undefined) loc[locMap[x.id]][f]=x[f]; });
-        }
-      });
-      saver(loc);
-    };
-    mergeArr(getMachinery,   saveMachinery,  d.machinery);
-    mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
-    mergeArr(getMachService, saveMachService,d.machService);
-    mergeArr(getMachIssues,  saveMachIssues, d.machIssues, ['status','resolution','resolvedDate']);
-    // Store items: full replace on existing, preserve local photos
-    if (d.storeItems?.length) {
-      let loc = getStoreItems();
-      const locMap = {};
-      loc.forEach((x,i)=>{ locMap[x.id]=i; });
-      d.storeItems.forEach(x=>{
-        const localPhoto = locMap[x.id]!==undefined ? loc[locMap[x.id]].photo : '';
-        const merged = {...x, photo: x.photo || localPhoto || ''};
-        if(locMap[x.id]===undefined){ loc.push(merged); }
-        else { loc[locMap[x.id]] = merged; }
-      });
-      // Remove zero-qty items and exact ID duplicates
-      const seenIds = new Set();
-      loc = loc.filter(item=>{
-        if(seenIds.has(item.id)) return false;
-        seenIds.add(item.id);
-        return (parseFloat(item.qty)||0) > 0; // remove zero-qty
-      });
-      saveStoreItems(loc);
-    }
-    mergeArr(getStoreTxns,   saveStoreTxns,  d.storeTxns);
+  // Fetch both config and live data documents in parallel
+  const [configRes, liveRes] = await Promise.all([
+    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`),
+    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/liveData`)
+  ]);
 
-    // Process deletedUsers FIRST so attendance merge can use updated list
-    if (d.deletedUsers?.length) {
-      const existing = LS.get('phx_deleted_users', []);
-      const merged = [...new Set([...existing, ...d.deletedUsers])];
-      LS.set('phx_deleted_users', merged);
-    }
-    const deletedUsers = LS.get('phx_deleted_users', []);
+  const mergeArr = (getter,saver,arr,updateFields) => {
+    if(!arr?.length) return;
+    const loc=getter();
+    const locMap = {};
+    loc.forEach((x,i)=>{ locMap[x.id]=i; });
+    arr.forEach(x=>{
+      if(locMap[x.id]===undefined){ loc.push(x); }
+      else if(updateFields) {
+        updateFields.forEach(f=>{ if(x[f]!==undefined) loc[locMap[x.id]][f]=x[f]; });
+      }
+    });
+    saver(loc);
+  };
 
-    // Attendance: update approval status fields from remote, skip deleted users
-    {
-      let loc = getAttendance();
-      // Purge any local records from deleted users
-      loc = loc.filter(a => !deletedUsers.includes(a.user));
-      if (d.attendance?.length) {
-        const locMap = {};
-        loc.forEach((a,i)=>{ locMap[a.id]=i; });
-        d.attendance.forEach(a=>{
-          if (deletedUsers.includes(a.user)) return;
-          if (locMap[a.id]===undefined) { loc.push(a); }
-          else {
-            loc[locMap[a.id]].pmStatus    = a.pmStatus;
-            loc[locMap[a.id]].adminStatus = a.adminStatus;
+  // ── Process config document (users, projects, routes) ──
+  if (configRes?.value) {
+    try {
+      const d = JSON.parse(configRes.value);
+      if (d.projects?.length)                      saveProjects(d.projects);
+      if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
+      if (d.assignments)                            saveAssignments(d.assignments);
+      if (d.specials)                               saveSpecials(d.specials);
+      if (d.valveSpecials)                          saveValveSpecials(d.valveSpecials);
+
+      // Process deletedUsers first
+      if (d.deletedUsers?.length) {
+        const existing = LS.get('phx_deleted_users', []);
+        LS.set('phx_deleted_users', [...new Set([...existing, ...d.deletedUsers])]);
+      }
+
+      if (d.users) {
+        const local = getUsers();
+        const adminPass = local.admin?.pass || 'admin';
+        const deleted = LS.get('phx_deleted_users', []);
+        Object.keys(d.users).forEach(u => {
+          if (d.users[u].role !== 'admin' && !deleted.includes(u)) {
+            const localProjects = local[u]?.projects;
+            local[u] = d.users[u];
+            if (localProjects?.length && !local[u].projects?.length) local[u].projects = localProjects;
           }
         });
+        local.admin = { ...local.admin, pass: adminPass };
+        saveUsers(local);
       }
-      saveAttendance(loc);
-    }
-    if (d.users) {
-      const local = getUsers();
-      const adminPass = local.admin?.pass || 'admin';
-      const deleted = LS.get('phx_deleted_users', []);
-      Object.keys(d.users).forEach(u => {
-        if (d.users[u].role !== 'admin' && !deleted.includes(u)) {
-          const localProjects = local[u]?.projects;
-          local[u] = d.users[u];
-          if (localProjects?.length && !local[u].projects?.length) local[u].projects = localProjects;
+    } catch(e) { console.warn('pullConfig configDoc error:', e); }
+  }
+
+  // ── Process live data document (attendance, store, machinery) ──
+  // Fall back to adminData if liveData not yet created (backward compat)
+  const liveSource = liveRes?.value ? liveRes : configRes;
+  if (liveSource?.value) {
+    try {
+      const d = JSON.parse(liveSource.value);
+      const deletedUsers = LS.get('phx_deleted_users', []);
+
+      // Machinery
+      mergeArr(getMachinery,   saveMachinery,  d.machinery);
+      mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
+      mergeArr(getMachService, saveMachService,d.machService);
+      mergeArr(getMachIssues,  saveMachIssues, d.machIssues, ['status','resolution','resolvedDate']);
+
+      // Store items: full replace, preserve local photos, remove zero-qty
+      if (d.storeItems?.length) {
+        let loc = getStoreItems();
+        const locMap = {};
+        loc.forEach((x,i)=>{ locMap[x.id]=i; });
+        d.storeItems.forEach(x=>{
+          const localPhoto = locMap[x.id]!==undefined ? loc[locMap[x.id]].photo : '';
+          const merged = {...x, photo: x.photo || localPhoto || ''};
+          if(locMap[x.id]===undefined){ loc.push(merged); }
+          else { loc[locMap[x.id]] = merged; }
+        });
+        const seenIds = new Set();
+        loc = loc.filter(item=>{
+          if(seenIds.has(item.id)) return false;
+          seenIds.add(item.id);
+          return (parseFloat(item.qty)||0) > 0;
+        });
+        saveStoreItems(loc);
+      }
+      mergeArr(getStoreTxns, saveStoreTxns, d.storeTxns);
+
+      // Attendance: full sync — update approval statuses, skip deleted users
+      {
+        let loc = getAttendance().filter(a => !deletedUsers.includes(a.user));
+        if (d.attendance?.length) {
+          const locMap = {};
+          loc.forEach((a,i)=>{ locMap[a.id]=i; });
+          d.attendance.forEach(a=>{
+            if (deletedUsers.includes(a.user)) return;
+            if (locMap[a.id]===undefined) { loc.push(a); }
+            else {
+              // Full update of approval fields
+              loc[locMap[a.id]].pmStatus    = a.pmStatus;
+              loc[locMap[a.id]].adminStatus = a.adminStatus;
+              loc[locMap[a.id]].pmName      = a.pmName || loc[locMap[a.id]].pmName;
+            }
+          });
         }
-      });
-      local.admin = { ...local.admin, pass: adminPass };
-      saveUsers(local);
-    }
-  } catch(e) {}
+        saveAttendance(loc);
+      }
+    } catch(e) { console.warn('pullConfig liveDoc error:', e); }
+  }
 }
 
 async function pushConfig() {
-  // Strip large base64 photos before pushing to Appwrite
-  const storeItemsLean = getStoreItems()
-    .filter(i=>(parseFloat(i.qty)||0) > 0) // never push zero-qty items
-    .map(i => { const {photo,...rest}=i; return rest; });
-  const data = {
-    projects:    getProjects(),
-    routes:      getRoutes(),
-    assignments: getAssignments(),
-    specials:    getSpecials(),
+  // Split into two documents to avoid 65KB limit
+  // Doc 1: Static config (users, projects, routes, specials)
+  const configData = {
+    projects:     getProjects(),
+    routes:       getRoutes(),
+    assignments:  getAssignments(),
+    specials:     getSpecials(),
     valveSpecials: getValveSpecials(),
-    attendance:   getAttendance(),
-    storeItems:   storeItemsLean,
-    storeTxns:    getStoreTxns(),
-    machinery:    getMachinery(),
-    machLogs:     getMachLogs(),
-    machService:  getMachService(),
-    machIssues:   getMachIssues(),
-    users:       getUsers(),
+    users:        getUsers(),
     deletedUsers: LS.get('phx_deleted_users', []),
+    updatedAt:    Date.now()
+  };
+
+  // Doc 2: Live/operational data (attendance, store, machinery)
+  const storeItemsLean = getStoreItems()
+    .filter(i=>(parseFloat(i.qty)||0) > 0)
+    .map(i => { const {photo,...rest}=i; return rest; });
+
+  let attendance = getAttendance();
+  let machLogs   = getMachLogs();
+  let storeTxns  = getStoreTxns();
+
+  const liveData = {
+    attendance,
+    storeItems:  storeItemsLean,
+    storeTxns,
+    machinery:   getMachinery(),
+    machLogs,
+    machService: getMachService(),
+    machIssues:  getMachIssues(),
     updatedAt:   Date.now()
   };
-  const val = JSON.stringify(data);
-  if (val.length > 65000) {
-    // If still too big, trim old logs/txns keeping latest 50
-    data.machLogs    = (data.machLogs||[]).slice(-50);
-    data.storeTxns   = (data.storeTxns||[]).slice(-100);
-    data.attendance  = (data.attendance||[]).slice(-200);
+
+  // Trim if needed before encoding
+  const trimAndEncode = (data, key, arr, limit=60000) => {
+    let v = JSON.stringify(data);
+    let trimCount = 10;
+    while (v.length > limit && trimCount > 0) {
+      data[key] = arr.slice(-Math.floor(arr.length * 0.8));
+      arr = data[key];
+      v = JSON.stringify(data);
+      trimCount--;
+    }
+    return v.slice(0, 65000);
+  };
+
+  const configVal  = JSON.stringify(configData).slice(0, 65000);
+  let liveVal = JSON.stringify(liveData);
+  if (liveVal.length > 65000) {
+    liveData.machLogs   = machLogs.slice(-30);
+    liveData.storeTxns  = storeTxns.slice(-80);
+    liveData.attendance = attendance.slice(-150);
+    liveVal = JSON.stringify(liveData).slice(0, 65000);
   }
-  const finalVal = JSON.stringify(data).slice(0, 65000);
-  let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`, { data: { key: 'adminData', value: finalVal } });
-  if (!res) await aw('POST', `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
-    documentId: 'adminData',
-    data: { key: 'adminData', value: finalVal },
-    permissions: ['read("any")','update("any")','delete("any")']
-  });
+
+  const save = async (docId, val) => {
+    let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.config}/documents/${docId}`, { data: { key: docId, value: val } });
+    if (!res) await aw('POST', `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
+      documentId: docId,
+      data: { key: docId, value: val },
+      permissions: ['read("any")','update("any")','delete("any")']
+    });
+  };
+
+  await Promise.all([
+    save('adminData', configVal),
+    save('liveData',  liveVal)
+  ]);
 }
 
 async function saveReportToAW(r) {
@@ -4550,7 +4600,6 @@ function renderAttendanceEngineer() {
     <div class="stat-grid mt-2">
       <div class="stat-card"><div class="val text-green">${present}</div><div class="lbl">Present</div></div>
       <div class="stat-card"><div class="val text-red">${absent}</div><div class="lbl">Absent</div></div>
-      <div class="stat-card"><div class="val text-orange">${half}</div><div class="lbl">Half Day</div></div>
       <div class="stat-card"><div class="val text-blue">${monthLeaves}</div><div class="lbl">Leaves</div></div>
     </div>
     <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
@@ -4687,12 +4736,11 @@ function monthlyAttendanceSummary(user, records) {
       <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
         <div class="stat-card" style="padding:8px"><div class="val text-green" style="font-size:18px">${present}</div><div class="lbl">Present</div></div>
         <div class="stat-card" style="padding:8px"><div class="val text-red" style="font-size:18px">${absent}</div><div class="lbl">Absent</div></div>
-        <div class="stat-card" style="padding:8px"><div class="val text-yellow" style="font-size:18px">${half}</div><div class="lbl">Half Day</div></div>
         <div class="stat-card" style="padding:8px"><div class="val text-cyan" style="font-size:18px">${leaves}</div><div class="lbl">Leave</div></div>
       </div>
       ${cal}
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
-        ${[['🟢','Present','var(--green)'],['🔴','Absent','var(--red)'],['🟡','Half Day','var(--yellow)'],['🔵','Leave','var(--cyan)']].map(([e,l,c])=>`<div style="font-size:10px;color:${c}">${e} ${l}</div>`).join('')}
+        ${[['🟢','Present','var(--green)'],['🔴','Absent','var(--red)'],['🔵','Leave','var(--cyan)']].map(([e,l,c])=>`<div style="font-size:10px;color:${c}">${e} ${l}</div>`).join('')}
       </div>
     </div>`;
 }
@@ -4779,7 +4827,10 @@ function renderAttendanceAdmin() {
 
   let html = `<div class="flex justify-between items-center mb-3">
     <div class="section-title">🕐 My Attendance</div>
-    <button class="btn btn-ghost btn-sm" onclick="pullConfig().then(()=>renderCurrentTab())">↻ Sync</button>
+    <div class="flex gap-2">
+      <button class="btn btn-ghost btn-sm" onclick="exportMonthlyAttendance('')">📄 All Staff</button>
+      <button class="btn btn-ghost btn-sm" onclick="pullConfig().then(()=>renderCurrentTab())">↻ Sync</button>
+    </div>
   </div>`;
 
   // Admin's own today card
@@ -4802,9 +4853,12 @@ function renderAttendanceAdmin() {
   if (allUsers.length) {
     html += `<div class="flex justify-between items-center mb-2">
       <div class="card-title">📅 Monthly Report</div>
-      <select id="admin-att-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-        ${allUsers.map(u=>`<option value="${u.id}"${u.id===selUser?' selected':''}>${u.name}</option>`).join('')}
-      </select>
+      <div class="flex gap-2">
+        <select id="admin-att-sel" onchange="renderCurrentTab()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+          ${allUsers.map(u=>`<option value="${u.id}"${u.id===selUser?' selected':''}>${u.name}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="exportMonthlyAttendance('${selUser || ''}')">📄 Export</button>
+      </div>
     </div>`;
     html += monthlyAttendanceSummary(selUser, active);
   }
@@ -4876,8 +4930,11 @@ function exportMonthlyAttendance(targetUser) {
   const monthName  = now.toLocaleString('en-IN',{month:'long',year:'numeric'});
 
   let all = getAttendance();
+  const deleted = LS.get('phx_deleted_users', []);
+  all = all.filter(a=>!deleted.includes(a.user));
   if (targetUser) all = all.filter(a=>a.user===targetUser);
   else if (isEngineer(currentRole)) all = all.filter(a=>a.user===currentUser);
+  // admin with no targetUser = export all staff
 
   // Group by user
   const users = {};
@@ -4893,7 +4950,7 @@ function exportMonthlyAttendance(targetUser) {
   let rows = Object.values(users).map(u => {
     const present = u.att.filter(a=>a.status==='present').length;
     const absent  = u.att.filter(a=>a.status==='absent').length;
-    const half    = u.att.filter(a=>a.status==='half').length;
+    const half    = 0;
     const leaves  = u.leaves.length;
     const eff     = (present + half*0.5).toFixed(1);
     return `<tr><td style="${tdS}">${u.name}</td><td style="${tdS};color:#30D158;font-weight:700">${present}</td><td style="${tdS};color:#FF453A;font-weight:700">${absent}</td><td style="${tdS};color:#FF9F0A;font-weight:700">${half}</td><td style="${tdS};color:#0A84FF;font-weight:700">${leaves}</td><td style="${tdS};font-weight:700">${eff}</td></tr>`;
@@ -4919,7 +4976,7 @@ function exportMonthlyAttendance(targetUser) {
           <th style="${thS}">Employee</th>
           <th style="${thS}">Present</th>
           <th style="${thS}">Absent</th>
-          <th style="${thS}">Half Day</th>
+          
           <th style="${thS}">Leaves</th>
           <th style="${thS}">Effective Days</th>
         </tr></thead>
