@@ -5645,7 +5645,10 @@ function renderStoreTxns() {
       <option value="">All Types</option>
       <option value="issue"${selType==='issue'?' selected':''}>Issue</option>
       <option value="receive"${selType==='receive'?' selected':''}>Receive</option>
+      <option value="purchase"${selType==='purchase'?' selected':''}>Purchase</option>
+      <option value="addition"${selType==='addition'?' selected':''}>Added to Central</option>
       <option value="transfer"${selType==='transfer'?' selected':''}>Transfer</option>
+      <option value="return"${selType==='return'?' selected':''}>Return</option>
     </select>
   </div>`;
 
@@ -5655,9 +5658,10 @@ function renderStoreTxns() {
     const isTransfer = t.type==='transfer';
     const isPurchase = t.type==='purchase';
     const isReturn   = t.type==='return';
-    const txnColor = isIssue?'var(--red)':isPurchase?'var(--green)':isReturn?'var(--purple)':isTransfer?'var(--cyan)':'var(--blue)';
+    const isAddition = t.type==='addition';
+    const txnColor = isIssue?'var(--red)':isPurchase||isAddition?'var(--green)':isReturn?'var(--purple)':isTransfer?'var(--cyan)':'var(--blue)';
     const txnSign = isIssue?'−':'+';
-    const txnLabel = isIssue?'ISSUE':isPurchase?'PURCHASE':isReturn?'RETURN':isTransfer?'TRANSFER':'RECEIVE';
+    const txnLabel = isIssue?'ISSUE':isPurchase?'PURCHASE':isAddition?'ADDED TO CENTRAL':isReturn?'RETURN':isTransfer?'TRANSFER':'RECEIVE';
     return `<div class="card mb-2" style="padding:10px 12px">
       <div class="flex justify-between items-center">
         <div>
@@ -5922,9 +5926,12 @@ function saveStoreItem(editId, txnType) {
   };
   if (existingIdx>-1) { items[existingIdx]=obj; } else items.push(obj);
   saveStoreItems(items);
-  if (txnType==='purchase' && qty>0) {
+
+  // Log transaction for any addition (purchase = site, addition = central)
+  if (qty>0 && (txnType==='purchase' || !editId)) {
     const txns = getStoreTxns();
-    txns.push({ id:'STX_'+Date.now(), type:'purchase', itemId:obj.id, itemName:name,
+    const txnType2 = txnType==='purchase' ? 'purchase' : (proj==='central' ? 'addition' : 'purchase');
+    txns.push({ id:'STX_'+Date.now(), type:txnType2, itemId:obj.id, itemName:name,
       project:proj, date:localToday(), qty,
       remarks: document.getElementById('si-desc')?.value||'',
       by:currentUser, byName:getUsers()[currentUser]?.name||currentUser,
@@ -5932,7 +5939,7 @@ function saveStoreItem(editId, txnType) {
     saveStoreTxns(txns);
   }
   pushConfig();
-  showToast(txnType==='purchase'?'✅ Purchase saved':'✅ Item added');
+  showToast(txnType==='purchase'?'✅ Purchase saved': editId?'✅ Updated':'✅ Item added');
   closeFormModal(); renderCurrentTab();
 }
 
