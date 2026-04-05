@@ -1934,21 +1934,38 @@ function handlePhotoUpload(input) {
   input.value = '';
 }
 
-function compressPhoto(dataUrl, targetKB=50) {
+function compressPhoto(dataUrl, targetKB=30) {
   return new Promise(resolve => {
-    if (!dataUrl?.startsWith('data:image')) { resolve(dataUrl); return; }
+    if (!dataUrl) { resolve(''); return; }
+    // Handle non-image data URLs
+    if (!dataUrl.startsWith('data:image')) { resolve(dataUrl); return; }
     const img = new Image();
     img.onload = () => {
-      let w=img.width, h=img.height, max=640;
+      let w=img.width, h=img.height, max=800;
       if (w>max) { h=Math.round(h*max/w); w=max; }
       if (h>max) { w=Math.round(w*max/h); h=max; }
       const c=document.createElement('canvas'); c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
-      let lo=0.05,hi=0.7,res=c.toDataURL('image/jpeg',0.3);
-      for(let i=0;i<8;i++){const m=(lo+hi)/2,a=c.toDataURL('image/jpeg',m);if(a.length*0.75/1024<=targetKB){lo=m;res=a;}else hi=m;}
+      // Always convert to JPEG for compatibility (handles HEIC converted by browser)
+      let lo=0.05, hi=0.6, res=c.toDataURL('image/jpeg',0.2);
+      for(let i=0;i<10;i++){
+        const m=(lo+hi)/2;
+        const a=c.toDataURL('image/jpeg',m);
+        if(a.length*0.75/1024<=targetKB){lo=m;res=a;}else hi=m;
+      }
+      // Final safety: if still too big, scale down more
+      if (res.length*0.75/1024 > targetKB*2) {
+        const c2=document.createElement('canvas');
+        c2.width=Math.round(w*0.5); c2.height=Math.round(h*0.5);
+        c2.getContext('2d').drawImage(img,0,0,c2.width,c2.height);
+        res=c2.toDataURL('image/jpeg',0.3);
+      }
       resolve(res);
     };
-    img.onerror=()=>resolve(dataUrl);
+    img.onerror=()=>{
+      // If image fails to load (e.g. HEIC not supported), return empty
+      resolve('');
+    };
     img.src=dataUrl;
   });
 }
@@ -2902,8 +2919,8 @@ function reportItemHTML(r, showActions=true) {
         window['_ps_'+gid] = allPhotos.map(p=>p.src);
         return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           ${allPhotos.map((p,i)=>`
-            <div style="position:relative;cursor:pointer" onclick="openPhotoLightbox('${gid}',${i})">
-              <img src="${p.src}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+            <div style="position:relative;cursor:pointer;width:72px;height:72px;background:var(--surface2);border-radius:8px;overflow:hidden" onclick="openPhotoLightbox('${gid}',${i})">
+              <img loading="lazy" src="${p.src}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)" onerror="this.style.display='none';this.parentNode.innerHTML+='<div style=\\'width:72px;height:72px;display:flex;align-items:center;justify-content:center;font-size:22px\\'>📷</div>'">
               <div style="position:absolute;bottom:2px;left:2px;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">${p.label}</div>
             </div>`).join('')}
         </div>`;
@@ -5555,7 +5572,7 @@ function renderStoreInventory() {
     const pid = 'store_' + item.id;
     if (item.photo) window['_ps_'+pid] = [item.photo];
     let card = '<div class="card mb-2" style="padding:10px 12px' + (low ? ';border-left:3px solid var(--red)' : '') + '">';
-    if (item.photo) card += '<img src="' + item.photo + '" onclick="openPhotoLightbox(\'' + pid + '\',0)" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;cursor:pointer">';
+    if (item.photo) card += '<img loading="lazy" src="' + item.photo + '" onclick="openPhotoLightbox(\'' + pid + '\',0)" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;cursor:pointer">';
     card += '<div class="flex justify-between items-center">';
     card += '<div><div style="font-size:13px;font-weight:700">' + item.name + (low ? ' <span style="font-size:10px;color:var(--red)">⚠️ Low Stock</span>' : '') + '</div>';
     card += '<div style="font-size:11px;color:var(--muted)">' + (item.category||'General') + '</div></div>';
@@ -5983,10 +6000,13 @@ function saveStoreTxn(type) {
     } else {
       items.push({...src, id:'SI_'+Date.now(), project:issuedTo, qty});
     }
+    // Remove central item if qty is now zero
+    const finalItems = items.filter(i=>!(i.id===src.id && (parseFloat(i.qty)||0)<=0));
+    saveStoreItems(finalItems);
   } else {
     src.qty = (parseFloat(src.qty)||0) + qty;
+    saveStoreItems(items);
   }
-  saveStoreItems(items);
 
   const txns = getStoreTxns();
   txns.push({
@@ -6042,12 +6062,12 @@ function doReturnToCentral(itemId) {
 
   // Deduct from site
   src.qty = (parseFloat(src.qty)||0) - qty;
-
   // Add back to central store
   const central = items.find(i=>i.name===src.name && i.project==='central');
   if (central) { central.qty = (parseFloat(central.qty)||0) + qty; }
   else { items.push({...src, id:'SI_'+Date.now(), project:'central', qty}); }
-  saveStoreItems(items);
+  // Remove site item if qty now zero
+  saveStoreItems(items.filter(i=>!(i.id===src.id && (parseFloat(i.qty)||0)<=0)));
 
   // Log transaction
   const txns = getStoreTxns();
@@ -6107,10 +6127,10 @@ function doSiteTransfer(itemId) {
   if (!src || qty > parseFloat(src.qty)) { showToast('⚠️ Not enough stock'); return; }
 
   src.qty = (parseFloat(src.qty)||0) - qty;
-  const dest = items.find(i=>i.name===src.name && i.project===destProj);
-  if (dest) { dest.qty = (parseFloat(dest.qty)||0) + qty; }
+  const dest2 = items.find(i=>i.name===src.name && i.project===destProj);
+  if (dest2) { dest2.qty = (parseFloat(dest2.qty)||0) + qty; }
   else { items.push({...src, id:'SI_'+Date.now(), project:destProj, qty}); }
-  saveStoreItems(items);
+  saveStoreItems(items.filter(i=>!(i.id===src.id && (parseFloat(i.qty)||0)<=0)));
 
   const txns = getStoreTxns();
   txns.push({ id:'STX_'+Date.now(), type:'transfer', itemId, itemName:src.name,
