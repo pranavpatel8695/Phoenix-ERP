@@ -580,17 +580,16 @@ async function pullConfig() {
       loc.forEach((x,i)=>{ locMap[x.id]=i; });
       d.storeItems.forEach(x=>{
         const localPhoto = locMap[x.id]!==undefined ? loc[locMap[x.id]].photo : '';
-        const merged = {...x, photo: x.photo || localPhoto || ''}; // keep local photo if remote stripped it
+        const merged = {...x, photo: x.photo || localPhoto || ''};
         if(locMap[x.id]===undefined){ loc.push(merged); }
         else { loc[locMap[x.id]] = merged; }
       });
-      // Remove duplicates keeping latest timestamp
-      const seen = {};
+      // Only remove exact ID duplicates (keep just one per ID)
+      const seenIds = new Set();
       loc = loc.filter(item=>{
-        const key = item.name+'||'+item.project;
-        if(!seen[key]){ seen[key]=item; return true; }
-        if((item.timestamp||'') >= (seen[key].timestamp||'')){ seen[key]=item; return true; }
-        return false;
+        if(seenIds.has(item.id)) return false;
+        seenIds.add(item.id);
+        return true;
       });
       saveStoreItems(loc);
     }
@@ -5571,6 +5570,7 @@ function renderStoreInventory() {
     const statBg = item.status==='in_use'?'rgba(10,132,255,0.15)':'rgba(142,142,147,0.15)';
     card += '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:' + statBg + ';color:' + statColor + '">' + (item.status==='in_use'?'⚡ In Use':'💤 Idle') + '</span></div>';
     if (item.location) card += '<div style="font-size:10px;color:var(--muted);margin-top:4px">📍 ' + item.location + '</div>';
+    if (item.description) card += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + item.description + '</div>';
     if (canManageStore()) {
       card += '<div class="flex gap-2 mt-2">';
       card += '<button class="btn btn-ghost btn-sm" onclick="openEditStoreItem(\'' + item.id + '\')">✏️</button>';
