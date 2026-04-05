@@ -4529,7 +4529,7 @@ function renderAttendanceEngineer() {
     </div>`;
   } else {
     html += `<div class="flex gap-2 mt-2">
-      ${['present','absent','half'].map(s=>`<button class="btn btn-primary flex-1" onclick="markAttendance('${s}')">${s==='present'?'🟢 Present':s==='absent'?'🔴 Absent':'🟡 Half Day'}</button>`).join('')}
+      <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button><button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
     </div>`;
   }
   html += `</div>`;
@@ -4564,10 +4564,7 @@ function renderAttendanceEngineer() {
       <div class="field-group"><label>From Date</label><input type="date" id="lv-from"></div>
       <div class="field-group"><label>To Date</label><input type="date" id="lv-to"></div>
     </div>
-    <div class="field-group"><label>Leave Type</label>
-      <select id="lv-type"><option>Casual Leave</option><option>Sick Leave</option><option>Earned Leave</option><option>Other</option></select>
-    </div>
-    <div class="field-group"><label>Reason</label><input type="text" id="lv-reason" placeholder="Brief reason"></div>
+<div class="field-group"><label>Reason</label><input type="text" id="lv-reason" placeholder="Brief reason"></div>
     <button class="btn btn-primary w-full mt-2" onclick="applyLeave()">Apply Leave</button>
   </div>`;
 
@@ -4618,7 +4615,6 @@ function markAttendance(status) {
 function applyLeave() {
   const from = document.getElementById('lv-from')?.value;
   const to   = document.getElementById('lv-to')?.value   || from;
-  const type = document.getElementById('lv-type')?.value;
   const reason = document.getElementById('lv-reason')?.value;
   if (!from) { showToast('⚠️ Select from date'); return; }
   const myProj = getVisibleProjects()[0]||'';
@@ -4629,7 +4625,7 @@ function applyLeave() {
   const all = getAttendance();
   all.push({ id:'LV_'+Date.now(), user:currentUser, userName:getUsers()[currentUser]?.name||currentUser,
     project: myProj, atype:'leave', date:from, leaveFrom:from, leaveTo:to,
-    leaveType:type, reason, pmUser, pmName,
+    leaveType:'Leave', reason, pmUser, pmName,
     pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
   saveAttendance(all); pushConfig();
   showToast('✅ Leave applied'); renderCurrentTab();
@@ -4720,7 +4716,6 @@ function renderAttendancePM() {
       : `<div class="flex gap-2">
           <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button>
           <button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
-          <button class="btn btn-ghost flex-1" onclick="markAttendance('half_day')">🟡 Half Day</button>
          </div>`}
   </div>`;
 
@@ -4795,7 +4790,6 @@ function renderAttendanceAdmin() {
       : `<div class="flex gap-2">
           <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button>
           <button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
-          <button class="btn btn-ghost flex-1" onclick="markAttendance('half_day')">🟡 Half Day</button>
          </div>`}
   </div>`;
 
