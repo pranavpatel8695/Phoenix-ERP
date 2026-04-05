@@ -4601,8 +4601,15 @@ function markAttendance(status) {
   const today = localToday();
   const all = getAttendance();
   if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { showToast('Already marked'); return; }
+  // Find PM assigned to user's project
+  const myProj = getVisibleProjects()[0]||'';
+  const users = getUsers();
+  const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
+  const pmUser = pmEntry?.[0]||'';
+  const pmName = pmEntry?.[1]?.name||pmUser;
   all.push({ id:'ATT_'+Date.now(), user:currentUser, userName:getUsers()[currentUser]?.name||currentUser,
-    project: getVisibleProjects()[0]||'', atype:'attendance', date:today, status,
+    project: myProj, atype:'attendance', date:today, status,
+    pmUser, pmName,
     pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
   saveAttendance(all); pushConfig();
   showToast('✅ Attendance marked'); renderCurrentTab();
@@ -4614,10 +4621,16 @@ function applyLeave() {
   const type = document.getElementById('lv-type')?.value;
   const reason = document.getElementById('lv-reason')?.value;
   if (!from) { showToast('⚠️ Select from date'); return; }
+  const myProj = getVisibleProjects()[0]||'';
+  const users = getUsers();
+  const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
+  const pmUser = pmEntry?.[0]||'';
+  const pmName = pmEntry?.[1]?.name||pmUser;
   const all = getAttendance();
   all.push({ id:'LV_'+Date.now(), user:currentUser, userName:getUsers()[currentUser]?.name||currentUser,
-    project: getVisibleProjects()[0]||'', atype:'leave', date:from, leaveFrom:from, leaveTo:to,
-    leaveType:type, reason, pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
+    project: myProj, atype:'leave', date:from, leaveFrom:from, leaveTo:to,
+    leaveType:type, reason, pmUser, pmName,
+    pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
   saveAttendance(all); pushConfig();
   showToast('✅ Leave applied'); renderCurrentTab();
 }
@@ -4690,16 +4703,50 @@ function monthlyAttendanceSummary(user, records) {
 
 // ── PM VIEW ──
 function renderAttendancePM() {
+  const today = localToday();
+  const myRecs = getAttendance().filter(a => a.user === currentUser);
+  const todayRec = myRecs.find(a => a.date === today && a.atype === 'attendance');
+  const statColor = s => s==='approved'?'var(--green)':s==='rejected'?'var(--red)':'var(--orange)';
+  const statLabel = s => s==='approved'?'✅ Approved':s==='rejected'?'❌ Rejected':'⏳ Pending';
+
+  let html = `<div class="section-title mb-3">🕐 My Attendance</div>`;
+
+  // Own today status
+  html += `<div class="card mb-3" style="padding:12px">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Today — ${today}</div>
+    ${todayRec
+      ? `<div style="font-size:14px;font-weight:700">${todayRec.status==='present'?'🟢 Present':todayRec.status==='absent'?'🔴 Absent':'🟡 Half Day'}</div>
+         <span style="font-size:11px;color:${statColor(todayRec.pmStatus)}">${statLabel(todayRec.pmStatus)} (PM)</span>`
+      : `<div class="flex gap-2">
+          <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button>
+          <button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
+          <button class="btn btn-ghost flex-1" onclick="markAttendance('half_day')">🟡 Half Day</button>
+         </div>`}
+  </div>`;
+
+  // Own history
+  const myHistory = myRecs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+  if (myHistory.length) {
+    html += `<div class="card-title mb-2">📋 My History</div>`;
+    html += myHistory.map(a=>`
+      <div class="card mb-2" style="padding:10px 12px">
+        <div class="flex justify-between items-center">
+          <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(a.leaveFrom+' to '+a.leaveTo):a.date}</span></div>
+          <div style="text-align:right;font-size:10px;color:${statColor(a.adminStatus)}">${statLabel(a.adminStatus)}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Team section
   const users = getUsers();
   const deleted = LS.get('phx_deleted_users', []);
   const myEngineers = Object.entries(users).filter(([u,v])=>isEngineer(v.role)&&!deleted.includes(u)&&(v.projects||[]).some(p=>getVisibleProjects().includes(p))).map(([u])=>u);
-  const all = getAttendance().filter(a=>myEngineers.includes(a.user));
-  const pending = all.filter(a=>a.pmStatus==='pending');
-  const done    = all.filter(a=>a.pmStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20);
+  const teamAll = getAttendance().filter(a=>myEngineers.includes(a.user));
+  const pending = teamAll.filter(a=>a.pmStatus==='pending');
+  const done    = teamAll.filter(a=>a.pmStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20);
 
-  let html = `<div class="section-title mb-4">🕐 Team Attendance</div>`;
+  html += `<div class="section-title mt-4 mb-3">👥 Team Attendance</div>`;
 
-  // Monthly report for selected engineer
   const selEng = document.getElementById('pm-eng-sel')?.value || myEngineers[0] || '';
   if (myEngineers.length) {
     html += `<div class="flex justify-between items-center mb-2">
@@ -4710,7 +4757,6 @@ function renderAttendancePM() {
     </div>`;
     html += monthlyAttendanceSummary(selEng, getAttendance());
   }
-
   if (pending.length) {
     html += `<div class="card-title mb-2" style="color:var(--orange)">⏳ Pending Approval (${pending.length})</div>`;
     html += pending.map(a => attendanceCard(a, 'pm')).join('');
@@ -4719,27 +4765,45 @@ function renderAttendancePM() {
     html += `<div class="card-title mb-2 mt-3">✅ Reviewed</div>`;
     html += done.map(a => attendanceCard(a, 'pm')).join('');
   }
-  if (!all.length) html += `<div class="empty-state"><div class="icon">📋</div><p>No attendance records from your team yet.</p></div>`;
+  if (!teamAll.length) html += `<div class="empty-state"><div class="icon">📋</div><p>No attendance records from your team yet.</p></div>`;
   return html;
 }
 
 // ── ADMIN VIEW ──
 function renderAttendanceAdmin() {
+  const today = localToday();
+  const myRecs = getAttendance().filter(a => a.user === currentUser);
+  const todayRec = myRecs.find(a => a.date === today && a.atype === 'attendance');
+
   const all = getAttendance();
   const deleted = LS.get('phx_deleted_users', []);
   const active = all.filter(a=>!deleted.includes(a.user));
   const pending = active.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending');
-  const pmPending = active.filter(a=>a.pmStatus==='pending');
+  const pmPending = active.filter(a=>a.pmStatus==='pending'&&!deleted.includes(a.user));
   const done = active.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
 
-  let html = `<div class="flex justify-between items-center mb-4">
-    <div class="section-title">🕐 All Attendance</div>
+  let html = `<div class="flex justify-between items-center mb-3">
+    <div class="section-title">🕐 My Attendance</div>
     <button class="btn btn-ghost btn-sm" onclick="pullConfig().then(()=>renderCurrentTab())">↻ Sync</button>
   </div>`;
 
+  // Admin's own today card
+  html += `<div class="card mb-3" style="padding:12px">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Today — ${today}</div>
+    ${todayRec
+      ? `<div style="font-size:14px;font-weight:700">${todayRec.status==='present'?'🟢 Present':todayRec.status==='absent'?'🔴 Absent':'🟡 Half Day'}</div>`
+      : `<div class="flex gap-2">
+          <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button>
+          <button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
+          <button class="btn btn-ghost flex-1" onclick="markAttendance('half_day')">🟡 Half Day</button>
+         </div>`}
+  </div>`;
+
+  html += `<div class="section-title mt-2 mb-3">👥 All Staff Attendance</div>`;
+
   // Monthly report with user selector - exclude deleted users
   const users = getUsers();
-  const allUsers = Object.entries(users).filter(([u,v])=>v.role!=='admin'&&!deleted.includes(u)).map(([u,d])=>({id:u,name:d.name||u}));
+  const allUsers = Object.entries(users).filter(([u,v])=>!deleted.includes(u)).map(([u,d])=>({id:u,name:d.name||u}));
   const selUser = document.getElementById('admin-att-sel')?.value || allUsers[0]?.id || '';
   if (allUsers.length) {
     html += `<div class="flex justify-between items-center mb-2">
@@ -4751,7 +4815,15 @@ function renderAttendanceAdmin() {
     html += monthlyAttendanceSummary(selUser, active);
   }
 
-  if (pmPending.length) html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval</div>`;
+  if (pmPending.length) {
+    const users2 = getUsers();
+    const pmNames = [...new Set(pmPending.map(a=>{
+      if(a.pmName) return a.pmName;
+      const e=Object.entries(users2).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+      return e?.[1]?.name||e?.[0]||'Unknown PM';
+    }))].join(', ');
+    html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval — <strong>${pmNames}</strong></div>`;
+  }
 
   if (pending.length) {
     html += `<div class="card-title mb-2" style="color:var(--blue)">📋 Awaiting Final Approval (${pending.length})</div>`;
@@ -4769,12 +4841,19 @@ function attendanceCard(a, role) {
   const statColor = s => s==='approved'?'var(--green)':s==='rejected'?'var(--red)':'var(--orange)';
   const myStatus = role==='pm' ? a.pmStatus : a.adminStatus;
   const canAct = (role==='pm' && a.pmStatus==='pending') || (role==='admin' && a.pmStatus==='approved' && a.adminStatus==='pending');
+  // Look up PM name if not stored
+  const pmDisplay = a.pmName || (() => {
+    const users = getUsers();
+    const pmE = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+    return pmE?.[1]?.name || pmE?.[0] || '—';
+  })();
   return `<div class="card mb-2" style="padding:10px 12px">
     <div class="flex justify-between items-center">
       <div>
         <div style="font-size:12px;font-weight:700">${a.userName||a.user} <span style="font-weight:400;color:var(--muted)">— ${a.atype==='leave'?'🏖️ Leave':'Attendance'}</span></div>
         <div style="font-size:11px;color:var(--muted)">${a.atype==='leave'?`${a.leaveType}: ${a.leaveFrom} to ${a.leaveTo} — ${a.reason||''}`:
           `${a.date} — ${a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'}`}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">📁 ${a.project||'—'} · PM: <strong style="color:var(--text)">${pmDisplay}</strong></div>
       </div>
       <div style="font-size:10px;color:${statColor(myStatus)};font-weight:700">${myStatus.toUpperCase()}</div>
     </div>
