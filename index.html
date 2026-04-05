@@ -584,12 +584,12 @@ async function pullConfig() {
         if(locMap[x.id]===undefined){ loc.push(merged); }
         else { loc[locMap[x.id]] = merged; }
       });
-      // Only remove exact ID duplicates (keep just one per ID)
+      // Remove zero-qty items and exact ID duplicates
       const seenIds = new Set();
       loc = loc.filter(item=>{
         if(seenIds.has(item.id)) return false;
         seenIds.add(item.id);
-        return true;
+        return (parseFloat(item.qty)||0) > 0; // remove zero-qty
       });
       saveStoreItems(loc);
     }
@@ -641,7 +641,9 @@ async function pullConfig() {
 
 async function pushConfig() {
   // Strip large base64 photos before pushing to Appwrite
-  const storeItemsLean = getStoreItems().map(i => { const {photo,...rest}=i; return rest; });
+  const storeItemsLean = getStoreItems()
+    .filter(i=>(parseFloat(i.qty)||0) > 0) // never push zero-qty items
+    .map(i => { const {photo,...rest}=i; return rest; });
   const data = {
     projects:    getProjects(),
     routes:      getRoutes(),
