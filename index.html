@@ -5486,7 +5486,7 @@ function openAddMachine() {
     <div class="form-row">
       <div class="field-group"><label>Machine Name *</label><input type="text" id="mf-name" placeholder="e.g. JCB 3DX"></div>
       <div class="field-group"><label>Type *</label>
-        <select id="mf-type"><option>Excavator</option><option>JCB</option><option>Tipper</option><option>Crane</option><option>Compactor</option><option>Generator</option><option>Water Tanker</option><option>Loader</option><option>Other</option></select>
+        <select id="mf-type"><option>Excavator</option><option>Backhoe Loader</option><option>Tractor Loader</option><option>Car</option><option>Bike</option><option>Tractor</option><option>Tipper</option><option>Crane</option><option>Generator</option><option>Other</option></select>
       </div>
     </div>
     <div class="form-row">
@@ -5547,7 +5547,7 @@ function openEditMachine(id) {
     <div class="form-row">
       <div class="field-group"><label>Machine Name *</label><input type="text" id="mf-name" value="${m.name}"></div>
       <div class="field-group"><label>Type</label>
-        <select id="mf-type">${['Excavator','JCB','Tipper','Crane','Compactor','Generator','Water Tanker','Loader','Other'].map(t=>`<option${t===m.type?' selected':''}>${t}</option>`).join('')}</select>
+        <select id="mf-type">${['Excavator','Backhoe Loader','Tractor Loader','Car','Bike','Tractor','Tipper','Crane','Generator','Other'].map(t=>`<option${t===m.type?' selected':''}>${t}</option>`).join('')}</select>
       </div>
     </div>
     <div class="form-row">
