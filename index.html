@@ -606,34 +606,59 @@ async function pullConfig() {
       const d = JSON.parse(liveSource.value);
       const deletedUsers = LS.get('phx_deleted_users', []);
 
-      // Machinery
-      mergeArr(getMachinery,   saveMachinery,  d.machinery);
-      mergeArr(getMachLogs,    saveMachLogs,   d.machLogs);
-      mergeArr(getMachService, saveMachService,d.machService);
-      mergeArr(getMachIssues,  saveMachIssues, d.machIssues, ['status','resolution','resolvedDate']);
+      // Machinery: full replace from remote (source of truth)
+      if (d.machinery?.length)    saveMachinery(d.machinery);
+      if (d.machService?.length)  saveMachService(d.machService);
 
-      // Store items: full replace, preserve local photos, remove zero-qty
-      if (d.storeItems?.length) {
-        let loc = getStoreItems();
+      // MachLogs/Issues: merge-add only (append new, update status fields)
+      if (d.machLogs?.length) {
+        const loc = getMachLogs();
+        const ids = new Set(loc.map(x=>x.id));
+        d.machLogs.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
+        saveMachLogs(loc);
+      }
+      if (d.machIssues?.length) {
+        const loc = getMachIssues();
         const locMap = {};
         loc.forEach((x,i)=>{ locMap[x.id]=i; });
-        d.storeItems.forEach(x=>{
-          const localPhoto = locMap[x.id]!==undefined ? loc[locMap[x.id]].photo : '';
-          const merged = {...x, photo: x.photo || localPhoto || ''};
-          if(locMap[x.id]===undefined){ loc.push(merged); }
-          else { loc[locMap[x.id]] = merged; }
+        d.machIssues.forEach(x=>{
+          if(locMap[x.id]===undefined){ loc.push(x); }
+          else {
+            loc[locMap[x.id]].status      = x.status;
+            loc[locMap[x.id]].resolution  = x.resolution;
+            loc[locMap[x.id]].resolvedDate= x.resolvedDate;
+          }
         });
-        const seenIds = new Set();
-        loc = loc.filter(item=>{
-          if(seenIds.has(item.id)) return false;
-          seenIds.add(item.id);
-          return (parseFloat(item.qty)||0) > 0;
+        saveMachIssues(loc);
+      }
+
+      // Store items: full replace from remote, preserve local photos, remove zero-qty
+      if (d.storeItems?.length) {
+        // Build map of local photos to preserve
+        const localPhotos = {};
+        getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
+        let loc = d.storeItems
+          .filter(i=>(parseFloat(i.qty)||0)>0)
+          .map(i=>({...i, photo: i.photo||localPhotos[i.id]||''}));
+        // Keep local items that aren't in remote yet (just added locally)
+        const remoteIds = new Set(loc.map(i=>i.id));
+        getStoreItems().forEach(i=>{
+          if(!remoteIds.has(i.id) && (parseFloat(i.qty)||0)>0) loc.push(i);
         });
         saveStoreItems(loc);
+      } else if (d.storeItems && d.storeItems.length === 0) {
+        // Remote explicitly empty - keep local only
       }
-      mergeArr(getStoreTxns, saveStoreTxns, d.storeTxns);
 
-      // Attendance: full sync — update approval statuses, skip deleted users
+      // StoreTxns: merge-add only (append new)
+      if (d.storeTxns?.length) {
+        const loc = getStoreTxns();
+        const ids = new Set(loc.map(x=>x.id));
+        d.storeTxns.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
+        saveStoreTxns(loc);
+      }
+
+      // Attendance: merge with full status update from remote
       {
         let loc = getAttendance().filter(a => !deletedUsers.includes(a.user));
         if (d.attendance?.length) {
@@ -641,12 +666,17 @@ async function pullConfig() {
           loc.forEach((a,i)=>{ locMap[a.id]=i; });
           d.attendance.forEach(a=>{
             if (deletedUsers.includes(a.user)) return;
-            if (locMap[a.id]===undefined) { loc.push(a); }
-            else {
-              // Full update of approval fields
-              loc[locMap[a.id]].pmStatus    = a.pmStatus;
-              loc[locMap[a.id]].adminStatus = a.adminStatus;
-              loc[locMap[a.id]].pmName      = a.pmName || loc[locMap[a.id]].pmName;
+            if (locMap[a.id]===undefined) {
+              loc.push(a);
+            } else {
+              // Full replace of the record from remote (source of truth for approvals)
+              const local = loc[locMap[a.id]];
+              loc[locMap[a.id]] = {
+                ...a,
+                // Preserve local fields not in remote
+                pmName: a.pmName || local.pmName,
+                userName: a.userName || local.userName,
+              };
             }
           });
         }
