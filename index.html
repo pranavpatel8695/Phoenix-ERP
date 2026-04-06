@@ -4653,16 +4653,42 @@ function renderAttendanceEngineer() {
     <div class="card-title">📅 Today — ${today}</div>`;
   if (todayRec) {
     html += `<div style="margin-top:8px">
-      <span style="font-size:13px;font-weight:700">${todayRec.status==='present'?'🟢 Present':todayRec.status==='absent'?'🔴 Absent':'🟡 Half Day'}</span>
+      <span style="font-size:13px;font-weight:700">${todayRec.status==='present'?'🟢 Present':'🔴 Absent'}</span>
       <span style="margin-left:12px;font-size:11px;color:${statColor(todayRec.pmStatus)}">${statLabel(todayRec.pmStatus)} (PM)</span>
       ${todayRec.pmStatus==='approved'?`<span style="margin-left:8px;font-size:11px;color:${statColor(todayRec.adminStatus)}">${statLabel(todayRec.adminStatus)} (Admin)</span>`:''}
     </div>`;
   } else {
     html += `<div class="flex gap-2 mt-2">
-      <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button><button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
+      <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button>
+      <button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
     </div>`;
   }
   html += `</div>`;
+
+  // Missed past dates (up to 3 days back)
+  const missedDays = [];
+  for (let i = 1; i <= 3; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0,10);
+    // Skip if already marked
+    if (!all.find(a => a.date === dateStr && a.atype === 'attendance')) {
+      missedDays.push({ date: dateStr, label: i===1 ? 'Yesterday' : d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) });
+    }
+  }
+  if (missedDays.length) {
+    html += `<div class="card mb-3" style="border-left:3px solid var(--orange)">
+      <div class="card-title" style="color:var(--orange)">⚠️ Missed Attendance</div>
+      <div style="font-size:11px;color:var(--muted);margin:4px 0 10px">Mark attendance for missed days (up to 3 days back)</div>
+      ${missedDays.map(d=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;font-weight:600">${d.label} <span style="color:var(--muted);font-weight:400">${d.date}</span></div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-sm" onclick="markAttendanceDate('present','${d.date}')">🟢 Present</button>
+            <button class="btn btn-ghost btn-sm" onclick="markAttendanceDate('absent','${d.date}')">🔴 Absent</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }
 
   // Monthly report
   const now = new Date();
@@ -4721,6 +4747,25 @@ function renderAttendanceEngineer() {
 function localToday() {
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function markAttendanceDate(status, date) {
+  const all = getAttendance();
+  if (all.find(a=>a.user===currentUser&&a.date===date&&a.atype==='attendance')) {
+    showToast('Already marked for ' + date); return;
+  }
+  const myProj = getVisibleProjects()[0]||'';
+  const users = getUsers();
+  const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
+  const pmUser = pmEntry?.[0]||'';
+  const pmName = pmEntry?.[1]?.name||pmUser;
+  all.push({ id:'ATT_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
+    project:myProj, atype:'attendance', date, status,
+    pmUser, pmName, isBackfill:true,
+    pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
+  saveAttendance(all); pushConfig();
+  showToast('✅ Attendance marked for ' + date);
+  renderCurrentTab();
 }
 
 function markAttendance(status) {
@@ -4978,7 +5023,7 @@ function attendanceCard(a, role) {
   return `<div class="card mb-2" style="padding:10px 12px">
     <div class="flex justify-between items-center">
       <div>
-        <div style="font-size:12px;font-weight:700">${a.userName||a.user} <span style="font-weight:400;color:var(--muted)">— ${a.atype==='leave'?'🏖️ Leave':'Attendance'}</span></div>
+        <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':'🔴 Absent'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(a.leaveFrom+' to '+a.leaveTo):a.date}</span>${a.isBackfill?` <span style="font-size:9px;background:rgba(255,159,10,0.2);color:var(--orange);padding:1px 5px;border-radius:4px;font-weight:700">BACKDATED</span>`:''}</div>
         <div style="font-size:11px;color:var(--muted)">${a.atype==='leave'?`${a.leaveType}: ${a.leaveFrom} to ${a.leaveTo} — ${a.reason||''}`:
           `${a.date} — ${a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'}`}</div>
         <div style="font-size:10px;color:var(--muted);margin-top:2px">📁 ${a.project||'—'} · PM: <strong style="color:var(--text)">${pmDisplay}</strong></div>
