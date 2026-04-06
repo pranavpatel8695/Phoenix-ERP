@@ -3256,20 +3256,22 @@ function hideTrackerTip(key) {
 }
 
 function showMarkerTip(el, text) {
-  let tip = el.querySelector('.mtip');
+  let tip = document.getElementById('_markerGlobalTip');
   if (!tip) {
     tip = document.createElement('div');
-    tip.className = 'mtip';
-    tip.style.cssText = 'position:absolute;bottom:28px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none';
-    el.style.position = 'relative';
-    el.appendChild(tip);
+    tip.id = '_markerGlobalTip';
+    tip.style.cssText = 'position:fixed;background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;white-space:nowrap;z-index:9999;pointer-events:none;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5)';
+    document.body.appendChild(tip);
   }
   tip.textContent = text;
   tip.style.display = 'block';
+  const r = el.getBoundingClientRect();
+  tip.style.left = (r.left + r.width/2 - tip.offsetWidth/2) + 'px';
+  tip.style.top  = (r.top - tip.offsetHeight - 6) + 'px';
 }
 
-function hideMarkerTip(el) {
-  const tip = el.querySelector('.mtip');
+function hideMarkerTip() {
+  const tip = document.getElementById('_markerGlobalTip');
   if (tip) tip.style.display = 'none';
 }
 
@@ -3489,8 +3491,8 @@ function renderTrackerTab() {
                   ${row.items.map(item=>`
                     <div style="position:absolute;left:${item.left.toFixed(2)}%;transform:translateX(-50%);top:1px;height:14px;cursor:pointer"
                       onmouseenter="showMarkerTip(this,'${item.tip.replace(/'/g,'&#39;')}')"
-                      onmouseleave="hideMarkerTip(this)">
-                      <div style="width:2px;height:100%;background:${row.color};border-radius:1px"></div>
+                      onmouseleave="hideMarkerTip()">
+                      <div style="width:2px;height:100%;background:${row.color};border-radius:1px;pointer-events:none"></div>
                     </div>`).join('')}
                 </div>
                 <div style="font-size:10px;color:${row.color};font-weight:700;text-align:right">${row.items.length}</div>
