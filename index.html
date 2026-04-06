@@ -5157,7 +5157,7 @@ function renderSettingsMachinery() {
         <div class="card mb-2" style="padding:10px 12px">
           <div class="flex justify-between items-center">
             <div>
-              <div style="font-size:13px;font-weight:700">${m.name} <span style="font-size:10px;color:var(--muted)">${m.type}</span></div>
+              <div style="font-size:13px;font-weight:700">${m.name} <span style="font-size:10px;color:var(--muted)">${m.type}</span>${m.regNo||m.chassisNo?`<span style="font-size:10px;color:var(--cyan);margin-left:6px">${m.regNo||m.chassisNo}</span>`:''}</div>
               <div style="font-size:11px;color:var(--orange)">📁 ${m.project||'Unassigned'}</div>
               ${m.regNo?`<div style="font-size:10px;color:var(--muted)">${m.regNo}</div>`:''}
             </div>
@@ -5362,7 +5362,7 @@ function renderMachLogbook() {
   let html = `<div class="flex gap-2 mb-3">
     <select id="log-mach-sel" onchange="renderCurrentTab()" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
       <option value="">All Machines</option>
-      ${machines.map(m=>`<option value="${m.id}"${m.id===selMach?' selected':''}>${m.name}${m.project?' — '+m.project:''}</option>`).join('')}
+      ${machines.map(m=>`<option value="${m.id}"${m.id===selMach?' selected':''}>${m.name}${m.regNo||m.chassisNo?' · '+(m.regNo||m.chassisNo):''}${m.project?' — '+m.project:''}</option>`).join('')}
     </select>
   </div>`;
 
@@ -5580,7 +5580,7 @@ function openAddMachLog() {
       <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
     </div>
     <div class="field-group"><label>Machine *</label>
-      <select id="lf-mach">${machines.map(m=>`<option value="${m.id}">${m.name} (${m.type})</option>`).join('')}</select>
+      <select id="lf-mach">${machines.map(m=>`<option value="${m.id}">${m.name} (${m.type})${m.regNo||m.chassisNo?' · '+(m.regNo||m.chassisNo):''}</option>`).join('')}</select>
     </div>
     <div class="form-row">
       <div class="field-group"><label>Date *</label><input type="date" id="lf-date" value="${today}"></div>
@@ -5633,7 +5633,7 @@ function openAddService() {
       <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
     </div>
     <div class="field-group"><label>Machine *</label>
-      <select id="sf-mach">${machines.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}</select>
+      <select id="sf-mach">${machines.map(m=>`<option value="${m.id}">${m.name} (${m.type})${m.regNo||m.chassisNo?' · '+(m.regNo||m.chassisNo):''}</option>`).join('')}</select>
     </div>
     <div class="form-row">
       <div class="field-group"><label>Service Date *</label><input type="date" id="sf-date" value="${today}"></div>
@@ -5686,7 +5686,7 @@ function openAddIssue() {
       <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕</button>
     </div>
     <div class="field-group"><label>Machine *</label>
-      <select id="if-mach">${machines.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}</select>
+      <select id="if-mach">${machines.map(m=>`<option value="${m.id}">${m.name} (${m.type})${m.regNo||m.chassisNo?' · '+(m.regNo||m.chassisNo):''}</option>`).join('')}</select>
     </div>
     <div class="field-group"><label>Date</label><input type="date" id="if-date" value="${today}"></div>
     <div class="field-group"><label>Issue Description *</label><textarea id="if-desc" rows="3" placeholder="Describe the problem..."></textarea></div>
