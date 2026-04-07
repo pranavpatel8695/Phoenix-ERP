@@ -2576,6 +2576,7 @@ function applyReportDateFilter() {
 
 
 function exportToPDF() {
+  try {
   const module  = document.getElementById('exp-module')?.value || 'pipeline';
   const project = document.getElementById('exp-project')?.value || '';
   const from    = document.getElementById('exp-from')?.value   || '';
@@ -2722,6 +2723,15 @@ function exportToPDF() {
     });
   }
 
+  // Summary stats for header
+  const excM  = reports.filter(r=>r.type==='excavation').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+  const pipeM = reports.filter(r=>r.type==='pipe').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+  const refM  = reports.filter(r=>r.type==='refill').reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
+  const valC  = reports.filter(r=>r.type==='valve').length;
+  const chamC = reports.filter(r=>r.type==='chamber').length;
+  const strC  = reports.filter(r=>r.type==='structure').length;
+  const fitC  = reports.filter(r=>r.type==='fitting').length;
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>${moduleLabel} Report</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2773,6 +2783,10 @@ function exportToPDF() {
   // Cross-platform export: open in new tab (works on desktop) OR show inline preview
   // Show report in full-screen overlay (works on all devices including iOS)
   showReportPreview(html, `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from||'all'}_${to||'all'}.html`);
+  } catch(err) {
+    showToast('⚠️ Export error: ' + err.message);
+    console.error('exportToPDF error:', err);
+  }
 }
 
 function showReportPreview(html, filename) {
