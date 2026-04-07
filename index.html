@@ -2771,19 +2771,56 @@ function exportToPDF() {
   </div>
   </body></html>`;
 
+  // Cross-platform export: open in new tab (works on desktop) OR show inline preview
   const filename = `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from||'all'}_${to||'all'}.html`;
-  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-  showToast('✅ Report downloaded — open file and Print to save as PDF');
+  
+  // Try blob URL first (works on desktop Chrome/Firefox)
+  try {
+    const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    // Try opening in new tab
+    const newTab = window.open(url, '_blank');
+    if (newTab) {
+      showToast('✅ Report opened — use Print to save as PDF');
+      setTimeout(()=>URL.revokeObjectURL(url), 60000);
+      return;
+    }
+    // If popup blocked, download
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 2000);
+    showToast('✅ Report downloaded');
+  } catch(e) {
+    // Fallback: show in overlay inside the app
+    showReportPreview(html, filename);
+  }
 }
 
+function showReportPreview(html, filename) {
+  // Full-screen overlay with iframe — works on all browsers including iOS
+  let overlay = document.getElementById('_reportOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = '_reportOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99999;display:flex;flex-direction:column';
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML = `
+    <div style="background:#1e1e28;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <button onclick="document.getElementById('_reportOverlay').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer">✕ Close</button>
+      <span style="color:#fff;font-size:13px;font-weight:600;flex:1">${filename}</span>
+      <button onclick="document.getElementById('_reportFrame').contentWindow.print()" style="background:#0A84FF;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer">🖨️ Print / PDF</button>
+    </div>
+    <iframe id="_reportFrame" style="flex:1;border:none;width:100%;height:100%"></iframe>`;
+  overlay.style.display = 'flex';
+  const frame = overlay.querySelector('#_reportFrame');
+  frame.onload = () => {};
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+}
+
+// ── REPORT EXPORT HELPERS ──
 function buildTypeFilterBtns(module) {
   const types = module === 'pipeline'
     ? [['all','All','var(--muted)'],['excavation','⛏️ Excavation','var(--orange)'],['pipe','🔩 Pipe Laying','var(--blue)'],['refill','🪣 Refilling','var(--green)'],['valve','🔧 Valve','var(--red)'],['chamber','🏛️ Chamber','var(--orange)'],['fitting','🔗 Fitting','var(--cyan)'],['structure','🏗️ Concrete','var(--purple)']]
