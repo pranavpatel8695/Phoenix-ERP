@@ -3846,7 +3846,24 @@ function addProject() {
 }
 
 function deleteProject(name) {
-  showConfirm('Delete Project', `Delete "${name}"? All reports, routes, machinery, store items, attendance and user assignments for this project will be permanently deleted.`, () => {
+  const reports    = getReports().filter(r => r.project === name);
+  const routes     = (getRoutes()[name] || []).length;
+  const machines   = getMachinery().filter(m => m.project === name).length;
+  const storeItems = getStoreItems().filter(i => i.project === name).length;
+  const storeTxns  = getStoreTxns().filter(t => t.project === name || t.fromProject === name).length;
+  const attendance = getAttendance().filter(a => a.project === name).length;
+  const users      = Object.values(getUsers()).filter(u => (u.projects||[]).includes(name)).length;
+
+  const msg = `⚠️ Permanently delete "${name}"?\n\nThe following will be deleted:\n`
+    + `• ${routes} Route(s)\n`
+    + `• ${reports.length} Report(s) (Pipeline + Civil)\n`
+    + `• ${machines} Machine(s)\n`
+    + `• ${storeItems} Store Item(s)\n`
+    + `• ${storeTxns} Store Transaction(s)\n`
+    + `• ${attendance} Attendance Record(s)\n`
+    + `• Removed from ${users} User Assignment(s)\n\nThis cannot be undone.`;
+
+  showConfirm('Delete Project', msg, () => {
     // 1. Remove project from list
     saveProjects(getProjects().filter(x => x !== name));
 
@@ -3857,11 +3874,11 @@ function deleteProject(name) {
     saveReports(getReports().filter(r => r.project !== name));
 
     // 4. Remove machinery assigned to this project
+    const remainingMachIds = new Set(getMachinery().filter(m => m.project !== name).map(m => m.id));
     saveMachinery(getMachinery().filter(m => m.project !== name));
-    saveMachLogs(getMachLogs().filter(l => {
-      const mach = getMachinery().find(m => m.id === l.machineId);
-      return mach; // keep logs only if machine still exists
-    }));
+    saveMachLogs(getMachLogs().filter(l => remainingMachIds.has(l.machineId)));
+    saveMachService(getMachService().filter(l => remainingMachIds.has(l.machineId)));
+    saveMachIssues(getMachIssues().filter(l => remainingMachIds.has(l.machineId)));
 
     // 5. Remove store items & transactions
     saveStoreItems(getStoreItems().filter(i => i.project !== name));
@@ -3871,13 +3888,13 @@ function deleteProject(name) {
     saveAttendance(getAttendance().filter(a => a.project !== name));
 
     // 7. Remove project from user assignments
-    const users = getUsers();
-    Object.keys(users).forEach(u => {
-      if (users[u].projects) {
-        users[u].projects = users[u].projects.filter(p => p !== name);
+    const allUsers = getUsers();
+    Object.keys(allUsers).forEach(u => {
+      if (allUsers[u].projects) {
+        allUsers[u].projects = allUsers[u].projects.filter(p => p !== name);
       }
     });
-    saveUsers(users);
+    saveUsers(allUsers);
 
     // 8. Remove assignments
     const asgn = getAssignments();
