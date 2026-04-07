@@ -2741,16 +2741,9 @@ function exportToPDF() {
     body { font-family:'Noto Serif',Cambria,Georgia,serif; background:#f0f2f5; color:#1a1a2e; }
     .page { max-width:960px; margin:0 auto; background:#fff; }
     table { border-collapse:collapse; }
-    @media print { body{background:#fff;} .no-print{display:none;} }
-    .no-print { padding:16px; text-align:center; background:#f0f2f5; }
-    .no-print button { padding:10px 24px; background:#0A84FF; color:#fff; border:none; border-radius:8px; font-size:14px; cursor:pointer; margin:4px; }
-    .no-print button.sec { background:#666; }
+    @media print { body{background:#fff;} }
   </style>
   </head><body>
-  <div class="no-print">
-    <button onclick="window.print()">🖨️ Print / Save as PDF</button>
-    <button class="sec" onclick="window.close()">✕ Close</button>
-  </div>
   <div class="page">
     <div style="background:#1e1e28;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
       <div>
@@ -5154,10 +5147,6 @@ function exportMonthlyAttendance(targetUser) {
   <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Noto Serif',serif;background:#f0f2f5}
   .page{max-width:900px;margin:0 auto;background:#fff}
   @media print{body{background:#fff}.no-print{display:none}}</style></head><body>
-  <div class="no-print" style="padding:12px;text-align:center;background:#f0f2f5">
-    <button onclick="window.print()" style="padding:8px 20px;background:#0A84FF;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨️ Print / Save PDF</button>
-    <button onclick="window.close()" style="padding:8px 20px;background:#666;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-left:8px">✕ Close</button>
-  </div>
   <div class="page">
     <div style="background:#1e1e28;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">
       <div><div style="color:#E8192C;font-size:18px;font-weight:700">Phoenix ERP</div><div style="color:#aaa;font-size:11px">Attendance Module</div></div>
