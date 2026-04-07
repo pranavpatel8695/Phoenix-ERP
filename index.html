@@ -3846,13 +3846,47 @@ function addProject() {
 }
 
 function deleteProject(name) {
-  showConfirm('Delete Project', `Delete "${name}"? All routes will be removed.`, () => {
-    const p = getProjects().filter(x => x !== name);
-    saveProjects(p);
+  showConfirm('Delete Project', `Delete "${name}"? All reports, routes, machinery, store items, attendance and user assignments for this project will be permanently deleted.`, () => {
+    // 1. Remove project from list
+    saveProjects(getProjects().filter(x => x !== name));
+
+    // 2. Remove routes
     const r = getRoutes(); delete r[name]; saveRoutes(r);
+
+    // 3. Remove reports
+    saveReports(getReports().filter(r => r.project !== name));
+
+    // 4. Remove machinery assigned to this project
+    saveMachinery(getMachinery().filter(m => m.project !== name));
+    saveMachLogs(getMachLogs().filter(l => {
+      const mach = getMachinery().find(m => m.id === l.machineId);
+      return mach; // keep logs only if machine still exists
+    }));
+
+    // 5. Remove store items & transactions
+    saveStoreItems(getStoreItems().filter(i => i.project !== name));
+    saveStoreTxns(getStoreTxns().filter(t => t.project !== name && t.fromProject !== name));
+
+    // 6. Remove attendance records for this project
+    saveAttendance(getAttendance().filter(a => a.project !== name));
+
+    // 7. Remove project from user assignments
+    const users = getUsers();
+    Object.keys(users).forEach(u => {
+      if (users[u].projects) {
+        users[u].projects = users[u].projects.filter(p => p !== name);
+      }
+    });
+    saveUsers(users);
+
+    // 8. Remove assignments
+    const asgn = getAssignments();
+    delete asgn[name];
+    saveAssignments(asgn);
+
     pushConfig();
     document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
-    showToast('🗑️ Project deleted');
+    showToast('🗑️ Project and all related data deleted');
   });
 }
 
