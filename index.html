@@ -2771,21 +2771,17 @@ function exportToPDF() {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-  } else {
-    // Popup blocked — download as HTML file
-    const blob = new Blob([html], {type:'text/html;charset=utf-8'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from||'all'}_${to||'all'}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast('✅ Report downloaded as HTML — open and print to PDF');
-  }
+  const filename = `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from||'all'}_${to||'all'}.html`;
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+  showToast('✅ Report downloaded — open file and Print to save as PDF');
 }
 
 function buildTypeFilterBtns(module) {
@@ -5140,9 +5136,15 @@ function exportMonthlyAttendance(targetUser) {
     </div>
   </div></body></html>`;
 
-  const win = window.open('','_blank');
-  win.document.write(html);
-  win.document.close();
+  const _attBlob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const _attA = document.createElement('a');
+  _attA.href = URL.createObjectURL(_attBlob);
+  _attA.download = 'PhoenixERP_Attendance_Report.html';
+  _attA.target = '_blank';
+  document.body.appendChild(_attA);
+  _attA.click();
+  setTimeout(()=>{ document.body.removeChild(_attA); }, 1000);
+  showToast('✅ Attendance report downloaded');
 }
 
 // ── MACHINERY MODULE ─────────────────────────────────────────
@@ -5339,8 +5341,7 @@ function exportMachReport(selMonth, selProj) {
     return `<tr style="background:${bg}"><td style="${tdS}">${l.date}</td><td style="${tdS}">${m?.name||'?'}</td><td style="${tdS}">${l.operator||'—'}</td><td style="${tdS};text-align:center">${l.hours||0}</td><td style="${tdS};text-align:center">${l.fuel||0}</td><td style="${tdS}">${l.chainage||'—'}</td><td style="${tdS}">${l.workDone||''}</td></tr>`;
   }).join('');
 
-  const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Machinery Report ${monthName}</title>
+  const _machHtml=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Machinery Report ${monthName}</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
   <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Noto Serif',serif;background:#f0f2f5}.page{max-width:960px;margin:0 auto;background:#fff}
   @media print{body{background:#fff}.no-print{display:none}}</style></head><body>
@@ -5372,8 +5373,8 @@ function exportMachReport(selMonth, selProj) {
         <tbody>${logRows}</tbody>
       </table>
     </div>
-  </div></body></html>`);
-  w.document.close();
+  </div></body></html>`;
+  const _ma=document.createElement('a');_ma.href=URL.createObjectURL(new Blob([_machHtml],{type:'text/html;charset=utf-8'}));_ma.download='PhoenixERP_Machinery_Report.html';_ma.target='_blank';document.body.appendChild(_ma);_ma.click();setTimeout(()=>{document.body.removeChild(_ma);},1000);showToast('✅ Machinery report downloaded');
 }
 
 // ── LOGBOOK ──
