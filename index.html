@@ -2772,52 +2772,33 @@ function exportToPDF() {
   </body></html>`;
 
   // Cross-platform export: open in new tab (works on desktop) OR show inline preview
-  const filename = `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from||'all'}_${to||'all'}.html`;
-  
-  // Try blob URL first (works on desktop Chrome/Firefox)
-  try {
-    const blob = new Blob([html], {type:'text/html;charset=utf-8'});
-    const url = URL.createObjectURL(blob);
-    // Try opening in new tab
-    const newTab = window.open(url, '_blank');
-    if (newTab) {
-      showToast('✅ Report opened — use Print to save as PDF');
-      setTimeout(()=>URL.revokeObjectURL(url), 60000);
-      return;
-    }
-    // If popup blocked, download
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 2000);
-    showToast('✅ Report downloaded');
-  } catch(e) {
-    // Fallback: show in overlay inside the app
-    showReportPreview(html, filename);
-  }
+  // Show report in full-screen overlay (works on all devices including iOS)
+  showReportPreview(html, `PhoenixERP_${moduleLabel.replace(/ /g,'_')}_${from||'all'}_${to||'all'}.html`);
 }
 
 function showReportPreview(html, filename) {
-  // Full-screen overlay with iframe — works on all browsers including iOS
-  let overlay = document.getElementById('_reportOverlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = '_reportOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99999;display:flex;flex-direction:column';
-    document.body.appendChild(overlay);
-  }
+  // Remove existing overlay if any
+  const existing = document.getElementById('_reportOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = '_reportOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;background:#f0f2f5';
   overlay.innerHTML = `
     <div style="background:#1e1e28;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
-      <button onclick="document.getElementById('_reportOverlay').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer">✕ Close</button>
-      <span style="color:#fff;font-size:13px;font-weight:600;flex:1">${filename}</span>
-      <button onclick="document.getElementById('_reportFrame').contentWindow.print()" style="background:#0A84FF;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer">🖨️ Print / PDF</button>
+      <button onclick="document.getElementById('_reportOverlay').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit">✕ Close</button>
+      <span style="color:#fff;font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</span>
+      <button onclick="document.getElementById('_reportFrame').contentWindow.print()" style="background:#0A84FF;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">🖨️ Print / PDF</button>
     </div>
-    <iframe id="_reportFrame" style="flex:1;border:none;width:100%;height:100%"></iframe>`;
-  overlay.style.display = 'flex';
-  const frame = overlay.querySelector('#_reportFrame');
-  frame.onload = () => {};
+    <iframe id="_reportFrame" style="flex:1;border:none;width:100%;background:#fff"></iframe>`;
+  document.body.appendChild(overlay);
+
+  // Write HTML into iframe
+  const frame = document.getElementById('_reportFrame');
   const doc = frame.contentDocument || frame.contentWindow.document;
-  doc.open(); doc.write(html); doc.close();
+  doc.open();
+  doc.write(html);
+  doc.close();
 }
 
 // ── REPORT EXPORT HELPERS ──
@@ -5173,15 +5154,7 @@ function exportMonthlyAttendance(targetUser) {
     </div>
   </div></body></html>`;
 
-  const _attBlob = new Blob([html], {type:'text/html;charset=utf-8'});
-  const _attA = document.createElement('a');
-  _attA.href = URL.createObjectURL(_attBlob);
-  _attA.download = 'PhoenixERP_Attendance_Report.html';
-  _attA.target = '_blank';
-  document.body.appendChild(_attA);
-  _attA.click();
-  setTimeout(()=>{ document.body.removeChild(_attA); }, 1000);
-  showToast('✅ Attendance report downloaded');
+  showReportPreview(html, 'PhoenixERP_Attendance_Report.html');
 }
 
 // ── MACHINERY MODULE ─────────────────────────────────────────
@@ -5411,7 +5384,7 @@ function exportMachReport(selMonth, selProj) {
       </table>
     </div>
   </div></body></html>`;
-  const _ma=document.createElement('a');_ma.href=URL.createObjectURL(new Blob([_machHtml],{type:'text/html;charset=utf-8'}));_ma.download='PhoenixERP_Machinery_Report.html';_ma.target='_blank';document.body.appendChild(_ma);_ma.click();setTimeout(()=>{document.body.removeChild(_ma);},1000);showToast('✅ Machinery report downloaded');
+  showReportPreview(_machHtml, `PhoenixERP_Machinery_${monthName}.html`);
 }
 
 // ── LOGBOOK ──
