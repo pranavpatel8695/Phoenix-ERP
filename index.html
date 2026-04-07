@@ -2592,7 +2592,6 @@ function exportToPDF() {
   reports.sort((a,b) => (a.date||'').localeCompare(b.date||''));
 
   if (!reports.length) { showToast('⚠️ No reports in selected range'); return; }
-  closeFormModal();
 
   const moduleLabel = module==='pipeline'?'Pipeline Work':module==='civil'?'Civil Work':'All Modules';
   const projLabel   = project || 'All Projects';
@@ -2777,28 +2776,39 @@ function exportToPDF() {
 }
 
 function showReportPreview(html, filename) {
-  // Remove existing overlay if any
   const existing = document.getElementById('_reportOverlay');
   if (existing) existing.remove();
 
   const overlay = document.createElement('div');
   overlay.id = '_reportOverlay';
   overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;background:#f0f2f5';
-  overlay.innerHTML = `
-    <div style="background:#1e1e28;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
-      <button onclick="document.getElementById('_reportOverlay').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit">✕ Close</button>
-      <span style="color:#fff;font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</span>
-      <button onclick="document.getElementById('_reportFrame').contentWindow.print()" style="background:#0A84FF;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">🖨️ Print / PDF</button>
-    </div>
-    <iframe id="_reportFrame" style="flex:1;border:none;width:100%;background:#fff"></iframe>`;
   document.body.appendChild(overlay);
 
-  // Write HTML into iframe
-  const frame = document.getElementById('_reportFrame');
-  const doc = frame.contentDocument || frame.contentWindow.document;
-  doc.open();
-  doc.write(html);
-  doc.close();
+  // Toolbar
+  const bar = document.createElement('div');
+  bar.style.cssText = 'background:#1e1e28;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0';
+  bar.innerHTML = `
+    <button style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit">✕ Close</button>
+    <span style="color:#fff;font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</span>
+    <button id="_printBtn" style="background:#0A84FF;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">🖨️ Print / PDF</button>`;
+  bar.querySelector('button').onclick = () => overlay.remove();
+  overlay.appendChild(bar);
+
+  // Use srcdoc — avoids CSP issues completely
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'flex:1;border:none;width:100%;background:#fff';
+  frame.srcdoc = html;
+  overlay.appendChild(frame);
+
+  // Print button
+  bar.querySelector('#_printBtn').onclick = () => {
+    try { frame.contentWindow.print(); }
+    catch(e) {
+      // iOS fallback — open as data URI
+      const dataUri = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+      window.open(dataUri, '_blank');
+    }
+  };
 }
 
 // ── REPORT EXPORT HELPERS ──
