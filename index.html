@@ -545,7 +545,6 @@ async function doSync() {
 }
 
 async function pullConfig(force=false) {
-  if (_pushing && !force) return; // don't overwrite local data while pushing
   // Fetch both config and live data documents in parallel
   const [configRes, liveRes] = await Promise.all([
     aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`),
@@ -586,43 +585,35 @@ async function pullConfig(force=false) {
         const local = getUsers();
         const adminPass = local.admin?.pass || 'admin';
         const deleted = LS.get('phx_deleted_users', []);
-        const pendingUsers = LS.get('phx_pending_users', []);
 
-        // Start with local as base
-        const merged = { ...local };
+        // RULE: Any user in local storage that is NOT in phx_deleted_users MUST survive.
+        // Remote can add/update users but NEVER remove local users.
+        const merged = {};
 
-        // Apply remote users (add new ones, update existing non-pending ones)
+        // 1. Start with ALL local users (they are always kept unless deleted)
+        Object.keys(local).forEach(u => {
+          if (!deleted.includes(u)) merged[u] = local[u];
+        });
+
+        // 2. Add/update from remote (remote updates name/role/projects)
         Object.keys(d.users).forEach(u => {
-          if (deleted.includes(u) || u === 'admin') return;
-          if (pendingUsers.includes(u)) {
-            // This pending user is now confirmed in remote — clear its pending flag
-            const still = LS.get('phx_pending_users', []).filter(x => x !== u);
-            LS.set('phx_pending_users', still);
-            // Keep local version (it has latest data including _localOnly flag to remove)
-            merged[u] = { ...d.users[u] };
-            if (!merged[u].projects?.length && local[u]?.projects?.length) {
-              merged[u].projects = local[u].projects;
-            }
+          if (deleted.includes(u)) return;
+          if (u === 'admin') return;
+          const rem = d.users[u];
+          if (!merged[u]) {
+            // User exists on remote but not local — add it
+            merged[u] = rem;
           } else {
-            // Regular user — remote is source of truth
-            merged[u] = { ...d.users[u] };
-            if (!merged[u].projects?.length && local[u]?.projects?.length) {
-              merged[u].projects = local[u].projects;
+            // User exists both places — take remote data but keep local projects if remote has none
+            const localProjects = merged[u].projects;
+            merged[u] = { ...rem };
+            if (!merged[u].projects?.length && localProjects?.length) {
+              merged[u].projects = localProjects;
             }
           }
         });
 
-        // CRITICAL: pending users are NEVER removed by pull
-        pendingUsers.forEach(u => {
-          if (!deleted.includes(u) && local[u]) {
-            merged[u] = local[u]; // force restore
-          }
-        });
-
-        // Remove deleted users
-        deleted.forEach(u => { delete merged[u]; });
-
-        // Preserve admin password
+        // 3. Admin always gets local password
         merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
 
         saveUsers(merged);
