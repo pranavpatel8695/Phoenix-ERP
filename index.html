@@ -585,15 +585,24 @@ async function pullConfig() {
         const local = getUsers();
         const adminPass = local.admin?.pass || 'admin';
         const deleted = LS.get('phx_deleted_users', []);
-        Object.keys(d.users).forEach(u => {
-          if (d.users[u].role !== 'admin' && !deleted.includes(u)) {
-            const localProjects = local[u]?.projects;
-            local[u] = d.users[u];
-            if (localProjects?.length && !local[u].projects?.length) local[u].projects = localProjects;
+
+        // Full replace: start fresh from remote, keep admin password
+        const merged = { ...d.users };
+
+        // Remove deleted users from merged set
+        deleted.forEach(u => { delete merged[u]; });
+
+        // Always preserve admin with local password
+        merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
+
+        // Preserve local-only project assignments if remote has none
+        Object.keys(merged).forEach(u => {
+          if (!merged[u].projects?.length && local[u]?.projects?.length) {
+            merged[u].projects = local[u].projects;
           }
         });
-        local.admin = { ...local.admin, pass: adminPass };
-        saveUsers(local);
+
+        saveUsers(merged);
       }
     } catch(e) { console.warn('pullConfig configDoc error:', e); }
   }
@@ -689,14 +698,21 @@ async function pullConfig() {
 async function pushConfig() {
   // Split into two documents to avoid 65KB limit
   // Doc 1: Static config (users, projects, routes, specials)
+  const deletedUsers = LS.get('phx_deleted_users', []);
+  const allUsers = getUsers();
+  // Never push deleted users to Appwrite
+  const cleanUsers = Object.fromEntries(
+    Object.entries(allUsers).filter(([u]) => !deletedUsers.includes(u))
+  );
+
   const configData = {
     projects:     getProjects(),
     routes:       getRoutes(),
     assignments:  getAssignments(),
     specials:     getSpecials(),
     valveSpecials: getValveSpecials(),
-    users:        getUsers(),
-    deletedUsers: LS.get('phx_deleted_users', []),
+    users:        cleanUsers,
+    deletedUsers,
     updatedAt:    Date.now()
   };
 
@@ -961,7 +977,10 @@ function renderCurrentTab() {
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
-    case 'users':    main.innerHTML = renderUsersTab(); break;
+    case 'users':
+      main.innerHTML = renderUsersTab();
+      pullConfig().then(()=>{ if(activeTab==='users') main.innerHTML=renderUsersTab(); });
+      break;
   }
   if (activeTab === 'settings') initSettings();
 }
