@@ -587,25 +587,30 @@ async function pullConfig(force=false) {
         const adminPass = local.admin?.pass || 'admin';
         const deleted = LS.get('phx_deleted_users', []);
 
-        // Start with remote users (source of truth for updates)
-        const merged = { ...d.users };
+        // Merge strategy: start with LOCAL as base, update from remote only if remote is newer
+        const merged = { ...local };
 
-        // Remove deleted users
+        // Apply remote users (update existing, add new from remote)
+        Object.keys(d.users).forEach(u => {
+          if (deleted.includes(u)) return; // skip deleted
+          if (u === 'admin') return; // handle admin separately
+          const remoteUser = d.users[u];
+          const localUser  = local[u];
+          if (!localUser) {
+            // New user from remote — add it
+            merged[u] = remoteUser;
+          } else {
+            // Update from remote — remote wins for role/name, but keep local password if same user
+            merged[u] = { ...remoteUser };
+            // Preserve local project assignments if remote has none
+            if (!merged[u].projects?.length && localUser.projects?.length) {
+              merged[u].projects = localUser.projects;
+            }
+          }
+        });
+
+        // Remove explicitly deleted users
         deleted.forEach(u => { delete merged[u]; });
-
-        // Keep any local users not yet pushed to Appwrite (newly created)
-        Object.keys(local).forEach(u => {
-          if (!merged[u] && !deleted.includes(u) && u !== 'admin') {
-            merged[u] = local[u]; // preserve locally-created user
-          }
-        });
-
-        // Preserve local project assignments if remote has none
-        Object.keys(merged).forEach(u => {
-          if (!merged[u].projects?.length && local[u]?.projects?.length) {
-            merged[u].projects = local[u].projects;
-          }
-        });
 
         // Always preserve admin with local password
         merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
@@ -4585,7 +4590,7 @@ async function saveUserUM() {
 
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
-  users[user] = { role, pass, name: name.trim(), projects: projs };
+  users[user] = { role, pass, name: name.trim(), projects: projs, createdAt: new Date().toISOString() };
   saveUsers(users);
 
   // Push to Appwrite and confirm
