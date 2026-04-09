@@ -545,6 +545,7 @@ async function doSync() {
 }
 
 async function pullConfig() {
+  if (_pushing) return; // don't overwrite local data while pushing
   // Fetch both config and live data documents in parallel
   const [configRes, liveRes] = await Promise.all([
     aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`),
@@ -702,7 +703,10 @@ async function pullConfig() {
   }
 }
 
+let _pushing = false;
+
 async function pushConfig() {
+  _pushing = true;
   // Split into two documents to avoid 65KB limit
   // Doc 1: Static config (users, projects, routes, specials)
   const deletedUsers = LS.get('phx_deleted_users', []);
@@ -778,6 +782,7 @@ async function pushConfig() {
     save('adminData', configVal),
     save('liveData',  liveVal)
   ]);
+  _pushing = false;
 }
 
 async function saveReportToAW(r) {
@@ -986,7 +991,7 @@ function renderCurrentTab() {
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':
       main.innerHTML = renderUsersTab();
-      pullConfig().then(()=>{ if(activeTab==='users') main.innerHTML=renderUsersTab(); });
+      setTimeout(() => pullConfig().then(()=>{ if(activeTab==='users') main.innerHTML=renderUsersTab(); }), 3000);
       break;
   }
   if (activeTab === 'settings') initSettings();
