@@ -858,18 +858,12 @@ async function doLogin() {
 
   if (!user || !pass) { showLoginError('Enter username and password'); return; }
 
-  let users = getUsers();
+  showLoader('Signing in…');
 
-  // Check local first
-  if (users[user] && users[user].pass === pass) {
-    await loginSuccess(user, users[user]);
-    return;
-  }
+  // Always pull latest users from Appwrite first (catches new users added from other devices)
+  try { await pullConfig(); } catch(e) {}
 
-  // Try pulling from Appwrite
-  showLoader('Checking credentials…');
-  await pullConfig();
-  users = getUsers();
+  const users = getUsers();
   if (users[user] && users[user].pass === pass) {
     await loginSuccess(user, users[user]);
   } else {
