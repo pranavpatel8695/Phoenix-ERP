@@ -334,7 +334,7 @@ let _editId = null;
 // ── LOCAL STORAGE HELPERS ───────────────────────────────────
 const LS = {
   get: (k, def=[]) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch(e) { return def; } },
-  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) { console.error('LS.set failed:', k, e); if(e.name==='QuotaExceededError') showToast('⚠️ Storage full! Clear old data.'); } },
   del: (k) => localStorage.removeItem(k)
 };
 
@@ -544,8 +544,8 @@ async function doSync() {
   }
 }
 
-async function pullConfig() {
-  if (_pushing) return; // don't overwrite local data while pushing
+async function pullConfig(force=false) {
+  if (_pushing && !force) return; // don't overwrite local data while pushing
   // Fetch both config and live data documents in parallel
   const [configRes, liveRes] = await Promise.all([
     aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`),
@@ -778,11 +778,14 @@ async function pushConfig() {
     });
   };
 
-  await Promise.all([
-    save('adminData', configVal),
-    save('liveData',  liveVal)
-  ]);
-  _pushing = false;
+  try {
+    await Promise.all([
+      save('adminData', configVal),
+      save('liveData',  liveVal)
+    ]);
+  } finally {
+    _pushing = false;
+  }
 }
 
 async function saveReportToAW(r) {
@@ -880,7 +883,7 @@ async function doLogin() {
 
   // Not found locally — pull from Appwrite (handles users created on other devices)
   showLoader('Signing in…');
-  try { await pullConfig(); } catch(e) {}
+  try { await pullConfig(true); } catch(e) {}
   const freshUsers = getUsers();
   if (freshUsers[user] && freshUsers[user].pass === pass) {
     await loginSuccess(user, freshUsers[user]);
