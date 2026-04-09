@@ -4622,8 +4622,16 @@ async function saveUserUM() {
     </div>`;
   document.getElementById('formModal').classList.remove('hidden');
   renderCurrentTab();
+  // Switch to the new user's role tab so they're visible immediately
+  setTimeout(() => {
+    const tabEl = document.querySelector(`#userMgmtTabs .tab-item`);
+    if (tabEl) {
+      // Find tab matching this role
+      const allTabs = document.querySelectorAll('#userMgmtTabs .tab-item');
+      allTabs.forEach(t => { if (t.getAttribute('onclick')?.includes(`'${role}'`)) t.click(); });
+    }
+  }, 150);
 }
-
 function showUserCredentials(username) {
   const u = getUsers()[username];
   if (!u) return;
