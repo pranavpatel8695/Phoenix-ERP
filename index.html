@@ -588,42 +588,41 @@ async function pullConfig(force=false) {
         const deleted = LS.get('phx_deleted_users', []);
         const pendingUsers = LS.get('phx_pending_users', []);
 
-        // Merge strategy: start with LOCAL as base, update from remote only if remote is newer
+        // Start with local as base
         const merged = { ...local };
 
-        // Apply remote users (update existing, add new from remote)
+        // Apply remote users (add new ones, update existing non-pending ones)
         Object.keys(d.users).forEach(u => {
-          if (deleted.includes(u)) return;
-          if (u === 'admin') return;
-          const remoteUser = d.users[u];
-          const localUser  = local[u];
-          if (!localUser) {
-            merged[u] = remoteUser;
-          } else {
-            merged[u] = { ...remoteUser };
-            if (!merged[u].projects?.length && localUser.projects?.length) {
-              merged[u].projects = localUser.projects;
-            }
-          }
-          // Clear pending flag once confirmed in remote
+          if (deleted.includes(u) || u === 'admin') return;
           if (pendingUsers.includes(u)) {
+            // This pending user is now confirmed in remote — clear its pending flag
             const still = LS.get('phx_pending_users', []).filter(x => x !== u);
             LS.set('phx_pending_users', still);
-            delete merged[u]._localOnly;
+            // Keep local version (it has latest data including _localOnly flag to remove)
+            merged[u] = { ...d.users[u] };
+            if (!merged[u].projects?.length && local[u]?.projects?.length) {
+              merged[u].projects = local[u].projects;
+            }
+          } else {
+            // Regular user — remote is source of truth
+            merged[u] = { ...d.users[u] };
+            if (!merged[u].projects?.length && local[u]?.projects?.length) {
+              merged[u].projects = local[u].projects;
+            }
           }
         });
 
-        // Always keep pending (not-yet-pushed) local users — never remove them
+        // CRITICAL: pending users are NEVER removed by pull
         pendingUsers.forEach(u => {
           if (!deleted.includes(u) && local[u]) {
-            merged[u] = local[u]; // force keep
+            merged[u] = local[u]; // force restore
           }
         });
 
-        // Remove explicitly deleted users
+        // Remove deleted users
         deleted.forEach(u => { delete merged[u]; });
 
-        // Always preserve admin with local password
+        // Preserve admin password
         merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
 
         saveUsers(merged);
@@ -799,8 +798,14 @@ async function pushConfig() {
       save('adminData', configVal),
       save('liveData',  liveVal)
     ]);
-    // Clear pending users flag — they're now in Appwrite
-    LS.set('phx_pending_users', []);
+    // Only clear pending users flag after confirmed successful push
+    const stillPending = LS.get('phx_pending_users', []);
+    if (stillPending.length) {
+      // Verify these users are in the data we just pushed
+      const pushedUsernames = Object.keys(cleanUsers);
+      const remaining = stillPending.filter(u => !pushedUsernames.includes(u));
+      LS.set('phx_pending_users', remaining);
+    }
   } finally {
     _pushing = false;
   }
@@ -4129,8 +4134,10 @@ function saveAccount() {
   if (!name||!user||!pass) { showToast('Fill all fields'); return; }
   const users = getUsers();
   if (users[user]) { showToast('Username already exists'); return; }
-  users[user] = { role, pass, name, projects: projs };
+  users[user] = { role, pass, name, projects: projs, createdAt: new Date().toISOString(), _localOnly: true };
   saveUsers(users);
+  const pending = LS.get('phx_pending_users', []);
+  if (!pending.includes(user)) { pending.push(user); LS.set('phx_pending_users', pending); }
   pushConfig();
   closeFormModal();
   document.getElementById('settingsContent').innerHTML = renderSettingsAccounts();
