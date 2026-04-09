@@ -766,7 +766,37 @@ async function pushConfig() {
     return v.slice(0, 65000);
   };
 
-  const configVal  = JSON.stringify(configData).slice(0, 65000);
+  // Ensure configData fits in 65KB - trim routes if needed (they can be large)
+  let configVal = JSON.stringify(configData);
+  if (configVal.length > 64000) {
+    // Routes can be large - strip pipe specs to save space
+    const slimRoutes = {};
+    Object.keys(configData.routes||{}).forEach(proj => {
+      slimRoutes[proj] = (configData.routes[proj]||[]).map(r=>({id:r.id,name:r.name,length:r.length}));
+    });
+    configData.routes = slimRoutes;
+    configVal = JSON.stringify(configData);
+  }
+  if (configVal.length > 64000) {
+    // Still too big - remove specials
+    configData.specials = {};
+    configData.valveSpecials = {};
+    configVal = JSON.stringify(configData);
+  }
+  // NEVER truncate - truncated JSON is invalid and breaks everything
+  // If still too big, at minimum always keep users + projects
+  if (configVal.length > 64000) {
+    configVal = JSON.stringify({
+      projects: configData.projects,
+      users:    configData.users,
+      deletedUsers: configData.deletedUsers,
+      routes:   {},
+      assignments: configData.assignments,
+      specials: {},
+      valveSpecials: {},
+      updatedAt: configData.updatedAt
+    });
+  }
   let liveVal = JSON.stringify(liveData);
   if (liveVal.length > 65000) {
     liveData.machLogs   = machLogs.slice(-30);
