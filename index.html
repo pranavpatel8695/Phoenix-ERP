@@ -4796,12 +4796,11 @@ function renderAttendanceEngineer() {
   }
   html += `</div>`;
 
-  // Missed past dates (up to 3 days back)
+  // Missed past dates - only show info, not action buttons (only PM/Admin can backdate)
   const missedDays = [];
   for (let i = 1; i <= 3; i++) {
     const d = new Date(); d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().slice(0,10);
-    // Skip if already marked
     if (!all.find(a => a.date === dateStr && a.atype === 'attendance')) {
       missedDays.push({ date: dateStr, label: i===1 ? 'Yesterday' : d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) });
     }
@@ -4809,14 +4808,11 @@ function renderAttendanceEngineer() {
   if (missedDays.length) {
     html += `<div class="card mb-3" style="border-left:3px solid var(--orange)">
       <div class="card-title" style="color:var(--orange)">⚠️ Missed Attendance</div>
-      <div style="font-size:11px;color:var(--muted);margin:4px 0 10px">Mark attendance for missed days (up to 3 days back)</div>
+      <div style="font-size:11px;color:var(--muted);margin:4px 0 10px">Contact your PM or Admin to mark attendance for missed days.</div>
       ${missedDays.map(d=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
           <div style="font-size:12px;font-weight:600">${d.label} <span style="color:var(--muted);font-weight:400">${d.date}</span></div>
-          <div class="flex gap-2">
-            <button class="btn btn-primary btn-sm" onclick="markAttendanceDate('present','${d.date}')">🟢 Present</button>
-            <button class="btn btn-ghost btn-sm" onclick="markAttendanceDate('absent','${d.date}')">🔴 Absent</button>
-          </div>
+          <span style="font-size:10px;font-weight:700;color:var(--red)">Not Marked</span>
         </div>`).join('')}
     </div>`;
   }
@@ -4878,6 +4874,36 @@ function renderAttendanceEngineer() {
 function localToday() {
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function markAttendanceFor(status, date, targetUser) {
+  const all = getAttendance();
+  if (all.find(a=>a.user===targetUser&&a.date===date&&a.atype==='attendance')) {
+    showToast('Already marked for ' + date); return;
+  }
+  const users = getUsers();
+  const targetUserData = users[targetUser];
+  const myProj = (targetUserData?.projects||[])[0] || getVisibleProjects()[0] || '';
+  const pmEntry = currentRole==='pm'
+    ? [currentUser, users[currentUser]]
+    : Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
+  const pmUser = pmEntry?.[0]||'';
+  const pmName = pmEntry?.[1]?.name||pmUser;
+
+  all.push({
+    id: 'ATT_'+Date.now(), user: targetUser,
+    userName: targetUserData?.name||targetUser,
+    project: myProj, atype: 'attendance', date, status,
+    pmUser, pmName, isBackfill: true,
+    // PM marks → auto PM-approved; Admin marks → both approved
+    pmStatus: currentRole==='admin'?'approved':'approved',
+    adminStatus: currentRole==='admin'?'approved':'pending',
+    markedBy: currentUser, markedByName: users[currentUser]?.name||currentUser,
+    timestamp: new Date().toISOString()
+  });
+  saveAttendance(all); pushConfig();
+  showToast(`✅ ${status==='present'?'Present':'Absent'} marked for ${targetUserData?.name||targetUser} on ${date}`);
+  renderCurrentTab();
 }
 
 function markAttendanceDate(status, date) {
@@ -5046,6 +5072,39 @@ function renderAttendancePM() {
 
   html += `<div class="section-title mt-4 mb-3">👥 Team Attendance</div>`;
 
+  // Backdate marking for team (PM privilege)
+  if (myEngineers.length) {
+    const allAtt = getAttendance();
+    const backdateMissed = [];
+    myEngineers.forEach(u => {
+      for (let i = 1; i <= 7; i++) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().slice(0,10);
+        if (!allAtt.find(a => a.user===u && a.date===dateStr && a.atype==='attendance')) {
+          backdateMissed.push({ user:u, name:users[u]?.name||u, date:dateStr,
+            label: i===1?'Yesterday':d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) });
+        }
+      }
+    });
+    if (backdateMissed.length) {
+      html += `<div class="card mb-3" style="border-left:3px solid var(--orange)">
+        <div class="card-title" style="color:var(--orange)">📝 Mark Missed Attendance</div>
+        <div style="font-size:11px;color:var(--muted);margin:4px 0 10px">Mark backdated attendance for your team members</div>
+        ${backdateMissed.map(d=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-size:12px;font-weight:600">${d.name}</div>
+              <div style="font-size:10px;color:var(--muted)">${d.label} · ${d.date}</div>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn btn-primary btn-sm" onclick="markAttendanceFor('present','${d.date}','${d.user}')">🟢</button>
+              <button class="btn btn-ghost btn-sm" onclick="markAttendanceFor('absent','${d.date}','${d.user}')">🔴</button>
+            </div>
+          </div>`).join('')}
+      </div>`;
+    }
+  }
+
   const selEng = document.getElementById('pm-eng-sel')?.value || myEngineers[0] || '';
   if (myEngineers.length) {
     html += `<div class="flex justify-between items-center mb-2">
@@ -5101,6 +5160,39 @@ function renderAttendanceAdmin() {
   </div>`;
 
   html += `<div class="section-title mt-2 mb-3">👥 All Staff Attendance</div>`;
+
+  // Backdate marking for all staff (Admin privilege)
+  const allUsersForBack = Object.entries(users).filter(([u,v])=>v.role!=='admin'&&!deleted.includes(u));
+  const allAtt2 = getAttendance();
+  const adminBackMissed = [];
+  allUsersForBack.forEach(([u,v]) => {
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0,10);
+      if (!allAtt2.find(a => a.user===u && a.date===dateStr && a.atype==='attendance')) {
+        adminBackMissed.push({ user:u, name:v.name||u, date:dateStr,
+          label: i===1?'Yesterday':d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) });
+      }
+    }
+  });
+  if (adminBackMissed.length) {
+    html += `<div class="card mb-3" style="border-left:3px solid var(--orange)">
+      <div class="card-title" style="color:var(--orange)">📝 Mark Missed Attendance</div>
+      <div style="font-size:11px;color:var(--muted);margin:4px 0 10px">Mark backdated attendance for staff (up to 7 days)</div>
+      ${adminBackMissed.slice(0,20).map(d=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-size:12px;font-weight:600">${d.name}</div>
+            <div style="font-size:10px;color:var(--muted)">${d.label} · ${d.date}</div>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-sm" onclick="markAttendanceFor('present','${d.date}','${d.user}')">🟢</button>
+            <button class="btn btn-ghost btn-sm" onclick="markAttendanceFor('absent','${d.date}','${d.user}')">🔴</button>
+          </div>
+        </div>`).join('')}
+      ${adminBackMissed.length>20?`<div style="font-size:11px;color:var(--muted);padding-top:6px;text-align:center">+${adminBackMissed.length-20} more — use monthly report to view all</div>`:''}
+    </div>`;
+  }
 
   // Monthly report with user selector - exclude deleted users
   const users = getUsers();
