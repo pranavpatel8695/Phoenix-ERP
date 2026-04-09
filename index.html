@@ -4413,6 +4413,8 @@ function deleteValveSpecial(idx) {
 
 
 // ── USER MANAGEMENT TAB ──────────────────────────────────────
+let _activeUserRole = 'pm'; // remember which role tab is active
+
 function renderUsersTab() {
   if (currentRole !== 'admin') {
     return `<div class="empty-state"><div class="icon">🔒</div><p>Access denied.</p></div>`;
@@ -4421,11 +4423,11 @@ function renderUsersTab() {
   const projects = getProjects();
 
   const roleGroups = [
-    { role:'pm',              label:'PM',     color:'var(--green)',  badge:'badge-green' },
-    { role:'senior_engineer', label:'Sr. Eng',color:'var(--blue)',   badge:'badge-blue' },
-    { role:'junior_engineer', label:'Jr. Eng', color:'var(--cyan)',  badge:'badge-blue' },
-    { role:'work_assistant',  label:'Asst.',   color:'var(--purple)',badge:'badge-blue' },
-    { role:'store_manager',   label:'Store Mgr',color:'var(--orange)', badge:'badge-blue' },
+    { role:'pm',              label:'PM',      color:'var(--green)',  badge:'badge-green' },
+    { role:'senior_engineer', label:'Sr. Eng', color:'var(--blue)',   badge:'badge-blue' },
+    { role:'junior_engineer', label:'Jr. Eng', color:'var(--cyan)',   badge:'badge-blue' },
+    { role:'work_assistant',  label:'Asst.',   color:'var(--purple)', badge:'badge-blue' },
+    { role:'store_manager',   label:'Store Mgr',color:'var(--orange)',badge:'badge-blue' },
   ];
 
   function userCard([username, u]) {
@@ -4470,11 +4472,12 @@ function renderUsersTab() {
 
   const tabsHtml = roleGroups.map((g,i) => {
     const count = Object.values(users).filter(u=>u.role===g.role||(g.role==='junior_engineer'&&u.role==='supervisor')).length;
-    return `<div class="tab-item${i===0?' active':''}" onclick="switchUserMgmtTab('${g.role}',this)" style="font-size:11px;padding:8px 6px">${g.label} <span class="badge ${g.badge}" style="margin-left:3px">${count}</span></div>`;
+    const isActive = g.role === _activeUserRole;
+    return `<div class="tab-item${isActive?' active':''}" onclick="_activeUserRole='${g.role}';switchUserMgmtTab('${g.role}',this)" style="font-size:11px;padding:8px 6px">${g.label} <span class="badge ${g.badge}" style="margin-left:3px">${count}</span></div>`;
   }).join('');
 
-  const firstGroup = roleGroups[0];
-  const firstUsers = Object.entries(users).filter(([,u])=>u.role===firstGroup.role);
+  const activeGroup = roleGroups.find(g=>g.role===_activeUserRole) || roleGroups[0];
+  const activeUsers = Object.entries(users).filter(([,u])=>u.role===activeGroup.role||(activeGroup.role==='junior_engineer'&&u.role==='supervisor'));
 
   let html = `
     <div class="section-header">
@@ -4484,16 +4487,17 @@ function renderUsersTab() {
     <div class="tab-bar" id="userMgmtTabs">${tabsHtml}</div>
     <div id="userMgmtContent">`;
 
-  if (!firstUsers.length) {
-    html += `<div class="empty-state"><div class="icon">👤</div><p>No ${firstGroup.label} yet.<br>Tap "+ New User" to add one.</p></div>`;
+  if (!activeUsers.length) {
+    html += `<div class="empty-state"><div class="icon">👤</div><p>No ${activeGroup.label}s yet.<br>Tap "+ New User" to add one.</p></div>`;
   } else {
-    html += firstUsers.map(userCard).join('');
+    html += activeUsers.map(userCard).join('');
   }
   html += `</div>`;
   return html;
 }
 
 function switchUserMgmtTab(role, el) {
+  _activeUserRole = role;
   document.querySelectorAll('#userMgmtTabs .tab-item').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   const users = getUsers();
@@ -4705,14 +4709,9 @@ async function saveUserUM() {
       <button class="btn btn-secondary flex-1" onclick="closeFormModal();renderCurrentTab()">Done</button>
     </div>`;
   document.getElementById('formModal').classList.remove('hidden');
-  // Re-render user list behind modal so it's ready when modal closes
+  // Re-render user list behind modal, switched to the new user's role tab
+  _activeUserRole = role;
   document.getElementById('main').innerHTML = renderUsersTab();
-  // Auto-switch to the correct role tab
-  setTimeout(() => {
-    document.querySelectorAll('#userMgmtTabs .tab-item').forEach(t => {
-      if (t.getAttribute('onclick')?.includes(`'${role}'`)) t.click();
-    });
-  }, 50);
 }
 function showUserCredentials(username) {
   const u = getUsers()[username];
