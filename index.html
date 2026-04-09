@@ -4861,6 +4861,18 @@ function hideLoader() {
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
+  // DEBUG: intercept localStorage to catch phx_users changes
+  const _origSet = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function(key, val) {
+    if (key === 'phx_users') {
+      try {
+        const u = JSON.parse(val);
+        const names = Object.keys(u).filter(k=>k!=='admin');
+        console.log('[phx_users SET]', names, new Error().stack.split('\n')[2]);
+      } catch(e) {}
+    }
+    return _origSet(key, val);
+  };
   // Migrate old data keys if any
   const oldReports = localStorage.getItem('aquatrack_reports');
   if (oldReports && !localStorage.getItem('phx_reports')) {
