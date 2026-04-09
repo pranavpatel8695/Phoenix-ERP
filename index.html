@@ -979,12 +979,31 @@ function renderHome() {
   const valC = allReports.filter(r=>r.type==='valve').length;
 
   const dateStr = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const userName = getUsers()[currentUser]?.name || currentUser;
+  const roleLabel = currentRole==='admin'?'Administrator':currentRole==='pm'?'Project Manager':currentRole==='senior_engineer'?'Senior Engineer':currentRole==='junior_engineer'?'Junior Engineer':currentRole==='work_assistant'?'Work Assistant':currentRole==='store_manager'?'Store Manager':'Engineer';
+
+  // Projects section
+  const projList = vp.length
+    ? vp.map(p=>`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(10,132,255,0.12);border:1px solid rgba(10,132,255,0.25);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--blue);font-weight:600;margin:2px">📁 ${p}</span>`).join('')
+    : `<span style="font-size:11px;color:var(--muted)">No projects assigned</span>`;
 
   let html = `
     <div class="card mb-3" style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-color:rgba(10,132,255,0.2)">
-      <div class="text-xs text-muted mb-1">TODAY</div>
-      <div style="font-size:15px;font-weight:700">${dateStr}</div>
-      <div class="text-xs text-muted mt-1">${todayR.length} report${todayR.length!==1?'s':''} submitted today</div>
+      <div class="flex justify-between items-start mb-2">
+        <div>
+          <div style="font-size:16px;font-weight:700">👋 ${userName}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${roleLabel}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--muted)">TODAY</div>
+          <div style="font-size:12px;font-weight:600">${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+          <div style="font-size:10px;color:var(--muted)">${todayR.length} report${todayR.length!==1?'s':''} today</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;margin-top:4px">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Assigned Projects</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${projList}</div>
+      </div>
     </div>`;
 
   // Module selector
