@@ -343,18 +343,17 @@ const saveUsers = v => {
   // Safety check: never save fewer users than currently stored (except via explicit delete)
   try {
     const current = JSON.parse(localStorage.getItem('phx_users') || '{}');
-    const currentCount = Object.keys(current).length;
-    const newCount = Object.keys(v).length;
-    if (newCount < currentCount) {
-      // Find who's missing
-      const missing = Object.keys(current).filter(u => !v[u] && u !== 'admin');
-      const deleted = LS.get('phx_deleted_users', []);
-      const unexpectedMissing = missing.filter(u => !deleted.includes(u));
-      if (unexpectedMissing.length > 0) {
-        // Restore missing users
-        unexpectedMissing.forEach(u => { v[u] = current[u]; });
-        console.warn('saveUsers: restored unexpectedly missing users:', unexpectedMissing);
-      }
+    const currentNonAdmin = Object.keys(current).filter(u => u !== 'admin');
+    const newNonAdmin = Object.keys(v).filter(u => u !== 'admin');
+    const missing = currentNonAdmin.filter(u => !v[u]);
+    const deleted = LS.get('phx_deleted_users', []);
+    const unexpectedMissing = missing.filter(u => !deleted.includes(u));
+    if (unexpectedMissing.length > 0) {
+      // Show toast so user can report this
+      showToast('⚠️ User sync issue detected — auto-fixing');
+      console.error('saveUsers blocked deletion of:', unexpectedMissing, new Error().stack);
+      // Restore missing users
+      unexpectedMissing.forEach(u => { v[u] = current[u]; });
     }
   } catch(e) {}
   LS.set('phx_users', v);
