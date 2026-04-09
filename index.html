@@ -596,7 +596,10 @@ async function pullConfig(force=false) {
       // Process deletedUsers first
       if (d.deletedUsers?.length) {
         const existing = LS.get('phx_deleted_users', []);
-        LS.set('phx_deleted_users', [...new Set([...existing, ...d.deletedUsers])]);
+        const localUsers = getUsers();
+        // Only add to deleted list if user doesn't currently exist locally
+        const safeToDelete = d.deletedUsers.filter(u => !localUsers[u]);
+        LS.set('phx_deleted_users', [...new Set([...existing, ...safeToDelete])]);
       }
 
       if (d.users) {
@@ -4191,7 +4194,10 @@ function saveAccount() {
   if (!name||!user||!pass) { showToast('Fill all fields'); return; }
   const users = getUsers();
   if (users[user]) { showToast('Username already exists'); return; }
-  users[user] = { role, pass, name, projects: projs, createdAt: new Date().toISOString(), _localOnly: true };
+  // Remove from deleted list if re-creating a previously deleted username
+  const deletedList = LS.get('phx_deleted_users', []);
+  LS.set('phx_deleted_users', deletedList.filter(u => u !== user));
+  users[user] = { role, pass, name, projects: projs, createdAt: new Date().toISOString() };
   saveUsers(users);
   const pending = LS.get('phx_pending_users', []);
   if (!pending.includes(user)) { pending.push(user); LS.set('phx_pending_users', pending); }
@@ -4672,7 +4678,10 @@ async function saveUserUM() {
 
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
-  users[user] = { role, pass, name: name.trim(), projects: projs, createdAt: new Date().toISOString(), _localOnly: true };
+  // Remove from deleted list if re-creating a previously deleted username
+  const deletedList = LS.get('phx_deleted_users', []);
+  LS.set('phx_deleted_users', deletedList.filter(u => u !== user));
+  users[user] = { role, pass, name: name.trim(), projects: projs, createdAt: new Date().toISOString() };
   saveUsers(users);
   // Track as pending push so sync never removes it
   const pending = LS.get('phx_pending_users', []);
