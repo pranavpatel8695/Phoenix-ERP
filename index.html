@@ -339,7 +339,26 @@ const LS = {
 };
 
 const getUsers       = () => LS.get('phx_users', { admin: { role:'admin', pass:'admin', name:'Admin' } });
-const saveUsers      = v => LS.set('phx_users', v);
+const saveUsers = v => {
+  // Safety check: never save fewer users than currently stored (except via explicit delete)
+  try {
+    const current = JSON.parse(localStorage.getItem('phx_users') || '{}');
+    const currentCount = Object.keys(current).length;
+    const newCount = Object.keys(v).length;
+    if (newCount < currentCount) {
+      // Find who's missing
+      const missing = Object.keys(current).filter(u => !v[u] && u !== 'admin');
+      const deleted = LS.get('phx_deleted_users', []);
+      const unexpectedMissing = missing.filter(u => !deleted.includes(u));
+      if (unexpectedMissing.length > 0) {
+        // Restore missing users
+        unexpectedMissing.forEach(u => { v[u] = current[u]; });
+        console.warn('saveUsers: restored unexpectedly missing users:', unexpectedMissing);
+      }
+    }
+  } catch(e) {}
+  LS.set('phx_users', v);
+};
 // Returns display label for a user object
 function getUserLabel(u) {
   if (!u) return 'Engineer';
@@ -802,16 +821,34 @@ async function pushConfig() {
     liveData.machLogs   = machLogs.slice(-30);
     liveData.storeTxns  = storeTxns.slice(-80);
     liveData.attendance = attendance.slice(-150);
-    liveVal = JSON.stringify(liveData).slice(0, 65000);
+  if (liveVal.length > 64000) {
+    liveData.machLogs   = machLogs.slice(-20);
+    liveData.storeTxns  = storeTxns.slice(-50);
+    liveData.attendance = attendance.slice(-100);
+    liveVal = JSON.stringify(liveData);
+  }
+  if (liveVal.length > 64000) {
+    liveData.machLogs = [];
+    liveVal = JSON.stringify(liveData);
+  }
   }
 
   const save = async (docId, val) => {
+    // Validate JSON before sending
+    try { JSON.parse(val); } catch(e) {
+      showToast('⚠️ Config encode error — contact admin');
+      console.error('Invalid JSON for', docId, e);
+      return;
+    }
     let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.config}/documents/${docId}`, { data: { key: docId, value: val } });
-    if (!res) await aw('POST', `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
-      documentId: docId,
-      data: { key: docId, value: val },
-      permissions: ['read("any")','update("any")','delete("any")']
-    });
+    if (!res) {
+      res = await aw('POST', `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
+        documentId: docId,
+        data: { key: docId, value: val },
+        permissions: ['read("any")','update("any")','delete("any")']
+      });
+      if (!res) console.warn('pushConfig save failed for', docId, 'val length:', val.length);
+    }
   };
 
   try {
