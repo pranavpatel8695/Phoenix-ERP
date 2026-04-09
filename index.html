@@ -5130,6 +5130,7 @@ function renderAttendancePM() {
 // ── ADMIN VIEW ──
 function renderAttendanceAdmin() {
   const today = localToday();
+  const users = getUsers();
   const myRecs = getAttendance().filter(a => a.user === currentUser);
   const todayRec = myRecs.find(a => a.date === today && a.atype === 'attendance');
 
@@ -5195,7 +5196,6 @@ function renderAttendanceAdmin() {
   }
 
   // Monthly report with user selector - exclude deleted users
-  const users = getUsers();
   const allUsers = Object.entries(users).filter(([u,v])=>!deleted.includes(u)).map(([u,d])=>({id:u,name:d.name||u}));
   const selUser = document.getElementById('admin-att-sel')?.value || allUsers[0]?.id || '';
   if (allUsers.length) {
