@@ -4413,7 +4413,7 @@ function deleteValveSpecial(idx) {
 
 
 // ── USER MANAGEMENT TAB ──────────────────────────────────────
-let _activeUserRole = 'pm'; // remember which role tab is active
+let _activeUserRole = LS.get('phx_active_user_role', 'pm'); // remember which role tab is active
 
 function renderUsersTab() {
   if (currentRole !== 'admin') {
@@ -4498,6 +4498,7 @@ function renderUsersTab() {
 
 function switchUserMgmtTab(role, el) {
   _activeUserRole = role;
+  LS.set('phx_active_user_role', role);
   document.querySelectorAll('#userMgmtTabs .tab-item').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   const users = getUsers();
@@ -4711,6 +4712,7 @@ async function saveUserUM() {
   document.getElementById('formModal').classList.remove('hidden');
   // Re-render user list behind modal, switched to the new user's role tab
   _activeUserRole = role;
+  LS.set('phx_active_user_role', role);
   document.getElementById('main').innerHTML = renderUsersTab();
 }
 function showUserCredentials(username) {
