@@ -586,26 +586,37 @@ async function pullConfig(force=false) {
         const local = getUsers();
         const adminPass = local.admin?.pass || 'admin';
         const deleted = LS.get('phx_deleted_users', []);
+        const pendingUsers = LS.get('phx_pending_users', []);
 
         // Merge strategy: start with LOCAL as base, update from remote only if remote is newer
         const merged = { ...local };
 
         // Apply remote users (update existing, add new from remote)
         Object.keys(d.users).forEach(u => {
-          if (deleted.includes(u)) return; // skip deleted
-          if (u === 'admin') return; // handle admin separately
+          if (deleted.includes(u)) return;
+          if (u === 'admin') return;
           const remoteUser = d.users[u];
           const localUser  = local[u];
           if (!localUser) {
-            // New user from remote — add it
             merged[u] = remoteUser;
           } else {
-            // Update from remote — remote wins for role/name, but keep local password if same user
             merged[u] = { ...remoteUser };
-            // Preserve local project assignments if remote has none
             if (!merged[u].projects?.length && localUser.projects?.length) {
               merged[u].projects = localUser.projects;
             }
+          }
+          // Clear pending flag once confirmed in remote
+          if (pendingUsers.includes(u)) {
+            const still = LS.get('phx_pending_users', []).filter(x => x !== u);
+            LS.set('phx_pending_users', still);
+            delete merged[u]._localOnly;
+          }
+        });
+
+        // Always keep pending (not-yet-pushed) local users — never remove them
+        pendingUsers.forEach(u => {
+          if (!deleted.includes(u) && local[u]) {
+            merged[u] = local[u]; // force keep
           }
         });
 
@@ -788,6 +799,8 @@ async function pushConfig() {
       save('adminData', configVal),
       save('liveData',  liveVal)
     ]);
+    // Clear pending users flag — they're now in Appwrite
+    LS.set('phx_pending_users', []);
   } finally {
     _pushing = false;
   }
@@ -4590,8 +4603,11 @@ async function saveUserUM() {
 
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
-  users[user] = { role, pass, name: name.trim(), projects: projs, createdAt: new Date().toISOString() };
+  users[user] = { role, pass, name: name.trim(), projects: projs, createdAt: new Date().toISOString(), _localOnly: true };
   saveUsers(users);
+  // Track as pending push so sync never removes it
+  const pending = LS.get('phx_pending_users', []);
+  if (!pending.includes(user)) { pending.push(user); LS.set('phx_pending_users', pending); }
 
   // Push to Appwrite and confirm
   showToast('⏳ Saving user…');
