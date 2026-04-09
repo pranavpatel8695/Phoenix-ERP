@@ -994,7 +994,6 @@ function renderCurrentTab() {
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':
       main.innerHTML = renderUsersTab();
-      setTimeout(() => pullConfig().then(()=>{ if(activeTab==='users') main.innerHTML=renderUsersTab(); }), 3000);
       break;
   }
   if (activeTab === 'settings') initSettings();
@@ -4621,16 +4620,14 @@ async function saveUserUM() {
       <button class="btn btn-secondary flex-1" onclick="closeFormModal();renderCurrentTab()">Done</button>
     </div>`;
   document.getElementById('formModal').classList.remove('hidden');
-  renderCurrentTab();
-  // Switch to the new user's role tab so they're visible immediately
+  // Re-render user list behind modal so it's ready when modal closes
+  document.getElementById('main').innerHTML = renderUsersTab();
+  // Auto-switch to the correct role tab
   setTimeout(() => {
-    const tabEl = document.querySelector(`#userMgmtTabs .tab-item`);
-    if (tabEl) {
-      // Find tab matching this role
-      const allTabs = document.querySelectorAll('#userMgmtTabs .tab-item');
-      allTabs.forEach(t => { if (t.getAttribute('onclick')?.includes(`'${role}'`)) t.click(); });
-    }
-  }, 150);
+    document.querySelectorAll('#userMgmtTabs .tab-item').forEach(t => {
+      if (t.getAttribute('onclick')?.includes(`'${role}'`)) t.click();
+    });
+  }, 50);
 }
 function showUserCredentials(username) {
   const u = getUsers()[username];
