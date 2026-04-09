@@ -586,21 +586,28 @@ async function pullConfig() {
         const adminPass = local.admin?.pass || 'admin';
         const deleted = LS.get('phx_deleted_users', []);
 
-        // Full replace: start fresh from remote, keep admin password
+        // Start with remote users (source of truth for updates)
         const merged = { ...d.users };
 
-        // Remove deleted users from merged set
+        // Remove deleted users
         deleted.forEach(u => { delete merged[u]; });
 
-        // Always preserve admin with local password
-        merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
+        // Keep any local users not yet pushed to Appwrite (newly created)
+        Object.keys(local).forEach(u => {
+          if (!merged[u] && !deleted.includes(u) && u !== 'admin') {
+            merged[u] = local[u]; // preserve locally-created user
+          }
+        });
 
-        // Preserve local-only project assignments if remote has none
+        // Preserve local project assignments if remote has none
         Object.keys(merged).forEach(u => {
           if (!merged[u].projects?.length && local[u]?.projects?.length) {
             merged[u].projects = local[u].projects;
           }
         });
+
+        // Always preserve admin with local password
+        merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
 
         saveUsers(merged);
       }
@@ -858,14 +865,20 @@ async function doLogin() {
 
   if (!user || !pass) { showLoginError('Enter username and password'); return; }
 
+  // Check local first (handles newly created users before push completes)
+  const localUsers = getUsers();
+  if (localUsers[user] && localUsers[user].pass === pass) {
+    showLoader('Signing in…');
+    await loginSuccess(user, localUsers[user]);
+    return;
+  }
+
+  // Not found locally — pull from Appwrite (handles users created on other devices)
   showLoader('Signing in…');
-
-  // Always pull latest users from Appwrite first (catches new users added from other devices)
   try { await pullConfig(); } catch(e) {}
-
-  const users = getUsers();
-  if (users[user] && users[user].pass === pass) {
-    await loginSuccess(user, users[user]);
+  const freshUsers = getUsers();
+  if (freshUsers[user] && freshUsers[user].pass === pass) {
+    await loginSuccess(user, freshUsers[user]);
   } else {
     hideLoader();
     showLoginError('Incorrect username or password');
@@ -4552,7 +4565,7 @@ function renderUMProjectList() {
     </div>`;}).join('');
 }
 
-function saveUserUM() {
+async function saveUserUM() {
   const name = (document.getElementById('um-name')||{}).value || '';
   const user = ((document.getElementById('um-user')||{}).value || '').trim().toLowerCase().replace(/\s+/g,'');
   const pass = (document.getElementById('um-pass')||{}).value || '';
@@ -4567,7 +4580,15 @@ function saveUserUM() {
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
   users[user] = { role, pass, name: name.trim(), projects: projs };
   saveUsers(users);
-  pushConfig();
+
+  // Push to Appwrite and confirm
+  showToast('⏳ Saving user…');
+  try {
+    await pushConfig();
+    showToast('✅ User created and synced');
+  } catch(e) {
+    showToast('⚠️ Saved locally, sync failed — try again');
+  }
 
   const roleLabel = getUserLabel({role, name: name.trim()});
   window._credsToCopy = 'Phoenix ERP\nApp: ' + location.origin + '\nUsername: ' + user + '\nPassword: ' + pass + '\nRole: ' + roleLabel;
@@ -4665,7 +4686,7 @@ function openEditUser(username) {
   document.getElementById('formModal').classList.remove('hidden');
 }
 
-function updateUserUM(username) {
+async function updateUserUM(username) {
   const name = ((document.getElementById('eu-name')||{}).value || '').trim();
   const pass = (document.getElementById('eu-pass')||{}).value || '';
   const role = (document.getElementById('eu-role')||{}).value || 'junior_engineer';
@@ -4677,25 +4698,31 @@ function updateUserUM(username) {
   delete users[username].designation;
   if (pass) users[username].pass = pass;
   saveUsers(users);
-  pushConfig();
   closeFormModal();
-  showToast('✅ @' + username + ' updated');
   document.getElementById('main').innerHTML = renderUsersTab();
+  try {
+    await pushConfig();
+    showToast('✅ @' + username + ' updated & synced');
+  } catch(e) {
+    showToast('✅ @' + username + ' updated (sync pending)');
+  }
 }
 
 function deleteUserUM(username) {
-  showConfirm('Delete User', 'Delete account "@' + username + '"? This cannot be undone.', function() {
+  showConfirm('Delete User', 'Delete account "@' + username + '"? This cannot be undone.', async function() {
     const users = getUsers();
     delete users[username];
     saveUsers(users);
-    // Track deletion so pullConfig won't re-add from Appwrite
     const deleted = LS.get('phx_deleted_users', []);
     if (!deleted.includes(username)) { deleted.push(username); LS.set('phx_deleted_users', deleted); }
-    // Remove their attendance records locally
     saveAttendance(getAttendance().filter(a=>a.user!==username));
-    pushConfig();
-    showToast('🗑️ User deleted');
     document.getElementById('main').innerHTML = renderUsersTab();
+    try {
+      await pushConfig();
+      showToast('🗑️ User deleted & synced');
+    } catch(e) {
+      showToast('🗑️ Deleted locally (sync pending)');
+    }
   });
 }
 
