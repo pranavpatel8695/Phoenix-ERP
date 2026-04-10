@@ -819,10 +819,6 @@ async function pushConfig() {
     });
   }
   let liveVal = JSON.stringify(liveData);
-  if (liveVal.length > 65000) {
-    liveData.machLogs   = machLogs.slice(-30);
-    liveData.storeTxns  = storeTxns.slice(-80);
-    liveData.attendance = attendance.slice(-150);
   if (liveVal.length > 64000) {
     liveData.machLogs   = machLogs.slice(-20);
     liveData.storeTxns  = storeTxns.slice(-50);
@@ -833,24 +829,38 @@ async function pushConfig() {
     liveData.machLogs = [];
     liveVal = JSON.stringify(liveData);
   }
-  }
 
   const save = async (docId, val) => {
-    // Validate JSON before sending
     try { JSON.parse(val); } catch(e) {
-      showToast('⚠️ Config encode error — contact admin');
       console.error('Invalid JSON for', docId, e);
-      return;
+      return false;
     }
-    let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.config}/documents/${docId}`, { data: { key: docId, value: val } });
-    if (!res) {
-      res = await aw('POST', `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
-        documentId: docId,
-        data: { key: docId, value: val },
-        permissions: ['read("any")','update("any")','delete("any")']
+    console.log(`[pushConfig] ${docId} size=${val.length} chars`);
+    // Try PATCH first
+    const url = `/databases/${AW.database}/collections/${AW.collections.config}/documents/${docId}`;
+    let res = await fetch(AW.endpoint + url, {
+      method: 'PATCH',
+      headers: { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { key: docId, value: val } })
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.warn(`[pushConfig] PATCH ${docId} failed ${res.status}:`, errBody.slice(0,200));
+      // Try POST (document might not exist)
+      res = await fetch(AW.endpoint + `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
+        method: 'POST',
+        headers: { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: docId, data: { key: docId, value: val }, permissions: ['read("any")','update("any")','delete("any")'] })
       });
-      if (!res) console.warn('pushConfig save failed for', docId, 'val length:', val.length);
+      if (!res.ok) {
+        const errBody2 = await res.text();
+        console.error(`[pushConfig] POST ${docId} also failed ${res.status}:`, errBody2.slice(0,200));
+        showToast('⚠️ Sync failed — check console');
+        return false;
+      }
     }
+    console.log(`[pushConfig] ${docId} saved OK`);
+    return true;
   };
 
   try {
