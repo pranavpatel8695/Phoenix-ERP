@@ -1094,6 +1094,7 @@ function renderCurrentTab() {
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':
       main.innerHTML = renderUsersTab();
+      pullConfig(true).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
       break;
   }
   if (activeTab === 'settings') initSettings();
