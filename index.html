@@ -836,26 +836,33 @@ async function pushConfig() {
       return false;
     }
     console.log(`[pushConfig] ${docId} size=${val.length} chars`);
-    // Try PATCH first
-    const url = `/databases/${AW.database}/collections/${AW.collections.config}/documents/${docId}`;
-    let res = await fetch(AW.endpoint + url, {
+    const baseUrl = `${AW.endpoint}/databases/${AW.database}/collections/${AW.collections.config}/documents`;
+    const headers = { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' };
+
+    // PATCH: only update value field (key is set on creation and cannot change)
+    let res = await fetch(`${baseUrl}/${docId}`, {
       method: 'PATCH',
-      headers: { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: { key: docId, value: val } })
+      headers,
+      body: JSON.stringify({ data: { value: val } })
     });
+
     if (!res.ok) {
-      const errBody = await res.text();
-      console.warn(`[pushConfig] PATCH ${docId} failed ${res.status}:`, errBody.slice(0,200));
-      // Try POST (document might not exist)
-      res = await fetch(AW.endpoint + `/databases/${AW.database}/collections/${AW.collections.config}/documents`, {
+      const errText = await res.text();
+      console.warn(`[pushConfig] PATCH ${docId} failed ${res.status}:`, errText.slice(0, 300));
+      // Document might not exist yet — create it
+      res = await fetch(baseUrl, {
         method: 'POST',
-        headers: { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId: docId, data: { key: docId, value: val }, permissions: ['read("any")','update("any")','delete("any")'] })
+        headers,
+        body: JSON.stringify({
+          documentId: docId,
+          data: { key: docId, value: val },
+          permissions: ['read("any")', 'update("any")', 'delete("any")']
+        })
       });
       if (!res.ok) {
-        const errBody2 = await res.text();
-        console.error(`[pushConfig] POST ${docId} also failed ${res.status}:`, errBody2.slice(0,200));
-        showToast('⚠️ Sync failed — check console');
+        const errText2 = await res.text();
+        console.error(`[pushConfig] POST ${docId} failed ${res.status}:`, errText2.slice(0, 300));
+        showToast('⚠️ Sync failed: ' + res.status);
         return false;
       }
     }
