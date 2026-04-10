@@ -5320,10 +5320,7 @@ function renderAttendanceAdmin() {
 
   let html = `<div class="flex justify-between items-center mb-3">
     <div class="section-title">🕐 My Attendance</div>
-    <div class="flex gap-2">
-      <button class="btn btn-ghost btn-sm" onclick="exportMonthlyAttendance('')">📄 All Staff</button>
-      <button class="btn btn-ghost btn-sm" onclick="pullConfig().then(()=>renderCurrentTab())">↻ Sync</button>
-    </div>
+    <button class="btn btn-ghost btn-sm" onclick="exportMonthlyAttendance('')">📄 All Staff</button>
   </div>`;
 
   // Admin's own today card
@@ -6219,7 +6216,6 @@ function renderStoreTab() {
 
   let html = `<div class="section-header"><div class="section-title">🏪 Store</div>
     <div class="flex gap-2">
-      <button class="btn btn-ghost btn-sm" onclick="pullConfig().then(()=>renderCurrentTab())">↻</button>
       ${actionBtns}
     </div>
   </div>
