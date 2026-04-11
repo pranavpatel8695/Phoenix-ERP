@@ -587,6 +587,10 @@ async function pullConfig(force=false) {
   if (configRes?.value) {
     try {
       const d = JSON.parse(configRes.value);
+      console.log('[pullConfig] remote users:', Object.keys(d.users||{}));
+      console.log('[pullConfig] remote deletedUsers:', d.deletedUsers||[]);
+      console.log('[pullConfig] local deletedUsers:', LS.get('phx_deleted_users',[]));
+      console.log('[pullConfig] local users:', Object.keys(getUsers()));
       if (d.projects?.length)                      saveProjects(d.projects);
       if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
       if (d.assignments)                            saveAssignments(d.assignments);
