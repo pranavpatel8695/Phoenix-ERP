@@ -741,11 +741,35 @@ async function pushConfig() {
   // Split into two documents to avoid 65KB limit
   // Doc 1: Static config (users, projects, routes, specials)
   const deletedUsers = LS.get('phx_deleted_users', []);
-  const allUsers = getUsers();
-  // Never push deleted users to Appwrite
-  const cleanUsers = Object.fromEntries(
-    Object.entries(allUsers).filter(([u]) => !deletedUsers.includes(u))
-  );
+
+  // Before pushing, fetch remote users and merge so we don't overwrite other devices' users
+  let remoteUsers = {};
+  try {
+    const remoteRes = await fetch(`${AW.endpoint}/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`, {
+      headers: { 'X-Appwrite-Project': AW.project }
+    });
+    if (remoteRes.ok) {
+      const remoteDoc = await remoteRes.json();
+      const remoteData = JSON.parse(remoteDoc.value || '{}');
+      remoteUsers = remoteData.users || {};
+    }
+  } catch(e) {}
+
+  // Merge: start with remote users, then apply local on top
+  const localUsers = getUsers();
+  const mergedUsers = { ...remoteUsers };
+  Object.keys(localUsers).forEach(u => {
+    if (!deletedUsers.includes(u)) mergedUsers[u] = localUsers[u];
+  });
+  // Remove deleted users from merged
+  deletedUsers.forEach(u => { delete mergedUsers[u]; });
+
+  // Save merged back to local so it's consistent
+  if (Object.keys(mergedUsers).length > Object.keys(localUsers).length) {
+    LS.set('phx_users', mergedUsers);
+  }
+
+  const cleanUsers = mergedUsers;
 
   const configData = {
     projects:     getProjects(),
@@ -1098,7 +1122,7 @@ function renderCurrentTab() {
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':
       main.innerHTML = renderUsersTab();
-      pullConfig(true).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
+      pushConfig().then(() => pullConfig(true)).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
       break;
   }
   if (activeTab === 'settings') initSettings();
