@@ -769,11 +769,29 @@ async function pushConfig() {
     LS.set('phx_users', mergedUsers);
   }
 
-  const cleanUsers = mergedUsers;
+  // Strip unnecessary fields before pushing to minimize size
+  const cleanUsers = Object.fromEntries(
+    Object.entries(mergedUsers).map(([u, v]) => [u, {
+      role: v.role,
+      pass: v.pass,
+      name: v.name,
+      projects: v.projects || []
+    }])
+  );
+
+  // Minimize routes - only store essential fields to save space
+  const slimRoutes = {};
+  const fullRoutes = getRoutes();
+  Object.keys(fullRoutes).forEach(proj => {
+    slimRoutes[proj] = (fullRoutes[proj]||[]).map(r=>({
+      id:r.id, name:r.name, length:r.length,
+      pipes: r.pipes, pipe: r.pipe
+    }));
+  });
 
   const configData = {
     projects:     getProjects(),
-    routes:       getRoutes(),
+    routes:       slimRoutes,
     assignments:  getAssignments(),
     specials:     getSpecials(),
     valveSpecials: getValveSpecials(),
