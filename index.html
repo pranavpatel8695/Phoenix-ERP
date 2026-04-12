@@ -3672,133 +3672,107 @@ function renderTrackerTab() {
         + pendingSlabs.length;
 
       html += `
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:14px">
           <!-- Header -->
-          <div class="flex justify-between items-center mb-1">
-            <div>
-              <div style="font-size:15px;font-weight:700">🔩 ${rt.name}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px">${rt.pipe||'—'} · Total ${fmtM(len)}</div>
+          <div style="margin-bottom:12px">
+            <div style="font-size:15px;font-weight:700">🔩 ${rt.name}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${rt.pipe||'—'} · Total ${fmtM(len)}</div>
+          </div>
+          <!-- Summary badges -->
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <div style="flex:1;background:rgba(10,132,255,0.12);border:1px solid rgba(10,132,255,0.25);border-radius:10px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:var(--blue)">${pipePct}%</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-top:2px">Pipe Done</div>
             </div>
-            <div class="flex gap-2">
-              <div style="background:rgba(10,132,255,0.15);border:1px solid rgba(10,132,255,0.3);border-radius:10px;padding:6px 12px;text-align:center">
-                <div style="font-size:18px;font-weight:800;color:var(--blue)">${pipePct}%</div>
-                <div style="font-size:9px;color:var(--muted);text-transform:uppercase">Pipe Done</div>
-              </div>
-              ${totalGaps > 0 ? `
-              <div style="background:rgba(255,69,58,0.15);border:1px solid rgba(255,69,58,0.3);border-radius:10px;padding:6px 12px;text-align:center">
-                <div style="font-size:18px;font-weight:800;color:var(--red)">${totalGaps}</div>
-                <div style="font-size:9px;color:var(--muted);text-transform:uppercase">Pending</div>
-              </div>` : `
-              <div style="background:rgba(48,209,88,0.15);border:1px solid rgba(48,209,88,0.3);border-radius:10px;padding:6px 12px;text-align:center">
-                <div style="font-size:18px;font-weight:800;color:var(--green)">✓</div>
-                <div style="font-size:9px;color:var(--muted);text-transform:uppercase">On Track</div>
-              </div>`}
-            </div>
+            ${totalGaps > 0
+              ? `<div style="flex:1;background:rgba(255,69,58,0.12);border:1px solid rgba(255,69,58,0.25);border-radius:10px;padding:10px;text-align:center">
+                  <div style="font-size:22px;font-weight:800;color:var(--red)">${totalGaps}</div>
+                  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-top:2px">Pending</div>
+                 </div>`
+              : `<div style="flex:1;background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.25);border-radius:10px;padding:10px;text-align:center">
+                  <div style="font-size:22px;font-weight:800;color:var(--green)">✓</div>
+                  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-top:2px">On Track</div>
+                 </div>`}
           </div>
 
-          <!-- Interactive Progress bars -->
-          <div style="background:var(--surface2);border-radius:10px;padding:12px;margin:12px 0">
-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px">PROGRESS</div>
+          <!-- Progress bars — stacked mobile layout -->
+          <div style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:12px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:12px">PROGRESS</div>
             ${[
-              {icon:'⛏️', label:'Excavation', reps:excReps,  color:'var(--orange)', key:'exc_'+rt.id,  gaps:[]},
-              {icon:'🔩', label:'Pipe Laying', reps:pipeReps, color:'var(--blue)',   key:'pipe_'+rt.id, gaps:pipeGaps},
-              {icon:'🪣', label:'Refilling',   reps:refReps,  color:'var(--green)',  key:'ref_'+rt.id,  gaps:refGaps},
+              {icon:'⛏️', label:'Excavation', reps:excReps,  color:'var(--orange)', pct:excPct,  done:excM,  key:'exc_'+rt.id,  gaps:[]},
+              {icon:'🔩', label:'Pipe Laying', reps:pipeReps, color:'var(--blue)',   pct:pipePct, done:pipeM, key:'pipe_'+rt.id, gaps:pipeGaps},
+              {icon:'🪣', label:'Refilling',   reps:refReps,  color:'var(--green)',  pct:refPct,  done:refM,  key:'ref_'+rt.id,  gaps:refGaps},
             ].map(row => {
-              const pct  = Math.min(100, Math.round(row.reps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0)/len*100));
-              const done = row.reps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
               const gapsJson = JSON.stringify(row.gaps);
               return `
-              <div style="display:grid;grid-template-columns:20px 80px 1fr 40px 50px;align-items:center;gap:6px;margin-bottom:8px">
-                <div style="font-size:13px;text-align:center">${row.icon}</div>
-                <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.label}</div>
-                <div style="position:relative;height:14px;background:var(--border);border-radius:4px;cursor:crosshair"
+              <div style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                  <div style="font-size:13px;font-weight:600">${row.icon} ${row.label}</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:13px;font-weight:700;color:${row.color}">${row.pct}%</span>
+                    <span style="font-size:11px;color:var(--muted)">${fmtM(row.done)}</span>
+                  </div>
+                </div>
+                <div style="position:relative;height:18px;background:var(--border);border-radius:6px;cursor:crosshair"
                   data-gaps='${gapsJson}' data-len="${len}"
                   onmouseenter="showTrackerTip(event,'${row.key}',${len})"
                   onmousemove="showTrackerTip(event,'${row.key}',${len})"
                   onmouseleave="hideTrackerTip('${row.key}')">
                   ${row.reps.map(r=>{
                     const f=parseFloat(r.from)||0, t=parseFloat(r.to)||0;
-                    const left=(f/len*100).toFixed(2), width=Math.max(0.3,((t-f)/len*100)).toFixed(2);
-                    return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:${row.color};border-radius:2px"></div>`;
+                    const left=(f/len*100).toFixed(2), width=Math.max(0.5,((t-f)/len*100)).toFixed(2);
+                    return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:${row.color};border-radius:4px"></div>`;
                   }).join('')}
                   ${row.gaps.map(g=>{
-                    const left=((g.from)/len*100).toFixed(2), width=Math.max(0.3,((g.to-g.from)/len*100)).toFixed(2);
-                    return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:repeating-linear-gradient(90deg,rgba(255,69,58,0.7) 0px,rgba(255,69,58,0.7) 3px,rgba(255,69,58,0.15) 3px,rgba(255,69,58,0.15) 6px);border-radius:2px"></div>`;
+                    const left=((g.from)/len*100).toFixed(2), width=Math.max(0.5,((g.to-g.from)/len*100)).toFixed(2);
+                    return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:repeating-linear-gradient(90deg,rgba(255,69,58,0.7) 0px,rgba(255,69,58,0.7) 3px,rgba(255,69,58,0.15) 3px,rgba(255,69,58,0.15) 6px);border-radius:4px"></div>`;
                   }).join('')}
-                  <div id="tip_${row.key}" style="display:none;position:absolute;bottom:20px;transform:translateX(-50%);background:#0f0f14;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none"></div>
+                  <div id="tip_${row.key}" style="display:none;position:absolute;bottom:24px;transform:translateX(-50%);background:#0f0f14;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none"></div>
                 </div>
-                <div style="font-size:11px;font-weight:700;color:${row.color};text-align:right">${pct}%</div>
-                <div style="font-size:10px;color:var(--muted);text-align:right">${fmtM(done)}</div>
               </div>`;
             }).join('')}
 
-            <!-- Marker rows aligned with same grid -->
+            <!-- Marker rows -->
             ${[
-              { label:'Valve',   color:'var(--red)',    icon:'🔧',
-                items: reps.filter(r=>r.type==='valve').map(r=>({
-                  left:(parseFloat(r.chainage)||0)/len*100,
-                  tip:`🔧 ${r.valType||'Valve'} — Ch:${r.chainage}m`
-                }))
+              { label:'Valve',    color:'var(--red)',    icon:'🔧',
+                items: reps.filter(r=>r.type==='valve').map(r=>({ left:(parseFloat(r.chainage)||0)/len*100, tip:`🔧 ${r.valType||'Valve'} — Ch:${r.chainage}m` }))
               },
               { label:'Chamber', color:'var(--orange)', icon:'🏛️',
-                items: reps.filter(r=>r.type==='chamber').map(r=>({
-                  left:(parseFloat(r.chainage)||0)/len*100,
-                  tip:`🏛️ ${r.chamType||'Chamber'} — Ch:${r.chainage}m`
-                }))
+                items: reps.filter(r=>r.type==='chamber').map(r=>({ left:(parseFloat(r.chainage)||0)/len*100, tip:`🏛️ ${r.chamType||'Chamber'} — Ch:${r.chainage}m` }))
               },
               { label:'Fitting', color:'var(--cyan)',   icon:'🔗',
-                items: reps.filter(r=>r.type==='fitting').map(r=>({
-                  left:(parseFloat(r.chainage)||0)/len*100,
-                  tip:`🔗 ${r.fitType||'Fitting'} — Ch:${r.chainage}m`
-                }))
+                items: reps.filter(r=>r.type==='fitting').map(r=>({ left:(parseFloat(r.chainage)||0)/len*100, tip:`🔗 ${r.fitType||'Fitting'} — Ch:${r.chainage}m` }))
               },
               { label:'Encasing',color:'var(--purple)', icon:'🏗️',
                 items: pipeReps.flatMap(r=>(r.encasings||[]).length
-                  ? r.encasings.map(e=>({
-                      left:((parseFloat(e.from)||0)+(parseFloat(e.to)||0))/2/len*100,
-                      tip:`🏗️ ${e.type} — Ch:${e.from}–${e.to}m`
-                    }))
-                  : (r.encasing&&r.encasing!=='Not Required'?[{
-                      left:((parseFloat(r.encasingFrom||r.from)||0)+(parseFloat(r.encasingTo||r.to)||0))/2/len*100,
-                      tip:`🏗️ ${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m`
-                    }]:[])
-                )
+                  ? r.encasings.map(e=>({ left:((parseFloat(e.from)||0)+(parseFloat(e.to)||0))/2/len*100, tip:`🏗️ ${e.type} — Ch:${e.from}–${e.to}m` }))
+                  : (r.encasing&&r.encasing!=='Not Required'?[{ left:((parseFloat(r.encasingFrom||r.from)||0)+(parseFloat(r.encasingTo||r.to)||0))/2/len*100, tip:`🏗️ ${r.encasing} — Ch:${r.encasingFrom||r.from}–${r.encasingTo||r.to}m` }]:[]))
               },
             ].filter(row=>row.items.length).map(row=>`
-              <div style="display:grid;grid-template-columns:20px 80px 1fr 40px 50px;align-items:center;gap:6px;margin-bottom:6px">
-                <div style="font-size:12px;text-align:center">${row.icon}</div>
-                <div style="font-size:10px;color:${row.color};font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.label}</div>
-                <div style="position:relative;height:16px;background:var(--border);border-radius:4px;">
+              <div style="margin-bottom:10px">
+                <div style="font-size:12px;font-weight:600;color:${row.color};margin-bottom:4px">${row.icon} ${row.label} (${row.items.length})</div>
+                <div style="position:relative;height:16px;background:var(--border);border-radius:6px;">
                   ${row.items.map(item=>`
                     <div style="position:absolute;left:${item.left.toFixed(2)}%;transform:translateX(-50%);top:1px;height:14px;cursor:pointer"
                       onmouseenter="showMarkerTip(this,'${item.tip.replace(/'/g,'&#39;')}')"
                       onmouseleave="hideMarkerTip()">
-                      <div style="width:2px;height:100%;background:${row.color};border-radius:1px;pointer-events:none"></div>
+                      <div style="width:3px;height:100%;background:${row.color};border-radius:1px;pointer-events:none"></div>
                     </div>`).join('')}
                 </div>
-                <div style="font-size:10px;color:${row.color};font-weight:700;text-align:right">${row.items.length}</div>
-                <div style="width:50px"></div>
               </div>`).join('')}
-
-            <!-- Legend -->
-            <div style="display:flex;gap:12px;margin-top:6px;margin-left:26px;flex-wrap:wrap">
-              ${[['🔧','var(--red)','Valve'],['🏛️','var(--orange)','Chamber'],['🔗','var(--cyan)','Fitting'],['🏗️','var(--purple)','Encasing']].map(([ic,c,n])=>
-                `<div style="font-size:10px;color:${c};display:flex;align-items:center;gap:3px">${ic} ${n}</div>`
-              ).join('')}
-            </div>
           </div>
 
           <!-- Count badges -->
-          <div class="flex gap-2 mb-3" style="flex-wrap:wrap">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px">
             ${[
               {icon:'🔧',label:'Valves',   val:valveC,   color:'var(--red)'},
-              {icon:'🏛️',label:'Chambers', val:chamberC,  color:'var(--orange)'},
-              {icon:'🔗',label:'Fittings', val:fittingC,  color:'var(--cyan)'},
-              {icon:'🏗️',label:'Encasing', val:encasingC, color:'var(--purple)'},
-            ].map(b => `
-              <div style="flex:1;min-width:60px;background:var(--surface2);border-radius:10px;padding:8px 6px;text-align:center">
-                <div style="font-size:18px;font-weight:800;color:${b.val>0?b.color:'var(--muted)'}${b.val===0?';opacity:0.4':''}">${b.val}</div>
-                <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-top:2px">${b.label}</div>
+              {icon:'🏛️',label:'Chambers', val:chamberC, color:'var(--orange)'},
+              {icon:'🔗',label:'Fittings', val:fittingC, color:'var(--cyan)'},
+              {icon:'🏗️',label:'Encasing', val:encasingC,color:'var(--purple)'},
+            ].map(b=>`
+              <div style="background:var(--surface2);border-radius:10px;padding:10px 4px;text-align:center">
+                <div style="font-size:20px;font-weight:800;color:${b.val>0?b.color:'var(--muted)'}${b.val===0?';opacity:0.4':''}">${b.val}</div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-top:2px;line-height:1.2">${b.label}</div>
               </div>`).join('')}
           </div>
 
@@ -3806,39 +3780,18 @@ function renderTrackerTab() {
           ${(excGapsFull.length || pipeGapsFull.length || refGapsFull.length) ? `
           <div style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:12px">
             <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">📋 Gap Chainage List</div>
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead>
-                <tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.3px">
-                  <th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--border)">Activity</th>
-                  <th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--border)">From</th>
-                  <th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--border)">To</th>
-                  <th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--border)">Missing</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${excGapsFull.map(g=>`
-                <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-                  <td style="padding:6px;color:var(--orange);font-weight:700">⛏️ Excavation</td>
-                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.from}m</td>
-                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.to}m</td>
-                  <td style="padding:6px;text-align:right;color:var(--orange);font-weight:700">${fmtM(g.to-g.from)}</td>
-                </tr>`).join('')}
-                ${pipeGapsFull.map(g=>`
-                <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-                  <td style="padding:6px;color:var(--red);font-weight:700">🔩 Pipe Laying</td>
-                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.from}m</td>
-                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.to}m</td>
-                  <td style="padding:6px;text-align:right;color:var(--red);font-weight:700">${fmtM(g.to-g.from)}</td>
-                </tr>`).join('')}
-                ${refGapsFull.map(g=>`
-                <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-                  <td style="padding:6px;color:var(--blue);font-weight:700">🪣 Refilling</td>
-                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.from}m</td>
-                  <td style="padding:6px;text-align:right;color:var(--text)">Ch:${g.to}m</td>
-                  <td style="padding:6px;text-align:right;color:var(--blue);font-weight:700">${fmtM(g.to-g.from)}</td>
-                </tr>`).join('')}
-              </tbody>
-            </table>
+            ${[
+              ...excGapsFull.map(g=>({color:'var(--orange)',icon:'⛏️',label:'Excavation',g})),
+              ...pipeGapsFull.map(g=>({color:'var(--red)',icon:'🔩',label:'Pipe Laying',g})),
+              ...refGapsFull.map(g=>({color:'var(--blue)',icon:'🪣',label:'Refilling',g})),
+            ].map(({color,icon,label,g})=>`
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:${color}">${icon} ${label}</div>
+                  <div style="font-size:11px;color:var(--muted)">Ch:${g.from}m – ${g.to}m</div>
+                </div>
+                <div style="font-size:13px;font-weight:700;color:${color}">${fmtM(g.to-g.from)}</div>
+              </div>`).join('')}
           </div>` : ''}
 
           <!-- Action Required gaps -->
