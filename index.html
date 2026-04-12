@@ -770,11 +770,8 @@ async function pushConfig() {
   Object.keys(localUsers).forEach(u => {
     if (!deletedUsers.includes(u)) mergedUsers[u] = localUsers[u];
   });
-  // Remove deleted users from merged ONLY if remote also doesn't have them
-  // (remote having them means they were re-created on another device)
-  deletedUsers.forEach(u => {
-    if (!remoteUsers[u]) delete mergedUsers[u];
-  });
+  // Remove ALL deleted users from merged (both local-deleted and remote-not-having-them)
+  deletedUsers.forEach(u => { delete mergedUsers[u]; });
   console.log('[pushConfig] merged users to push:', Object.keys(mergedUsers));
 
   // Save merged back to local so it's consistent
@@ -1154,7 +1151,7 @@ function renderCurrentTab() {
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':
       main.innerHTML = renderUsersTab();
-      pushConfig().then(() => pullConfig(true)).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
+      pullConfig(true).then(() => pushConfig()).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
       break;
   }
   if (activeTab === 'settings') initSettings();
@@ -3482,14 +3479,23 @@ function deleteReport(id) {
 
 // ── TRACKER TAB ───────────────────────────────────────────────
 function showTrackerTip(e, key, len) {
+  // Support both mouse and touch events
+  const isTouchEvt = e.touches || e.changedTouches;
+  const clientX = isTouchEvt ? (e.touches?.[0] || e.changedTouches?.[0])?.clientX : e.clientX;
   const bar  = e.currentTarget;
   const rect = bar.getBoundingClientRect();
-  const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   const ch   = Math.round(pct * len);
   const tip  = document.getElementById('tip_' + key);
   if (!tip) return;
 
-  // Position tooltip near cursor
+  // Toggle on touch - hide if already showing at same position
+  if (isTouchEvt && tip.style.display === 'block') {
+    tip.style.display = 'none';
+    return;
+  }
+
+  // Position tooltip
   const tipLeft = Math.max(10, Math.min(90, pct * 100));
   tip.style.left = tipLeft + '%';
   tip.style.display = 'block';
@@ -3501,7 +3507,7 @@ function showTrackerTip(e, key, len) {
 
   // Check if in a done segment
   const fills = [...bar.querySelectorAll('div[style*="position:absolute"]')]
-    .filter(d => !d.id); // exclude tooltip div
+    .filter(d => !d.id);
   const pctPos = pct * 100;
   let isDone = false;
   fills.forEach(f => {
@@ -3522,6 +3528,12 @@ function showTrackerTip(e, key, len) {
       `<div style="color:${isDone?'var(--green)':'var(--muted)'};">${isDone ? '✅ Done' : '— Not started'}</div>` +
       `<div style="color:var(--muted);font-size:10px">${fmtM(ch)} of ${fmtM(len)}</div>`;
   }
+
+  // Auto-hide after 2.5 seconds on touch
+  if (isTouchEvt) {
+    clearTimeout(tip._hideTimer);
+    tip._hideTimer = setTimeout(() => { tip.style.display = 'none'; }, 2500);
+  }
 }
 
 function hideTrackerTip(key) {
@@ -3534,14 +3546,24 @@ function showMarkerTip(el, text) {
   if (!tip) {
     tip = document.createElement('div');
     tip.id = '_markerGlobalTip';
-    tip.style.cssText = 'position:fixed;background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;white-space:nowrap;z-index:9999;pointer-events:none;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5)';
+    tip.style.cssText = 'position:fixed;background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;white-space:nowrap;z-index:9999;pointer-events:none;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5)';
     document.body.appendChild(tip);
   }
+  // Toggle on tap
+  if (tip.style.display === 'block' && tip._lastEl === el) {
+    tip.style.display = 'none';
+    tip._lastEl = null;
+    return;
+  }
+  tip._lastEl = el;
   tip.textContent = text;
   tip.style.display = 'block';
   const r = el.getBoundingClientRect();
-  tip.style.left = (r.left + r.width/2 - tip.offsetWidth/2) + 'px';
-  tip.style.top  = (r.top - tip.offsetHeight - 6) + 'px';
+  tip.style.left = Math.max(4, r.left + r.width/2 - 80) + 'px';
+  tip.style.top  = (r.top - 40) + 'px';
+  // Auto-hide after 2.5s
+  clearTimeout(tip._timer);
+  tip._timer = setTimeout(() => { tip.style.display = 'none'; tip._lastEl = null; }, 2500);
 }
 
 function hideMarkerTip() {
@@ -3710,7 +3732,8 @@ function renderTrackerTab() {
                   data-gaps='${gapsJson}' data-len="${len}"
                   onmouseenter="showTrackerTip(event,'${row.key}',${len})"
                   onmousemove="showTrackerTip(event,'${row.key}',${len})"
-                  onmouseleave="hideTrackerTip('${row.key}')">
+                  onmouseleave="hideTrackerTip('${row.key}')"
+                  ontouchstart="showTrackerTip(event,'${row.key}',${len})" ontouchend="event.preventDefault()">
                   ${row.reps.map(r=>{
                     const f=parseFloat(r.from)||0, t=parseFloat(r.to)||0;
                     const left=(f/len*100).toFixed(2), width=Math.max(0.5,((t-f)/len*100)).toFixed(2);
@@ -3748,7 +3771,8 @@ function renderTrackerTab() {
                   ${row.items.map(item=>`
                     <div style="position:absolute;left:${item.left.toFixed(2)}%;transform:translateX(-50%);top:1px;height:14px;cursor:pointer"
                       onmouseenter="showMarkerTip(this,'${item.tip.replace(/'/g,'&#39;')}')"
-                      onmouseleave="hideMarkerTip()">
+                      onmouseleave="hideMarkerTip()"
+                      ontouchstart="showMarkerTip(this,'${item.tip.replace(/'/g,'&#39;')}');event.preventDefault()">
                       <div style="width:3px;height:100%;background:${row.color};border-radius:1px;pointer-events:none"></div>
                     </div>`).join('')}
                 </div>
