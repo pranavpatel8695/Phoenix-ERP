@@ -5099,33 +5099,7 @@ function renderAttendanceEngineer() {
   const history = all.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
   if (history.length) {
     html += `<div class="card-title mb-2">📋 History</div>`;
-    html += history.map(a => {
-      // Detect admin-marked: has markedBy=admin OR (backfill + both approved, no self-submit)
-      const markedByAdmin = (a.markedBy && getUsers()[a.markedBy]?.role === 'admin')
-        || (!a.markedBy && a.isBackfill && a.pmStatus === 'approved' && a.adminStatus === 'approved');
-      // Detect PM-marked: has markedBy=pm OR (backfill + pm approved, admin pending, no self-submit)
-      const markedByPM = (a.markedBy && getUsers()[a.markedBy]?.role === 'pm')
-        || (!a.markedBy && a.isBackfill && a.pmStatus === 'approved' && a.adminStatus === 'pending');
-      return `
-      <div class="card mb-2" style="padding:10px 12px">
-        <div class="flex justify-between items-center">
-          <div>
-            <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(a.leaveFrom+' to '+a.leaveTo):a.date}</span></div>
-            ${a.atype==='leave'?`<div style="font-size:11px;color:var(--muted)">${a.leaveType} — ${a.reason||''}</div>`:''}
-            ${a.markedByName?`<div style="font-size:10px;color:var(--muted)">Marked by: ${a.markedByName}</div>`:''}
-          </div>
-          <div style="text-align:right;font-size:10px">
-            ${markedByAdmin
-              ? `<div style="color:var(--green);font-weight:700">✅ Admin Approved</div>`
-              : markedByPM && a.adminStatus==='pending'
-                ? `<div style="color:var(--green)">✅ PM Approved</div><div style="color:var(--orange)">⏳ Admin Pending</div>`
-                : `<div style="color:${statColor(a.pmStatus)}">${statLabel(a.pmStatus)} PM</div>
-                   ${a.pmStatus==='approved'?`<div style="color:${statColor(a.adminStatus)}">${statLabel(a.adminStatus)} Admin</div>`:''}`
-            }
-          </div>
-        </div>
-      </div>`;
-    }).join('');
+    html += history.map(a => renderAttendanceHistoryCard(a)).join('');
   }
   return html;
 }
@@ -5312,13 +5286,7 @@ function renderAttendancePM() {
   const myHistory = myRecs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   if (myHistory.length) {
     html += `<div class="card-title mb-2">📋 My History</div>`;
-    html += myHistory.map(a=>`
-      <div class="card mb-2" style="padding:10px 12px">
-        <div class="flex justify-between items-center">
-          <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(a.leaveFrom+' to '+a.leaveTo):a.date}</span></div>
-          <div style="text-align:right;font-size:10px;color:${statColor(a.adminStatus)}">${statLabel(a.adminStatus)}</div>
-        </div>
-      </div>`).join('');
+    html += myHistory.map(a => renderAttendanceHistoryCard(a)).join('');
   }
 
   // Team section
@@ -5489,18 +5457,87 @@ function renderAttendanceAdmin() {
   return html;
 }
 
+function renderAttendanceHistoryCard(a) {
+  const statColor = s => s==='approved'?'var(--green)':s==='rejected'?'var(--red)':'var(--orange)';
+  const statLabel = s => s==='approved'?'✅ Approved':s==='rejected'?'❌ Rejected':'⏳ Pending';
+  const users = getUsers();
+  const adminName = Object.entries(users).find(([,u])=>u.role==='admin')?.[1]?.name || 'Admin';
+  const pmDisplay = a.pmName || (() => {
+    const e = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+    return e?.[1]?.name || e?.[0] || '—';
+  })();
+  const markedByAdmin = (a.markedBy && users[a.markedBy]?.role==='admin')
+    || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='approved');
+  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm')
+    || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='pending');
+
+  const statusBadge = markedByAdmin
+    ? `<div style="font-size:10px;color:var(--green);font-weight:700;text-align:right">✅ Admin Approved</div>`
+    : markedByPM
+      ? `<div style="font-size:10px;text-align:right"><div style="color:var(--green);font-weight:700">✅ PM Approved</div><div style="color:var(--orange)">⏳ Admin Pending</div></div>`
+      : `<div style="font-size:10px;text-align:right">
+           <div style="color:${statColor(a.pmStatus)}">${statLabel(a.pmStatus)} PM</div>
+           ${a.pmStatus==='approved'?`<div style="color:${statColor(a.adminStatus)}">${statLabel(a.adminStatus)} Admin</div>`:''}
+         </div>`;
+
+  return `<div class="card mb-2" style="padding:10px 12px">
+    <div class="flex justify-between items-center">
+      <div>
+        <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(a.leaveFrom+' to '+a.leaveTo):a.date}</span>${a.isBackfill?` <span style="font-size:9px;background:rgba(255,159,10,0.2);color:var(--orange);padding:1px 5px;border-radius:4px;font-weight:700">BACKDATED</span>`:''}</div>
+        ${a.atype==='leave'?`<div style="font-size:11px;color:var(--muted)">${a.leaveType||''} — ${a.reason||''}</div>`:''}
+        ${a.markedByName?`<div style="font-size:10px;color:var(--muted)">Marked by: ${a.markedByName}</div>`:''}
+      </div>
+      ${statusBadge}
+    </div>
+  </div>`;
+}
+
 function attendanceCard(a, role) {
   const statColor = s => s==='approved'?'var(--green)':s==='rejected'?'var(--red)':'var(--orange)';
   const statLabel = s => s==='approved'?'✅ Approved':s==='rejected'?'❌ Rejected':'⏳ Pending';
   const canAct = (role==='pm' && a.pmStatus==='pending') || (role==='admin' && a.pmStatus==='approved' && a.adminStatus==='pending');
 
-  // Look up names
   const users = getUsers();
+  const adminName = Object.entries(users).find(([,u])=>u.role==='admin')?.[1]?.name || 'Admin';
   const pmDisplay = a.pmName || (() => {
     const e = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
     return e?.[1]?.name || e?.[0] || '—';
   })();
-  const adminName = Object.entries(users).find(([,u])=>u.role==='admin')?.[1]?.name || 'Admin';
+
+  // Detect if directly marked by admin or PM (not self-submitted)
+  const markedByAdmin = (a.markedBy && users[a.markedBy]?.role==='admin')
+    || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='approved');
+  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm')
+    || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='pending');
+
+  const approvalChain = markedByAdmin
+    ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--green);font-weight:700">
+        ✅ Marked & approved by ${a.markedByName||adminName}
+       </div>`
+    : markedByPM
+      ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:11px">
+          <div style="color:var(--green);font-weight:700">✅ Marked by ${a.markedByName||pmDisplay}</div>
+          <div style="color:var(--orange);margin-top:4px">⏳ Awaiting Admin approval</div>
+         </div>`
+      : `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0"></div>
+            <div style="font-size:11px;color:var(--muted)">Submitted by</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text)">${a.userName||a.user}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="width:6px;height:6px;border-radius:50%;background:${statColor(a.pmStatus)};flex-shrink:0"></div>
+            <div style="font-size:11px;color:var(--muted)">PM</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text)">${pmDisplay}</div>
+            <div style="font-size:10px;font-weight:700;color:${statColor(a.pmStatus)};margin-left:auto">${statLabel(a.pmStatus)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="width:6px;height:6px;border-radius:50%;background:${a.pmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};flex-shrink:0"></div>
+            <div style="font-size:11px;color:${a.pmStatus==='approved'?'var(--muted)':'var(--border)'}">Admin</div>
+            <div style="font-size:11px;font-weight:700;color:${a.pmStatus==='approved'?'var(--text)':'var(--border)'}"> ${adminName}</div>
+            <div style="font-size:10px;font-weight:700;color:${a.pmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};margin-left:auto">${a.pmStatus==='approved'?statLabel(a.adminStatus):'Waiting for PM'}</div>
+          </div>
+         </div>`;
 
   return `<div class="card mb-2" style="padding:10px 12px">
     <div class="flex justify-between items-center mb-1">
@@ -5513,26 +5550,7 @@ function attendanceCard(a, role) {
       ${a.isBackfill?` <span style="font-size:9px;background:rgba(255,159,10,0.2);color:var(--orange);padding:1px 5px;border-radius:4px;font-weight:700">BACKDATED</span>`:''}
     </div>
     <div style="font-size:10px;color:var(--muted);margin-bottom:8px">📁 ${a.project||'—'}</div>
-    <!-- Approval chain -->
-    <div style="background:var(--surface2);border-radius:8px;padding:8px 10px">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-        <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0"></div>
-        <div style="font-size:11px;color:var(--muted)">Submitted by</div>
-        <div style="font-size:11px;font-weight:700;color:var(--text)">${a.userName||a.user}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-        <div style="width:6px;height:6px;border-radius:50%;background:${statColor(a.pmStatus)};flex-shrink:0"></div>
-        <div style="font-size:11px;color:var(--muted)">PM</div>
-        <div style="font-size:11px;font-weight:700;color:var(--text)">${pmDisplay}</div>
-        <div style="font-size:10px;font-weight:700;color:${statColor(a.pmStatus)};margin-left:auto">${statLabel(a.pmStatus)}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <div style="width:6px;height:6px;border-radius:50%;background:${a.pmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};flex-shrink:0"></div>
-        <div style="font-size:11px;color:${a.pmStatus==='approved'?'var(--muted)':'var(--border)'}">Admin</div>
-        <div style="font-size:11px;font-weight:700;color:${a.pmStatus==='approved'?'var(--text)':'var(--border)'}"> ${adminName}</div>
-        <div style="font-size:10px;font-weight:700;color:${a.pmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};margin-left:auto">${a.pmStatus==='approved'?statLabel(a.adminStatus):'Waiting for PM'}</div>
-      </div>
-    </div>
+    ${approvalChain}
     ${canAct ? `<div class="flex gap-2 mt-2">
       <button class="btn btn-primary btn-sm flex-1" onclick="reviewAttendance('${a.id}','${role}','approved')">✅ Approve</button>
       <button class="btn btn-danger btn-sm flex-1" onclick="reviewAttendance('${a.id}','${role}','rejected')">❌ Reject</button>
