@@ -4264,6 +4264,8 @@ function saveAccount() {
 
 function deleteAccount(u) {
   showConfirm('Delete Account', `Delete account "@${u}"?`, () => {
+    const deleted = LS.get('phx_deleted_users', []);
+    if (!deleted.includes(u)) { deleted.push(u); LS.set('phx_deleted_users', deleted); }
     const users = getUsers();
     delete users[u];
     saveUsers(users);
@@ -4926,11 +4928,13 @@ async function updateUserUM(username) {
 
 function deleteUserUM(username) {
   showConfirm('Delete User', 'Delete account "@' + username + '"? This cannot be undone.', async function() {
+    // Update deleted list FIRST so saveUsers guard doesn't restore the user
+    const deleted = LS.get('phx_deleted_users', []);
+    if (!deleted.includes(username)) { deleted.push(username); LS.set('phx_deleted_users', deleted); }
+
     const users = getUsers();
     delete users[username];
     saveUsers(users);
-    const deleted = LS.get('phx_deleted_users', []);
-    if (!deleted.includes(username)) { deleted.push(username); LS.set('phx_deleted_users', deleted); }
     saveAttendance(getAttendance().filter(a=>a.user!==username));
     document.getElementById('main').innerHTML = renderUsersTab();
     try {
