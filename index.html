@@ -743,50 +743,19 @@ let _pushing = false;
 
 async function pushConfig() {
   _pushing = true;
-  // Split into two documents to avoid 65KB limit
-  // Doc 1: Static config (users, projects, routes, specials)
   const deletedUsers = LS.get('phx_deleted_users', []);
 
-  // Before pushing, fetch remote users and merge so we don't overwrite other devices' users
-  let remoteUsers = {};
-  try {
-    const remoteRes = await fetch(`${AW.endpoint}/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`, {
-      headers: { 'X-Appwrite-Project': AW.project }
-    });
-    console.log('[pushConfig] remote fetch status:', remoteRes.status);
-    if (remoteRes.ok) {
-      const remoteDoc = await remoteRes.json();
-      console.log('[pushConfig] remoteDoc keys:', Object.keys(remoteDoc));
-      const remoteData = JSON.parse(remoteDoc.value || '{}');
-      remoteUsers = remoteData.users || {};
-      console.log('[pushConfig] remote users:', Object.keys(remoteUsers));
-    }
-  } catch(e) { console.warn('[pushConfig] fetch remote failed:', e); }
-
-  // Merge: start with remote users, then apply local on top
+  // Push local users (without deleted ones) — pullConfig already merged remote before this call
   const localUsers = getUsers();
-  console.log('[pushConfig] local users:', Object.keys(localUsers));
-  const mergedUsers = { ...remoteUsers };
-  Object.keys(localUsers).forEach(u => {
-    if (!deletedUsers.includes(u)) mergedUsers[u] = localUsers[u];
-  });
-  // Remove ALL deleted users from merged (both local-deleted and remote-not-having-them)
-  deletedUsers.forEach(u => { delete mergedUsers[u]; });
-  console.log('[pushConfig] merged users to push:', Object.keys(mergedUsers));
-
-  // Save merged back to local so it's consistent
-  if (Object.keys(mergedUsers).length > Object.keys(localUsers).length) {
-    LS.set('phx_users', mergedUsers);
-  }
-
-  // Strip unnecessary fields before pushing to minimize size
   const cleanUsers = Object.fromEntries(
-    Object.entries(mergedUsers).map(([u, v]) => [u, {
-      role: v.role,
-      pass: v.pass,
-      name: v.name,
-      projects: v.projects || []
-    }])
+    Object.entries(localUsers)
+      .filter(([u]) => !deletedUsers.includes(u))
+      .map(([u, v]) => [u, {
+        role: v.role,
+        pass: v.pass,
+        name: v.name,
+        projects: v.projects || []
+      }])
   );
 
   // Minimize routes - only store essential fields to save space
