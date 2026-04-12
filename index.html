@@ -822,8 +822,9 @@ async function pushConfig() {
   };
 
   // Doc 2: Live/operational data (attendance, store, machinery)
+  const deletedStoreItems = LS.get('phx_deleted_store_items', []);
   const storeItemsLean = getStoreItems()
-    .filter(i=>(parseFloat(i.qty)||0) > 0)
+    .filter(i => (parseFloat(i.qty)||0) > 0 && !deletedStoreItems.includes(i.id))
     .map(i => { const {photo,...rest}=i; return rest; });
 
   let attendance = getAttendance();
