@@ -748,21 +748,26 @@ async function pushConfig() {
     const remoteRes = await fetch(`${AW.endpoint}/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`, {
       headers: { 'X-Appwrite-Project': AW.project }
     });
+    console.log('[pushConfig] remote fetch status:', remoteRes.status);
     if (remoteRes.ok) {
       const remoteDoc = await remoteRes.json();
+      console.log('[pushConfig] remoteDoc keys:', Object.keys(remoteDoc));
       const remoteData = JSON.parse(remoteDoc.value || '{}');
       remoteUsers = remoteData.users || {};
+      console.log('[pushConfig] remote users:', Object.keys(remoteUsers));
     }
-  } catch(e) {}
+  } catch(e) { console.warn('[pushConfig] fetch remote failed:', e); }
 
   // Merge: start with remote users, then apply local on top
   const localUsers = getUsers();
+  console.log('[pushConfig] local users:', Object.keys(localUsers));
   const mergedUsers = { ...remoteUsers };
   Object.keys(localUsers).forEach(u => {
     if (!deletedUsers.includes(u)) mergedUsers[u] = localUsers[u];
   });
   // Remove deleted users from merged
   deletedUsers.forEach(u => { delete mergedUsers[u]; });
+  console.log('[pushConfig] merged users to push:', Object.keys(mergedUsers));
 
   // Save merged back to local so it's consistent
   if (Object.keys(mergedUsers).length > Object.keys(localUsers).length) {
