@@ -600,10 +600,9 @@ async function pullConfig(force=false) {
       // Process deletedUsers first
       if (d.deletedUsers?.length) {
         const existing = LS.get('phx_deleted_users', []);
-        const localUsers = getUsers();
-        // Only add to deleted list if user doesn't currently exist locally AND remote doesn't have them active
-        const safeToDelete = d.deletedUsers.filter(u => !localUsers[u] && !d.users?.[u]);
-        LS.set('phx_deleted_users', [...new Set([...existing, ...safeToDelete])]);
+        // Add to deleted list if remote deleted them AND remote doesn't have them active (not re-created)
+        const toDelete = d.deletedUsers.filter(u => !d.users?.[u]);
+        LS.set('phx_deleted_users', [...new Set([...existing, ...toDelete])]);
       }
 
       // If remote has a user that we have in local deletedUsers, remove from deleted list
@@ -613,7 +612,6 @@ async function pullConfig(force=false) {
         const reactivated = localDeleted.filter(u => d.users[u]);
         if (reactivated.length) {
           LS.set('phx_deleted_users', localDeleted.filter(u => !reactivated.includes(u)));
-          console.log('[pullConfig] cleared from deletedUsers (re-created remotely):', reactivated);
         }
       }
 
@@ -622,25 +620,19 @@ async function pullConfig(force=false) {
         const adminPass = local.admin?.pass || 'admin';
         const deleted = LS.get('phx_deleted_users', []);
 
-        // RULE: Any user in local storage that is NOT in phx_deleted_users MUST survive.
-        // Remote can add/update users but NEVER remove local users.
+        // Start with ALL local users
         const merged = {};
-
-        // 1. Start with ALL local users (they are always kept unless deleted)
         Object.keys(local).forEach(u => {
           if (!deleted.includes(u)) merged[u] = local[u];
         });
 
-        // 2. Add/update from remote (remote updates name/role/projects)
+        // Add/update from remote, skip deleted
         Object.keys(d.users).forEach(u => {
-          if (deleted.includes(u)) return;
-          if (u === 'admin') return;
+          if (deleted.includes(u) || u === 'admin') return;
           const rem = d.users[u];
           if (!merged[u]) {
-            // User exists on remote but not local — add it
             merged[u] = rem;
           } else {
-            // User exists both places — take remote data but keep local projects if remote has none
             const localProjects = merged[u].projects;
             merged[u] = { ...rem };
             if (!merged[u].projects?.length && localProjects?.length) {
@@ -649,7 +641,7 @@ async function pullConfig(force=false) {
           }
         });
 
-        // 3. Admin always gets local password
+        // Admin always gets local password
         merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
 
         saveUsers(merged);
