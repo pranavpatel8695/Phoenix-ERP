@@ -1084,7 +1084,7 @@ async function loginSuccess(user, userRecord) {
 
   // Show/hide nav items
   document.getElementById('navSubmit').classList.toggle('hidden', false);
-  document.getElementById('navTracker').classList.toggle('hidden', isEngineer(currentRole));
+  document.getElementById('navTracker').classList.toggle('hidden', isEngineer(currentRole) && currentRole !== 'senior_engineer');
   document.getElementById('navSettings').classList.toggle('hidden', isEngineer(currentRole));
   document.getElementById('navUsers').classList.toggle('hidden', currentRole !== 'admin');
   document.getElementById('navAttendance')?.classList.toggle('hidden', false);
