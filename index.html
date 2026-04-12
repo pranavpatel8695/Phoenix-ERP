@@ -5099,19 +5099,29 @@ function renderAttendanceEngineer() {
   const history = all.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
   if (history.length) {
     html += `<div class="card-title mb-2">📋 History</div>`;
-    html += history.map(a => `
+    html += history.map(a => {
+      const markedByAdmin = a.markedBy && getUsers()[a.markedBy]?.role === 'admin';
+      const markedByPM    = a.markedBy && getUsers()[a.markedBy]?.role === 'pm';
+      return `
       <div class="card mb-2" style="padding:10px 12px">
         <div class="flex justify-between items-center">
           <div>
             <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(a.leaveFrom+' to '+a.leaveTo):a.date}</span></div>
             ${a.atype==='leave'?`<div style="font-size:11px;color:var(--muted)">${a.leaveType} — ${a.reason||''}</div>`:''}
+            ${a.markedByName?`<div style="font-size:10px;color:var(--muted)">Marked by: ${a.markedByName}</div>`:''}
           </div>
           <div style="text-align:right;font-size:10px">
-            <div style="color:${statColor(a.pmStatus)}">${statLabel(a.pmStatus)} PM</div>
-            ${a.pmStatus==='approved'?`<div style="color:${statColor(a.adminStatus)}">${statLabel(a.adminStatus)} Admin</div>`:''}
+            ${markedByAdmin
+              ? `<div style="color:var(--green);font-weight:700">✅ Admin Approved</div>`
+              : markedByPM && a.adminStatus==='pending'
+                ? `<div style="color:var(--green)">✅ PM Approved</div><div style="color:var(--orange)">⏳ Admin Pending</div>`
+                : `<div style="color:${statColor(a.pmStatus)}">${statLabel(a.pmStatus)} PM</div>
+                   ${a.pmStatus==='approved'?`<div style="color:${statColor(a.adminStatus)}">${statLabel(a.adminStatus)} Admin</div>`:''}`
+            }
           </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
   return html;
 }
