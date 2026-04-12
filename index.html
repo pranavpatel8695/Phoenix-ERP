@@ -601,9 +601,20 @@ async function pullConfig(force=false) {
       if (d.deletedUsers?.length) {
         const existing = LS.get('phx_deleted_users', []);
         const localUsers = getUsers();
-        // Only add to deleted list if user doesn't currently exist locally
-        const safeToDelete = d.deletedUsers.filter(u => !localUsers[u]);
+        // Only add to deleted list if user doesn't currently exist locally AND remote doesn't have them active
+        const safeToDelete = d.deletedUsers.filter(u => !localUsers[u] && !d.users?.[u]);
         LS.set('phx_deleted_users', [...new Set([...existing, ...safeToDelete])]);
+      }
+
+      // If remote has a user that we have in local deletedUsers, remove from deleted list
+      // (means the user was re-created on another device)
+      if (d.users) {
+        const localDeleted = LS.get('phx_deleted_users', []);
+        const reactivated = localDeleted.filter(u => d.users[u]);
+        if (reactivated.length) {
+          LS.set('phx_deleted_users', localDeleted.filter(u => !reactivated.includes(u)));
+          console.log('[pullConfig] cleared from deletedUsers (re-created remotely):', reactivated);
+        }
       }
 
       if (d.users) {
@@ -765,8 +776,11 @@ async function pushConfig() {
   Object.keys(localUsers).forEach(u => {
     if (!deletedUsers.includes(u)) mergedUsers[u] = localUsers[u];
   });
-  // Remove deleted users from merged
-  deletedUsers.forEach(u => { delete mergedUsers[u]; });
+  // Remove deleted users from merged ONLY if remote also doesn't have them
+  // (remote having them means they were re-created on another device)
+  deletedUsers.forEach(u => {
+    if (!remoteUsers[u]) delete mergedUsers[u];
+  });
   console.log('[pushConfig] merged users to push:', Object.keys(mergedUsers));
 
   // Save merged back to local so it's consistent
