@@ -4608,6 +4608,18 @@ function addProjectToUser(username) {
   if (!proj) { showToast('Select a project first'); return; }
   const users = getUsers();
   if (!users[username]) return;
+
+  // If assigning a PM, check no other PM already assigned to this project
+  if (users[username].role === 'pm') {
+    const existingPM = Object.entries(users).find(([u, v]) =>
+      u !== username && v.role === 'pm' && (v.projects || []).includes(proj)
+    );
+    if (existingPM) {
+      showToast(`⚠️ ${existingPM[1].name || existingPM[0]} is already PM for "${proj}"`);
+      return;
+    }
+  }
+
   if (!users[username].projects) users[username].projects = [];
   if (users[username].projects.includes(proj)) { showToast('Already assigned'); return; }
   users[username].projects.push(proj);
@@ -4682,6 +4694,20 @@ function umAddProject() {
   if (!proj) return;
   if (!window._umProjects) window._umProjects = [];
   if (window._umProjects.includes(proj)) { showToast('Already added'); return; }
+
+  // If role is PM, check no other PM already assigned to this project
+  const role = document.getElementById('um-role')?.value || '';
+  if (role === 'pm') {
+    const users = getUsers();
+    const existingPM = Object.entries(users).find(([, v]) =>
+      v.role === 'pm' && (v.projects || []).includes(proj)
+    );
+    if (existingPM) {
+      showToast(`⚠️ ${existingPM[1].name || existingPM[0]} is already PM for "${proj}"`);
+      return;
+    }
+  }
+
   window._umProjects.push(proj);
   sel.value = '';
   renderUMProjectList();
@@ -4717,6 +4743,19 @@ async function saveUserUM() {
 
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
+
+  // If PM role, check no other PM already assigned to any selected project
+  if (role === 'pm') {
+    for (const proj of projs) {
+      const existingPM = Object.entries(users).find(([, v]) =>
+        v.role === 'pm' && (v.projects || []).includes(proj)
+      );
+      if (existingPM) {
+        showToast(`⚠️ ${existingPM[1].name || existingPM[0]} is already PM for "${proj}"`);
+        return;
+      }
+    }
+  }
   // Remove from deleted list if re-creating a previously deleted username
   const deletedList = LS.get('phx_deleted_users', []);
   LS.set('phx_deleted_users', deletedList.filter(u => u !== user));
@@ -4840,6 +4879,20 @@ async function updateUserUM(username) {
   if (!name) { showToast('⚠️ Name cannot be empty'); return; }
   const users = getUsers();
   if (!users[username]) return;
+
+  // If changing to PM role, check no other PM already on their projects
+  if (role === 'pm' && users[username].role !== 'pm') {
+    const myProjects = users[username].projects || [];
+    for (const proj of myProjects) {
+      const existingPM = Object.entries(users).find(([u, v]) =>
+        u !== username && v.role === 'pm' && (v.projects || []).includes(proj)
+      );
+      if (existingPM) {
+        showToast(`⚠️ ${existingPM[1].name || existingPM[0]} is already PM for "${proj}"`);
+        return;
+      }
+    }
+  }
   users[username].name = name;
   users[username].role = role;
   delete users[username].designation;
