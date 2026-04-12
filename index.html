@@ -5100,8 +5100,12 @@ function renderAttendanceEngineer() {
   if (history.length) {
     html += `<div class="card-title mb-2">📋 History</div>`;
     html += history.map(a => {
-      const markedByAdmin = a.markedBy && getUsers()[a.markedBy]?.role === 'admin';
-      const markedByPM    = a.markedBy && getUsers()[a.markedBy]?.role === 'pm';
+      // Detect admin-marked: has markedBy=admin OR (backfill + both approved, no self-submit)
+      const markedByAdmin = (a.markedBy && getUsers()[a.markedBy]?.role === 'admin')
+        || (!a.markedBy && a.isBackfill && a.pmStatus === 'approved' && a.adminStatus === 'approved');
+      // Detect PM-marked: has markedBy=pm OR (backfill + pm approved, admin pending, no self-submit)
+      const markedByPM = (a.markedBy && getUsers()[a.markedBy]?.role === 'pm')
+        || (!a.markedBy && a.isBackfill && a.pmStatus === 'approved' && a.adminStatus === 'pending');
       return `
       <div class="card mb-2" style="padding:10px 12px">
         <div class="flex justify-between items-center">
