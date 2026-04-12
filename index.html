@@ -693,16 +693,18 @@ async function pullConfig(force=false) {
 
       // Store items: full replace from remote, preserve local photos, remove zero-qty
       if (d.storeItems?.length) {
+        const deletedStoreItems = LS.get('phx_deleted_store_items', []);
         // Build map of local photos to preserve
         const localPhotos = {};
         getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
         let loc = d.storeItems
           .filter(i=>(parseFloat(i.qty)||0)>0)
+          .filter(i=>!deletedStoreItems.includes(i.id)) // never restore deleted items
           .map(i=>({...i, photo: i.photo||localPhotos[i.id]||''}));
-        // Keep local items that aren't in remote yet (just added locally)
+        // Keep local items not in remote yet (just added locally), but not deleted ones
         const remoteIds = new Set(loc.map(i=>i.id));
         getStoreItems().forEach(i=>{
-          if(!remoteIds.has(i.id) && (parseFloat(i.qty)||0)>0) loc.push(i);
+          if(!remoteIds.has(i.id) && (parseFloat(i.qty)||0)>0 && !deletedStoreItems.includes(i.id)) loc.push(i);
         });
         saveStoreItems(loc);
       } else if (d.storeItems && d.storeItems.length === 0) {
@@ -6685,7 +6687,11 @@ function saveStoreItem(editId, txnType) {
 
 function deleteStoreItem(id) {
   if (!confirm('Delete this item?')) return;
-  saveStoreItems(getStoreItems().filter(i=>i.id!==id)); pushConfig();
+  saveStoreItems(getStoreItems().filter(i=>i.id!==id));
+  // Track deleted ID so it doesn't come back from remote on next pull
+  const deletedItems = LS.get('phx_deleted_store_items', []);
+  if (!deletedItems.includes(id)) { deletedItems.push(id); LS.set('phx_deleted_store_items', deletedItems); }
+  pushConfig();
   showToast('🗑️ Deleted'); closeFormModal(); renderCurrentTab();
 }
 
