@@ -6340,9 +6340,11 @@ function renderStoreInventory() {
     const minQty = parseFloat(item.minQty)||0;
     const low = qty <= minQty && minQty > 0;
     const pid = 'store_' + item.id;
-    if (item.photo) window['_ps_'+pid] = [item.photo];
+    // Restore photo from separate localStorage key if not in item object
+    const photo = item.photo || localStorage.getItem('phx_si_photo_'+item.id) || '';
+    if (photo) window['_ps_'+pid] = [photo];
     let card = '<div class="card mb-2" style="padding:10px 12px' + (low ? ';border-left:3px solid var(--red)' : '') + '">';
-    if (item.photo) card += '<img loading="lazy" src="' + item.photo + '" onclick="openPhotoLightbox(\'' + pid + '\',0)" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;cursor:pointer">';
+    if (photo) card += '<img loading="lazy" src="' + photo + '" onclick="openPhotoLightbox(\'' + pid + '\',0)" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;cursor:pointer">';
     card += '<div class="flex justify-between items-center">';
     card += '<div><div style="font-size:13px;font-weight:700">' + item.name + (low ? ' <span style="font-size:10px;color:var(--red)">⚠️ Low Stock</span>' : '') + '</div>';
     card += '<div style="font-size:11px;color:var(--muted)">' + (item.category||'General') + '</div></div>';
@@ -6618,7 +6620,7 @@ function openEditStoreItem(id) {
         <input type="file" id="si-photo" accept="image/*" style="display:none" onchange="handleStorePhotoUpload(this)">
       </div>
       <div class="photo-prev-grid" id="si-photo-prev">
-        ${item.photo?`<div class="photo-thumb" id="si-existing-photo"><img src="${item.photo}" style="width:72px;height:72px;object-fit:cover;border-radius:8px"><button class="rm" onclick="document.getElementById('si-existing-photo').remove()">✕</button></div>`:''}
+        ${(item.photo||localStorage.getItem('phx_si_photo_'+item.id))?`<div class="photo-thumb" id="si-existing-photo"><img src="${item.photo||localStorage.getItem('phx_si_photo_'+item.id)}" style="width:72px;height:72px;object-fit:cover;border-radius:8px"><button class="rm" onclick="document.getElementById('si-existing-photo').remove()">✕</button></div>`:''}
       </div>
     </div>
     <div class="flex gap-2 mt-2">
@@ -6668,7 +6670,7 @@ function saveStoreItem(editId, txnType) {
     const photoEl = document.getElementById('si-new-photo');
     const photoSrc = photoEl?.dataset?.photo || photoEl?.querySelector('img')?.src
         || document.getElementById('si-existing-photo')?.querySelector('img')?.src
-        || items[idx].photo || '';
+        || items[idx].photo || localStorage.getItem('phx_si_photo_'+editId) || '';
     items[idx] = { ...items[idx], name, project:proj,
       category: document.getElementById('si-cat')?.value||items[idx].category,
       qty, unit: document.getElementById('si-unit')?.value||items[idx].unit,
