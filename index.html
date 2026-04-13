@@ -684,8 +684,13 @@ async function pullConfig(force=false) {
       }
 
       // Store items: full replace from remote, preserve local photos, remove zero-qty
+      if (d.deletedStoreItems?.length) {
+        const existing = LS.get('phx_deleted_store_items', []);
+        LS.set('phx_deleted_store_items', [...new Set([...existing, ...d.deletedStoreItems])]);
+      }
+      const deletedStoreItems = LS.get('phx_deleted_store_items', []);
+
       if (d.storeItems?.length) {
-        const deletedStoreItems = LS.get('phx_deleted_store_items', []);
         // Build map of local photos to preserve
         const localPhotos = {};
         getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
@@ -801,6 +806,7 @@ async function pushConfig() {
     machLogs,
     machService: getMachService(),
     machIssues:  getMachIssues(),
+    deletedStoreItems: LS.get('phx_deleted_store_items', []),
     updatedAt:   Date.now()
   };
 
