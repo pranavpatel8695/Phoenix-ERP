@@ -572,11 +572,24 @@ async function doSync() {
 }
 
 async function pullConfig(force=false) {
-  // Fetch both config and live data documents in parallel
-  const [configRes, liveRes] = await Promise.all([
+  // Fetch config, live data, and store photos in parallel
+  const [configRes, liveRes, photosRes] = await Promise.all([
     aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`),
-    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/liveData`)
+    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/liveData`),
+    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/storePhotos`)
   ]);
+
+  // Apply store photos to localStorage immediately
+  if (photosRes?.value) {
+    try {
+      const photos = JSON.parse(photosRes.value);
+      Object.keys(photos).forEach(id => {
+        if (photos[id]) {
+          try { localStorage.setItem('phx_si_photo_'+id, photos[id]); } catch(e) {}
+        }
+      });
+    } catch(e) {}
+  }
 
   const mergeArr = (getter,saver,arr,updateFields) => {
     if(!arr?.length) return;
@@ -815,16 +828,10 @@ async function pushConfig() {
 
   // Doc 2: Live/operational data (attendance, store, machinery)
   const deletedStoreItems = LS.get('phx_deleted_store_items', []);
-  // Include photos in store items - they're compressed to ~30KB each
-  // Build items with photos from localStorage
-  const storeItemsFull = getStoreItems()
+  // Store items WITHOUT photos (photos go in separate doc)
+  const storeItemsLean = getStoreItems()
     .filter(i => (parseFloat(i.qty)||0) > 0 && !deletedStoreItems.includes(i.id))
-    .map(i => ({ ...i, photo: i.photo || localStorage.getItem('phx_si_photo_'+i.id) || '' }));
-  // Strip photos if total size too large - keep photos on small sets
-  const withPhotosSize = JSON.stringify(storeItemsFull).length;
-  const storeItemsLean = withPhotosSize < 40000
-    ? storeItemsFull
-    : storeItemsFull.map(i => { const {photo,...rest}=i; return rest; });
+    .map(i => { const {photo,...rest}=i; return rest; });
 
   let attendance = getAttendance();
   let machLogs   = getMachLogs();
@@ -888,11 +895,6 @@ async function pushConfig() {
   }
   let liveVal = JSON.stringify(liveData);
   if (liveVal.length > 64000) {
-    // First try stripping photos from store items
-    liveData.storeItems = storeItemsLean.map(i => { const {photo,...rest}=i; return rest; });
-    liveVal = JSON.stringify(liveData);
-  }
-  if (liveVal.length > 64000) {
     liveData.machLogs   = machLogs.slice(-20);
     liveData.storeTxns  = storeTxns.slice(-50);
     liveData.attendance = attendance.slice(-100);
@@ -944,9 +946,25 @@ async function pushConfig() {
   };
 
   try {
+    // Build store photos map — compress aggressively for cross-device sync
+    const storePhotosMap = {};
+    const photoPromises = getStoreItems()
+      .filter(i => !deletedStoreItems.includes(i.id))
+      .map(async i => {
+        const photo = i.photo || localStorage.getItem('phx_si_photo_'+i.id) || '';
+        if (photo) {
+          // Compress to 8KB max for Appwrite storage budget
+          const compressed = await compressPhoto(photo, 8);
+          storePhotosMap[i.id] = compressed;
+        }
+      });
+    await Promise.all(photoPromises);
+    const storePhotosVal = JSON.stringify(storePhotosMap);
+
     await Promise.all([
       save('adminData', configVal),
-      save('liveData',  liveVal)
+      save('liveData',  liveVal),
+      storePhotosVal.length < 64000 ? save('storePhotos', storePhotosVal) : Promise.resolve()
     ]);
     // Only clear pending users flag after confirmed successful push
     const stillPending = LS.get('phx_pending_users', []);
