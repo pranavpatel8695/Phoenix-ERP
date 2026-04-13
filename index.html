@@ -691,8 +691,12 @@ async function pullConfig(force=false) {
         getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
         let loc = d.storeItems
           .filter(i=>(parseFloat(i.qty)||0)>0)
-          .filter(i=>!deletedStoreItems.includes(i.id)) // never restore deleted items
-          .map(i=>({...i, photo: i.photo||localPhotos[i.id]||''}));
+          .filter(i=>!deletedStoreItems.includes(i.id))
+          .map(i=>{
+            // Restore photo from separate localStorage key (photos stripped from push to save space)
+            const savedPhoto = localStorage.getItem('phx_si_photo_'+i.id) || localPhotos[i.id] || '';
+            return {...i, photo: i.photo || savedPhoto};
+          });
         // Keep local items not in remote yet (just added locally), but not deleted ones
         const remoteIds = new Set(loc.map(i=>i.id));
         getStoreItems().forEach(i=>{
@@ -6635,6 +6639,8 @@ function handleStorePhotoUpload(input) {
       prev.querySelectorAll('.photo-thumb').forEach(el=>el.remove());
       const wrap = document.createElement('div');
       wrap.className = 'photo-thumb'; wrap.id = 'si-new-photo';
+      // Store photo data in a data attribute so we can retrieve it later
+      wrap.dataset.photo = src;
       const img = document.createElement('img');
       img.src = src; img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px';
       const btn = document.createElement('button');
@@ -6659,6 +6665,10 @@ function saveStoreItem(editId, txnType) {
     // EDIT: find strictly by ID, update in place — never create duplicate
     const idx = items.findIndex(x=>x.id===editId);
     if (idx < 0) { showToast('⚠️ Item not found'); return; }
+    const photoEl = document.getElementById('si-new-photo');
+    const photoSrc = photoEl?.dataset?.photo || photoEl?.querySelector('img')?.src
+        || document.getElementById('si-existing-photo')?.querySelector('img')?.src
+        || items[idx].photo || '';
     items[idx] = { ...items[idx], name, project:proj,
       category: document.getElementById('si-cat')?.value||items[idx].category,
       qty, unit: document.getElementById('si-unit')?.value||items[idx].unit,
@@ -6667,11 +6677,11 @@ function saveStoreItem(editId, txnType) {
       description: document.getElementById('si-desc')?.value||'',
       condition: document.getElementById('si-condition')?.value||'working',
       status: document.getElementById('si-status')?.value||'idle',
-      photo: document.getElementById('si-new-photo')?.querySelector('img')?.src
-          || document.getElementById('si-existing-photo')?.querySelector('img')?.src
-          || items[idx].photo || '',
+      photo: photoSrc,
       updatedBy: currentUser, timestamp: new Date().toISOString()
     };
+    // Save photo separately so it survives sync (not stripped in push)
+    if (photoSrc) { try { localStorage.setItem('phx_si_photo_'+items[idx].id, photoSrc); } catch(e) {} }
     saveStoreItems(items); pushConfig();
     showToast('✅ Updated'); closeFormModal(); renderCurrentTab();
     return;
@@ -6679,6 +6689,9 @@ function saveStoreItem(editId, txnType) {
 
   // ADD NEW or PURCHASE
   const existingIdx = txnType==='purchase' ? items.findIndex(i=>i.name===name&&i.project===proj) : -1;
+  const newPhotoEl = document.getElementById('si-new-photo');
+  const newPhotoSrc = newPhotoEl?.dataset?.photo || newPhotoEl?.querySelector('img')?.src
+      || (existingIdx>-1 ? items[existingIdx].photo||'' : '');
   const obj = {
     id: existingIdx>-1 ? items[existingIdx].id : 'SI_'+Date.now(),
     name, project:proj,
@@ -6690,10 +6703,11 @@ function saveStoreItem(editId, txnType) {
     description: document.getElementById('si-desc')?.value||'',
     condition: document.getElementById('si-condition')?.value||'working',
     status: document.getElementById('si-status')?.value||'idle',
-    photo: document.getElementById('si-new-photo')?.querySelector('img')?.src
-        || (existingIdx>-1 ? items[existingIdx].photo||'' : ''),
+    photo: newPhotoSrc,
     updatedBy: currentUser, timestamp: new Date().toISOString()
   };
+  // Save photo separately so it survives sync (photos stripped in push to save space)
+  if (newPhotoSrc) { try { localStorage.setItem('phx_si_photo_'+obj.id, newPhotoSrc); } catch(e) {} }
   if (existingIdx>-1) { items[existingIdx]=obj; } else items.push(obj);
   saveStoreItems(items);
 
