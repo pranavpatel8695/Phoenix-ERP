@@ -690,7 +690,7 @@ async function pullConfig(force=false) {
       }
       const deletedStoreItems = LS.get('phx_deleted_store_items', []);
 
-      if (d.storeItems?.length) {
+      if (Array.isArray(d.storeItems)) {
         // Build map of local photos to preserve
         const localPhotos = {};
         getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
@@ -698,9 +698,7 @@ async function pullConfig(force=false) {
           .filter(i=>(parseFloat(i.qty)||0)>0)
           .filter(i=>!deletedStoreItems.includes(i.id))
           .map(i=>{
-            // Restore photo from separate localStorage key (photos stripped from push to save space)
             const savedPhoto = i.photo || localStorage.getItem('phx_si_photo_'+i.id) || localPhotos[i.id] || '';
-            // Save photo to localStorage so it persists even if stripped in next push
             if (savedPhoto) { try { localStorage.setItem('phx_si_photo_'+i.id, savedPhoto); } catch(e) {} }
             return {...i, photo: savedPhoto};
           });
@@ -709,9 +707,9 @@ async function pullConfig(force=false) {
         getStoreItems().forEach(i=>{
           if(!remoteIds.has(i.id) && (parseFloat(i.qty)||0)>0 && !deletedStoreItems.includes(i.id)) loc.push(i);
         });
+        // Also remove any local items that are in deletedStoreItems (deleted on another device)
+        loc = loc.filter(i => !deletedStoreItems.includes(i.id));
         saveStoreItems(loc);
-      } else if (d.storeItems && d.storeItems.length === 0) {
-        // Remote explicitly empty - keep local only
       }
 
       // StoreTxns: merge-add only (append new)
@@ -864,6 +862,11 @@ async function pushConfig() {
     });
   }
   let liveVal = JSON.stringify(liveData);
+  if (liveVal.length > 64000) {
+    // First try stripping photos from store items
+    liveData.storeItems = storeItemsLean.map(i => { const {photo,...rest}=i; return rest; });
+    liveVal = JSON.stringify(liveData);
+  }
   if (liveVal.length > 64000) {
     liveData.machLogs   = machLogs.slice(-20);
     liveData.storeTxns  = storeTxns.slice(-50);
