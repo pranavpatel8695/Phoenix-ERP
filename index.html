@@ -385,7 +385,16 @@ const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
 const getAttendance     = () => LS.get('phx_attendance', []);
 const saveAttendance    = v  => LS.set('phx_attendance', v);
 const getStoreItems     = () => LS.get('phx_store_items', []);
-const saveStoreItems    = v  => LS.set('phx_store_items', v);
+const saveStoreItems = v => {
+  // Guard: never restore items that are in phx_deleted_store_items
+  try {
+    const deletedItems = LS.get('phx_deleted_store_items', []);
+    if (deletedItems.length) {
+      v = v.filter(i => !deletedItems.includes(i.id));
+    }
+  } catch(e) {}
+  LS.set('phx_store_items', v);
+};
 const getStoreTxns      = () => LS.get('phx_store_txns', []);
 const saveStoreTxns     = v  => LS.set('phx_store_txns', v);
 const getMachinery      = () => LS.get('phx_machinery', []);
@@ -6751,10 +6760,10 @@ function saveStoreItem(editId, txnType) {
 
 function deleteStoreItem(id) {
   if (!confirm('Delete this item?')) return;
-  saveStoreItems(getStoreItems().filter(i=>i.id!==id));
-  // Track deleted ID so it doesn't come back from remote on next pull
+  // Update deleted list FIRST (same pattern as deleteUserUM)
   const deletedItems = LS.get('phx_deleted_store_items', []);
   if (!deletedItems.includes(id)) { deletedItems.push(id); LS.set('phx_deleted_store_items', deletedItems); }
+  saveStoreItems(getStoreItems().filter(i=>i.id!==id));
   pushConfig();
   showToast('🗑️ Deleted'); closeFormModal(); renderCurrentTab();
 }
