@@ -703,6 +703,14 @@ async function pullConfig(force=false) {
         // Build map of local photos to preserve
         const localPhotos = {};
         getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
+
+        // Remote is source of truth for store items
+        // Items in remote: take them (with photo restoration)
+        // Items NOT in remote but in local: ONLY keep if they're newer than the remote push
+        //   (i.e. added locally after last sync) - identified by not having _awId or being very new
+        // Items in deletedStoreItems: always remove
+        const remoteItemIds = new Set(d.storeItems.map(i=>i.id));
+
         let loc = d.storeItems
           .filter(i=>(parseFloat(i.qty)||0)>0)
           .filter(i=>!deletedStoreItems.includes(i.id))
@@ -711,13 +719,21 @@ async function pullConfig(force=false) {
             if (savedPhoto) { try { localStorage.setItem('phx_si_photo_'+i.id, savedPhoto); } catch(e) {} }
             return {...i, photo: savedPhoto};
           });
-        // Keep local items not in remote yet (just added locally), but not deleted ones
-        const remoteIds = new Set(loc.map(i=>i.id));
+
+        // Only keep local items that are NOT in remote if they were added AFTER the remote was last updated
+        // This prevents deleted items (missing from remote) from being re-added
+        const remoteUpdatedAt = d.updatedAt || 0;
         getStoreItems().forEach(i=>{
-          if(!remoteIds.has(i.id) && (parseFloat(i.qty)||0)>0 && !deletedStoreItems.includes(i.id)) loc.push(i);
+          if (!remoteItemIds.has(i.id) && !deletedStoreItems.includes(i.id)) {
+            // Only keep if item was created after remote was last synced (truly new local item)
+            const itemTime = new Date(i.timestamp||0).getTime();
+            if (itemTime > remoteUpdatedAt) {
+              loc.push(i);
+            }
+            // Otherwise: item missing from remote = was deleted on another device, don't re-add
+          }
         });
-        // Also remove any local items that are in deletedStoreItems (deleted on another device)
-        loc = loc.filter(i => !deletedStoreItems.includes(i.id));
+
         saveStoreItems(loc);
       }
 
