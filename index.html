@@ -6548,6 +6548,7 @@ function openAddStoreItem(proj) {
 }
 
 function openSitePurchase() {
+  _storePhotoData = null;
   const myProjects = getVisibleProjects();
   const singleProj = myProjects.length === 1;
   const myProj = myProjects[0] || '';
@@ -6573,6 +6574,7 @@ function saveSitePurchase() {
 }
 
 function openEditStoreItem(id) {
+  _storePhotoData = null;
   const item = getStoreItems().find(i=>i.id===id);
   if (!item) return;
   const projects = getProjects();
@@ -6630,24 +6632,25 @@ function openEditStoreItem(id) {
   document.getElementById('formModal').classList.remove('hidden');
 }
 
+let _storePhotoData = null; // Store photo data in memory, not DOM dataset
+
 function handleStorePhotoUpload(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     compressPhoto(e.target.result, 80).then(src => {
+      _storePhotoData = src; // Keep in memory
       const prev = document.getElementById('si-photo-prev');
       if (!prev) return;
       prev.querySelectorAll('.photo-thumb').forEach(el=>el.remove());
       const wrap = document.createElement('div');
       wrap.className = 'photo-thumb'; wrap.id = 'si-new-photo';
-      // Store photo data in a data attribute so we can retrieve it later
-      wrap.dataset.photo = src;
       const img = document.createElement('img');
       img.src = src; img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px';
       const btn = document.createElement('button');
       btn.className = 'rm'; btn.textContent = '✕';
-      btn.onclick = () => wrap.remove();
+      btn.onclick = () => { wrap.remove(); _storePhotoData = null; };
       wrap.appendChild(img); wrap.appendChild(btn);
       prev.appendChild(wrap);
     });
@@ -6667,8 +6670,7 @@ function saveStoreItem(editId, txnType) {
     // EDIT: find strictly by ID, update in place — never create duplicate
     const idx = items.findIndex(x=>x.id===editId);
     if (idx < 0) { showToast('⚠️ Item not found'); return; }
-    const photoEl = document.getElementById('si-new-photo');
-    const photoSrc = photoEl?.dataset?.photo || photoEl?.querySelector('img')?.src
+    const photoSrc = _storePhotoData
         || document.getElementById('si-existing-photo')?.querySelector('img')?.src
         || items[idx].photo || localStorage.getItem('phx_si_photo_'+editId) || '';
     items[idx] = { ...items[idx], name, project:proj,
@@ -6691,9 +6693,9 @@ function saveStoreItem(editId, txnType) {
 
   // ADD NEW or PURCHASE
   const existingIdx = txnType==='purchase' ? items.findIndex(i=>i.name===name&&i.project===proj) : -1;
-  const newPhotoEl = document.getElementById('si-new-photo');
-  const newPhotoSrc = newPhotoEl?.dataset?.photo || newPhotoEl?.querySelector('img')?.src
-      || (existingIdx>-1 ? items[existingIdx].photo||'' : '');
+  const newPhotoSrc = _storePhotoData
+      || (existingIdx>-1 ? items[existingIdx].photo || localStorage.getItem('phx_si_photo_'+items[existingIdx]?.id) || '' : '');
+  _storePhotoData = null; // clear after reading
   const obj = {
     id: existingIdx>-1 ? items[existingIdx].id : 'SI_'+Date.now(),
     name, project:proj,
