@@ -699,8 +699,10 @@ async function pullConfig(force=false) {
           .filter(i=>!deletedStoreItems.includes(i.id))
           .map(i=>{
             // Restore photo from separate localStorage key (photos stripped from push to save space)
-            const savedPhoto = localStorage.getItem('phx_si_photo_'+i.id) || localPhotos[i.id] || '';
-            return {...i, photo: i.photo || savedPhoto};
+            const savedPhoto = i.photo || localStorage.getItem('phx_si_photo_'+i.id) || localPhotos[i.id] || '';
+            // Save photo to localStorage so it persists even if stripped in next push
+            if (savedPhoto) { try { localStorage.setItem('phx_si_photo_'+i.id, savedPhoto); } catch(e) {} }
+            return {...i, photo: savedPhoto};
           });
         // Keep local items not in remote yet (just added locally), but not deleted ones
         const remoteIds = new Set(loc.map(i=>i.id));
@@ -790,9 +792,16 @@ async function pushConfig() {
 
   // Doc 2: Live/operational data (attendance, store, machinery)
   const deletedStoreItems = LS.get('phx_deleted_store_items', []);
-  const storeItemsLean = getStoreItems()
+  // Include photos in store items - they're compressed to ~30KB each
+  // Build items with photos from localStorage
+  const storeItemsFull = getStoreItems()
     .filter(i => (parseFloat(i.qty)||0) > 0 && !deletedStoreItems.includes(i.id))
-    .map(i => { const {photo,...rest}=i; return rest; });
+    .map(i => ({ ...i, photo: i.photo || localStorage.getItem('phx_si_photo_'+i.id) || '' }));
+  // Strip photos if total size too large - keep photos on small sets
+  const withPhotosSize = JSON.stringify(storeItemsFull).length;
+  const storeItemsLean = withPhotosSize < 40000
+    ? storeItemsFull
+    : storeItemsFull.map(i => { const {photo,...rest}=i; return rest; });
 
   let attendance = getAttendance();
   let machLogs   = getMachLogs();
