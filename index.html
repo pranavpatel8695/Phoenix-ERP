@@ -569,9 +569,16 @@ async function doSync() {
     );
     saveReports(merged);
 
-    // 5. Upload local-only reports to Appwrite
+    // 5. Upload local-only reports to Appwrite and persist _awId
     for (const r of localOnly) {
-      try { await saveReportToAW(r); } catch(e) {}
+      try {
+        await saveReportToAW(r);
+        if (r._awId) {
+          const reports = getReports();
+          const idx = reports.findIndex(x => String(x.id) === String(r.id));
+          if (idx >= 0) { reports[idx]._awId = r._awId; LS.set('phx_reports', reports); }
+        }
+      } catch(e) {}
     }
 
     setSyncStatus('synced');
@@ -2838,7 +2845,12 @@ async function submitReport(type) {
   saveReportToAW(data).then(ok => {
     setSyncStatus(ok ? 'synced' : 'offline');
     if (!ok) showToast('⚠️ Saved locally — will sync when online');
-    else saveReports(getReports()); // update _awId
+    else {
+      // Persist _awId to localStorage so doSync knows this report was pushed
+      const reports = getReports();
+      const idx = reports.findIndex(r => String(r.id) === String(data.id));
+      if (idx >= 0 && data._awId) { reports[idx]._awId = data._awId; LS.set('phx_reports', reports); }
+    }
   });
 }
 
