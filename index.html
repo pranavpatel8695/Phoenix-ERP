@@ -537,6 +537,7 @@ async function doSync() {
 
     // 4. Merge: remote is source of truth, local-only kept only if newer than remote sync
     const deletedReports = LS.get('phx_deleted_reports', []);
+    // Read local AFTER all fetches complete (not before) to avoid race condition with submissions
     const local = getReports();
     const localMap = local.reduce((m, r) => { m[String(r.id)] = r; return m; }, {});
     const remoteIds = new Set(remote.map(r => String(r.id)));
@@ -567,7 +568,20 @@ async function doSync() {
     const merged = Object.values(
       [...mergedRemote, ...localOnly].reduce((m, r) => { m[String(r.id)] = r; return m; }, {})
     );
-    saveReports(merged);
+
+    // Re-read local one final time to catch any reports submitted DURING this sync
+    // (race condition: user submits while doSync is fetching from Appwrite)
+    const finalLocal = getReports();
+    finalLocal.forEach(r => {
+      if (!r._awId && !deletedReports.includes(String(r.id)) && !remoteIds.has(String(r.id))) {
+        merged.push(r); // preserve any report submitted during sync
+      }
+    });
+    // Deduplicate by id (keep latest)
+    const deduped = Object.values(
+      merged.reduce((m, r) => { m[String(r.id)] = r; return m; }, {})
+    );
+    saveReports(deduped);
 
     // 5. Upload local-only reports to Appwrite and persist _awId
     for (const r of localOnly) {
