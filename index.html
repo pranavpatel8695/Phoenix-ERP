@@ -1123,7 +1123,7 @@ function setSyncStatus(s) {
 }
 
 // Auto sync every 2 min
-setInterval(() => { if (navigator.onLine && !_syncing) doSync(); }, 120000);
+setInterval(() => { if (navigator.onLine && !_syncing) doSync(); }, 30000);
 window.addEventListener('online', () => setTimeout(doSync, 2000));
 
 // ── AUTH ─────────────────────────────────────────────────────
@@ -3170,6 +3170,7 @@ function renderReportsTab() {
   let html = `
     <div class="section-header">
       <div class="section-title">All Reports</div>
+      <button class="btn btn-ghost btn-sm" onclick="setSyncStatus('syncing');doSync().then(()=>renderCurrentTab())">↻ Sync</button>
     </div>
     <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Date</div>
