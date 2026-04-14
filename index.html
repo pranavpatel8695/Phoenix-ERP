@@ -413,6 +413,11 @@ function getReports() {
   return LS.get('phx_reports', []);
 }
 function saveReports(r) {
+  // Guard: never restore reports that are in phx_deleted_reports
+  try {
+    const deleted = LS.get('phx_deleted_reports', []);
+    if (deleted.length) r = r.filter(x => !deleted.includes(String(x.id)));
+  } catch(e) {}
   LS.set('phx_reports', r);
 }
 
@@ -530,24 +535,34 @@ async function doSync() {
       } catch(e) { return null; }
     }).filter(r => r && r.type);
 
-    // 4. Merge: remote + local (never delete local, preserve local photos)
+    // 4. Merge: remote is source of truth, local-only kept only if newer than remote sync
+    const deletedReports = LS.get('phx_deleted_reports', []);
     const local = getReports();
     const localMap = local.reduce((m, r) => { m[String(r.id)] = r; return m; }, {});
     const remoteIds = new Set(remote.map(r => String(r.id)));
-    const localOnly = local.filter(r => r.id && !remoteIds.has(String(r.id)));
 
-    // For reports that exist both remotely and locally, keep remote data but restore local photos
+    // Reports in remote: take them with local photo restoration
     const mergedRemote = remote.map(r => {
       const loc = localMap[String(r.id)];
       const storedPhotos = getPhotosForReport(r.id);
       const photosStart = r.photosStart?.length ? r.photosStart : (loc?.photosStart||storedPhotos?.photosStart||[]);
       const photosEnd   = r.photosEnd?.length   ? r.photosEnd   : (loc?.photosEnd||storedPhotos?.photosEnd||[]);
       const photos      = r.photos?.length       ? r.photos      : (loc?.photos||storedPhotos?.photos||[]);
-      // Save photos to localStorage so they persist even if stripped in future pulls
       if (photosStart.length || photosEnd.length || photos.length) {
         savePhotosForReport(r.id, photosStart, photosEnd, photos);
       }
       return { ...r, photosStart, photosEnd, photos };
+    });
+
+    // Local-only: keep ONLY if newer than remote's updatedAt (truly new, not yet pushed)
+    // Reports missing from remote = deleted on another device, don't re-add
+    const remoteUpdatedAt = docs.length > 0 ? (remote[0]?._fetchedAt || Date.now() - 120000) : 0;
+    const localOnly = local.filter(r => {
+      if (!r.id || remoteIds.has(String(r.id))) return false;
+      if (deletedReports.includes(String(r.id))) return false;
+      // Keep if timestamp is newer than the oldest remote doc (just submitted locally)
+      const rTime = new Date(r.timestamp||r.date||0).getTime();
+      return rTime > (Date.now() - 5 * 60 * 1000); // submitted in last 5 min = local-only pending push
     });
 
     const merged = Object.values(
@@ -555,7 +570,7 @@ async function doSync() {
     );
     saveReports(merged);
 
-    // 5. Upload local-only
+    // 5. Upload local-only reports to Appwrite
     for (const r of localOnly) {
       try { await saveReportToAW(r); } catch(e) {}
     }
@@ -628,6 +643,12 @@ async function pullConfig(force=false) {
       const d = JSON.parse(configRes.value);
       if (d.projects?.length)                      saveProjects(d.projects);
       if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
+
+      // Merge remote deletedReports into local
+      if (d.deletedReports?.length) {
+        const existing = LS.get('phx_deleted_reports', []);
+        LS.set('phx_deleted_reports', [...new Set([...existing, ...d.deletedReports.map(String)])]);
+      }
       if (d.assignments)                            saveAssignments(d.assignments);
       if (d.specials)                               saveSpecials(d.specials);
       if (d.valveSpecials)                          saveValveSpecials(d.valveSpecials);
@@ -836,6 +857,7 @@ async function pushConfig() {
     valveSpecials: getValveSpecials(),
     users:        cleanUsers,
     deletedUsers,
+    deletedReports: LS.get('phx_deleted_reports', []),
     updatedAt:    Date.now()
   };
 
@@ -3539,6 +3561,9 @@ function deleteReport(id) {
   }
 
   showConfirm('Delete Report', 'Delete this report? This cannot be undone.', async () => {
+    // Update deleted list FIRST so saveReports guard doesn't restore it
+    const deletedList = LS.get('phx_deleted_reports', []);
+    if (!deletedList.includes(String(id))) { deletedList.push(String(id)); LS.set('phx_deleted_reports', deletedList); }
     const updated = getReports().filter(r => String(r.id) !== String(id));
     saveReports(updated);
     deletePhotosForReport(id);
