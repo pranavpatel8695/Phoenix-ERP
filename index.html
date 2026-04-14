@@ -609,10 +609,6 @@ async function pullConfig(force=false) {
   if (configRes?.value) {
     try {
       const d = JSON.parse(configRes.value);
-      console.log('[pullConfig] remote users:', Object.keys(d.users||{}));
-      console.log('[pullConfig] remote deletedUsers:', d.deletedUsers||[]);
-      console.log('[pullConfig] local deletedUsers:', LS.get('phx_deleted_users',[]));
-      console.log('[pullConfig] local users:', Object.keys(getUsers()));
       if (d.projects?.length)                      saveProjects(d.projects);
       if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
       if (d.assignments)                            saveAssignments(d.assignments);
@@ -910,7 +906,6 @@ async function pushConfig() {
       console.error('Invalid JSON for', docId, e);
       return false;
     }
-    console.log(`[pushConfig] ${docId} size=${val.length} chars`);
     const baseUrl = `${AW.endpoint}/databases/${AW.database}/collections/${AW.collections.config}/documents`;
     const headers = { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' };
 
@@ -923,7 +918,6 @@ async function pushConfig() {
 
     if (!res.ok) {
       const errText = await res.text();
-      console.warn(`[pushConfig] PATCH ${docId} failed ${res.status}:`, errText.slice(0, 300));
       // Document might not exist yet — create it
       res = await fetch(baseUrl, {
         method: 'POST',
@@ -936,12 +930,10 @@ async function pushConfig() {
       });
       if (!res.ok) {
         const errText2 = await res.text();
-        console.error(`[pushConfig] POST ${docId} failed ${res.status}:`, errText2.slice(0, 300));
         showToast('⚠️ Sync failed: ' + res.status);
         return false;
       }
     }
-    console.log(`[pushConfig] ${docId} saved OK`);
     return true;
   };
 
@@ -2263,18 +2255,20 @@ function handlePhotoUpload(input) {
 function compressPhoto(dataUrl, targetKB=30) {
   return new Promise(resolve => {
     if (!dataUrl) { resolve(''); return; }
-    // Handle non-image data URLs
     if (!dataUrl.startsWith('data:image')) { resolve(dataUrl); return; }
     const img = new Image();
     img.onload = () => {
-      let w=img.width, h=img.height, max=800;
+      // Use larger max dimension for higher quality targets
+      const max = targetKB >= 150 ? 1600 : 800;
+      let w=img.width, h=img.height;
       if (w>max) { h=Math.round(h*max/w); w=max; }
       if (h>max) { w=Math.round(w*max/h); h=max; }
       const c=document.createElement('canvas'); c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
-      // Always convert to JPEG for compatibility (handles HEIC converted by browser)
-      let lo=0.05, hi=0.6, res=c.toDataURL('image/jpeg',0.2);
-      for(let i=0;i<10;i++){
+      // Use higher quality ceiling for store photos
+      const qMax = targetKB >= 150 ? 0.95 : 0.6;
+      let lo=0.05, hi=qMax, res=c.toDataURL('image/jpeg',0.2);
+      for(let i=0;i<12;i++){
         const m=(lo+hi)/2;
         const a=c.toDataURL('image/jpeg',m);
         if(a.length*0.75/1024<=targetKB){lo=m;res=a;}else hi=m;
@@ -2284,14 +2278,11 @@ function compressPhoto(dataUrl, targetKB=30) {
         const c2=document.createElement('canvas');
         c2.width=Math.round(w*0.5); c2.height=Math.round(h*0.5);
         c2.getContext('2d').drawImage(img,0,0,c2.width,c2.height);
-        res=c2.toDataURL('image/jpeg',0.3);
+        res=c2.toDataURL('image/jpeg',0.5);
       }
       resolve(res);
     };
-    img.onerror=()=>{
-      // If image fails to load (e.g. HEIC not supported), return empty
-      resolve('');
-    };
+    img.onerror=()=>{ resolve(''); };
     img.src=dataUrl;
   });
 }
@@ -5016,18 +5007,6 @@ function hideLoader() {
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
-  // DEBUG: intercept localStorage to catch phx_users changes
-  const _origSet = localStorage.setItem.bind(localStorage);
-  localStorage.setItem = function(key, val) {
-    if (key === 'phx_users') {
-      try {
-        const u = JSON.parse(val);
-        const names = Object.keys(u).filter(k=>k!=='admin');
-        console.log('[phx_users SET]', names, new Error().stack.split('\n')[2]);
-      } catch(e) {}
-    }
-    return _origSet(key, val);
-  };
   // Migrate old data keys if any
   const oldReports = localStorage.getItem('aquatrack_reports');
   if (oldReports && !localStorage.getItem('phx_reports')) {
@@ -6700,7 +6679,7 @@ function handleStorePhotoUpload(input) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    compressPhoto(e.target.result, 80).then(src => {
+    compressPhoto(e.target.result, 200).then(src => {  // 200KB for clear store photos
       _storePhotoData = src; // Keep in memory
       const prev = document.getElementById('si-photo-prev');
       if (!prev) return;
