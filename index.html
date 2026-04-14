@@ -555,14 +555,14 @@ async function doSync() {
       return { ...r, photosStart, photosEnd, photos };
     });
 
-    // Local-only: keep ALL local reports not in remote and not explicitly deleted
-    // Use _awId to determine: no _awId = never pushed = keep
-    // Has _awId but missing from remote = deleted on another device = drop
+    // Local-only: keep ALL local reports not in remote UNLESS explicitly deleted
+    // phx_deleted_reports (synced to Appwrite) is the only way to remove a report
+    // DO NOT use _awId - it's unreliable (Appwrite may not return all docs)
     const localOnly = local.filter(r => {
       if (!r.id) return false;
       if (remoteIds.has(String(r.id))) return false;
       if (deletedReports.includes(String(r.id))) return false;
-      return !r._awId; // only keep if never successfully pushed
+      return true; // keep everything else
     });
 
     const merged = Object.values(
