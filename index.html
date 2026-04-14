@@ -539,15 +539,15 @@ async function doSync() {
     // For reports that exist both remotely and locally, keep remote data but restore local photos
     const mergedRemote = remote.map(r => {
       const loc = localMap[String(r.id)];
-      if (loc) {
-        return {
-          ...r,
-          photos:      (r.photos?.length)      ? r.photos      : (loc.photos||[]),
-          photosStart: (r.photosStart?.length)  ? r.photosStart : (loc.photosStart||[]),
-          photosEnd:   (r.photosEnd?.length)    ? r.photosEnd   : (loc.photosEnd||[]),
-        };
+      const storedPhotos = getPhotosForReport(r.id);
+      const photosStart = r.photosStart?.length ? r.photosStart : (loc?.photosStart||storedPhotos?.photosStart||[]);
+      const photosEnd   = r.photosEnd?.length   ? r.photosEnd   : (loc?.photosEnd||storedPhotos?.photosEnd||[]);
+      const photos      = r.photos?.length       ? r.photos      : (loc?.photos||storedPhotos?.photos||[]);
+      // Save photos to localStorage so they persist even if stripped in future pulls
+      if (photosStart.length || photosEnd.length || photos.length) {
+        savePhotosForReport(r.id, photosStart, photosEnd, photos);
       }
-      return r;
+      return { ...r, photosStart, photosEnd, photos };
     });
 
     const merged = Object.values(
@@ -573,19 +573,36 @@ async function doSync() {
 
 async function pullConfig(force=false) {
   // Fetch config, live data, and store photos in parallel
-  const [configRes, liveRes, photosRes] = await Promise.all([
+  const [configRes, liveRes, photosRes, reportPhotosRes] = await Promise.all([
     aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`),
     aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/liveData`),
-    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/storePhotos`)
+    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/storePhotos`),
+    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/reportPhotos`)
   ]);
 
-  // Apply store photos to localStorage immediately
+  // Apply store photos to localStorage
   if (photosRes?.value) {
     try {
       const photos = JSON.parse(photosRes.value);
       Object.keys(photos).forEach(id => {
-        if (photos[id]) {
-          try { localStorage.setItem('phx_si_photo_'+id, photos[id]); } catch(e) {}
+        if (photos[id]) { try { localStorage.setItem('phx_si_photo_'+id, photos[id]); } catch(e) {} }
+      });
+    } catch(e) {}
+  }
+
+  // Apply report photos to localStorage
+  if (reportPhotosRes?.value) {
+    try {
+      const rPhotos = JSON.parse(reportPhotosRes.value);
+      Object.keys(rPhotos).forEach(id => {
+        const items = rPhotos[id];
+        if (!Array.isArray(items)) return;
+        const photosStart = items.filter(p=>p.zone==='start').map(p=>({src:p.src}));
+        const photosEnd   = items.filter(p=>p.zone==='end').map(p=>({src:p.src}));
+        const photos      = items.filter(p=>p.zone==='main').map(p=>({src:p.src}));
+        // Always save - remote is source of truth for cross-device photos
+        if (photosStart.length || photosEnd.length || photos.length) {
+          savePhotosForReport(id, photosStart, photosEnd, photos);
         }
       });
     } catch(e) {}
@@ -938,25 +955,57 @@ async function pushConfig() {
   };
 
   try {
-    // Build store photos map — compress aggressively for cross-device sync
+    // Build store photos map — compress for cross-device sync
     const storePhotosMap = {};
-    const photoPromises = getStoreItems()
+    const storePhotoPromises = getStoreItems()
       .filter(i => !deletedStoreItems.includes(i.id))
       .map(async i => {
         const photo = i.photo || localStorage.getItem('phx_si_photo_'+i.id) || '';
         if (photo) {
-          // Compress to 8KB max for Appwrite storage budget
           const compressed = await compressPhoto(photo, 8);
           storePhotosMap[i.id] = compressed;
         }
       });
-    await Promise.all(photoPromises);
+    await Promise.all(storePhotoPromises);
     const storePhotosVal = JSON.stringify(storePhotosMap);
+
+    // Build report photos map — last 30 days, 40KB per photo (2 photos = 80KB + overhead fits in 64KB doc)
+    const reportPhotosMap = {};
+    const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
+    const recentReports = getReports().filter(r => (r.date||'') >= cutoff);
+    const reportPhotoPromises = recentReports.map(async r => {
+      const stored = getPhotosForReport(r.id);
+      const allPhotos = [
+        ...(stored?.photosStart||[]).map(p=>({zone:'start',src:p?.src||p})),
+        ...(stored?.photosEnd||[]).map(p=>({zone:'end',src:p?.src||p})),
+        ...(stored?.photos||[]).map(p=>({zone:'main',src:p?.src||p})),
+      ].filter(p=>p.src&&p.src.startsWith('data:'));
+      if (allPhotos.length) {
+        const compressed = await Promise.all(allPhotos.map(async p => ({
+          zone: p.zone, src: await compressPhoto(p.src, 40)
+        })));
+        reportPhotosMap[r.id] = compressed;
+      }
+    });
+    await Promise.all(reportPhotoPromises);
+    let reportPhotosVal = JSON.stringify(reportPhotosMap);
+    // If too large, reduce to last 14 days
+    if (reportPhotosVal.length > 63000) {
+      const cutoff2 = new Date(Date.now() - 14*24*60*60*1000).toISOString().slice(0,10);
+      const trimmed = Object.fromEntries(
+        Object.entries(reportPhotosMap).filter(([id]) => {
+          const r = recentReports.find(r=>String(r.id)===String(id));
+          return r && (r.date||'') >= cutoff2;
+        })
+      );
+      reportPhotosVal = JSON.stringify(trimmed);
+    }
 
     await Promise.all([
       save('adminData', configVal),
       save('liveData',  liveVal),
-      storePhotosVal.length < 64000 ? save('storePhotos', storePhotosVal) : Promise.resolve()
+      storePhotosVal.length < 64000 ? save('storePhotos', storePhotosVal) : Promise.resolve(),
+      reportPhotosVal.length < 64000 ? save('reportPhotos', reportPhotosVal) : Promise.resolve()
     ]);
     // Only clear pending users flag after confirmed successful push
     const stillPending = LS.get('phx_pending_users', []);
@@ -972,6 +1021,7 @@ async function pushConfig() {
 }
 
 async function saveReportToAW(r) {
+  // Strip photos from report - they're synced via separate reportPhotos document
   const noPhotos = Object.assign({}, r, { photos: [], photosStart: [], photosEnd: [] });
   const doc = {
     type:       String(r.type||''),
