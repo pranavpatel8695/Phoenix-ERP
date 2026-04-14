@@ -1238,7 +1238,11 @@ function renderCurrentTab() {
         main.innerHTML=renderStoreTab();
         pullConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
       }
-      else { main.innerHTML=renderSubmitTab(); }
+      else {
+        main.innerHTML=renderSubmitTab();
+        // Sync reports so latest data is available for prefill/chainage checks
+        if (!_syncing) doSync().then(()=>{ if(activeTab==='submit'&&(currentModule==='pipeline'||currentModule==='civil')) main.innerHTML=renderSubmitTab(); });
+      }
       break;
     case 'reports':
       if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;}
@@ -1249,6 +1253,8 @@ function renderCurrentTab() {
         break;
       }
       _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab();
+      // Sync to get latest reports from all devices
+      if (!_syncing) doSync().then(()=>{ if(activeTab==='reports'&&(currentModule==='pipeline'||currentModule==='civil')) { _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); } });
       break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
