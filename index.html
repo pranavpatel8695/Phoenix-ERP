@@ -555,33 +555,20 @@ async function doSync() {
       return { ...r, photosStart, photosEnd, photos };
     });
 
-    // Local-only: keep if never pushed (_awId missing) AND not deleted
-    // Reports with _awId were pushed - if missing from remote, they were deleted on another device
+    // Local-only: keep ALL local reports not in remote and not explicitly deleted
+    // Use _awId to determine: no _awId = never pushed = keep
+    // Has _awId but missing from remote = deleted on another device = drop
     const localOnly = local.filter(r => {
       if (!r.id) return false;
       if (remoteIds.has(String(r.id))) return false;
       if (deletedReports.includes(String(r.id))) return false;
-      // No _awId = never successfully pushed to Appwrite = keep and upload
-      return !r._awId;
+      return !r._awId; // only keep if never successfully pushed
     });
 
     const merged = Object.values(
       [...mergedRemote, ...localOnly].reduce((m, r) => { m[String(r.id)] = r; return m; }, {})
     );
-
-    // Re-read local one final time to catch any reports submitted DURING this sync
-    // (race condition: user submits while doSync is fetching from Appwrite)
-    const finalLocal = getReports();
-    finalLocal.forEach(r => {
-      if (!r._awId && !deletedReports.includes(String(r.id)) && !remoteIds.has(String(r.id))) {
-        merged.push(r); // preserve any report submitted during sync
-      }
-    });
-    // Deduplicate by id (keep latest)
-    const deduped = Object.values(
-      merged.reduce((m, r) => { m[String(r.id)] = r; return m; }, {})
-    );
-    saveReports(deduped);
+    saveReports(merged);
 
     // 5. Upload local-only reports to Appwrite and persist _awId
     for (const r of localOnly) {
@@ -1265,8 +1252,6 @@ function renderCurrentTab() {
         break;
       }
       _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab();
-      // Sync to get latest reports from all devices
-      if (!_syncing) doSync().then(()=>{ if(activeTab==='reports'&&(currentModule==='pipeline'||currentModule==='civil')) { _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); } });
       break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
