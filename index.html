@@ -554,15 +554,14 @@ async function doSync() {
       return { ...r, photosStart, photosEnd, photos };
     });
 
-    // Local-only: keep ONLY if newer than remote's updatedAt (truly new, not yet pushed)
-    // Reports missing from remote = deleted on another device, don't re-add
-    const remoteUpdatedAt = docs.length > 0 ? (remote[0]?._fetchedAt || Date.now() - 120000) : 0;
+    // Local-only: keep if never pushed (_awId missing) AND not deleted
+    // Reports with _awId were pushed - if missing from remote, they were deleted on another device
     const localOnly = local.filter(r => {
-      if (!r.id || remoteIds.has(String(r.id))) return false;
+      if (!r.id) return false;
+      if (remoteIds.has(String(r.id))) return false;
       if (deletedReports.includes(String(r.id))) return false;
-      // Keep if timestamp is newer than the oldest remote doc (just submitted locally)
-      const rTime = new Date(r.timestamp||r.date||0).getTime();
-      return rTime > (Date.now() - 5 * 60 * 1000); // submitted in last 5 min = local-only pending push
+      // No _awId = never successfully pushed to Appwrite = keep and upload
+      return !r._awId;
     });
 
     const merged = Object.values(
