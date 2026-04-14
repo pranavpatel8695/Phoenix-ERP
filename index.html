@@ -4518,6 +4518,10 @@ function renderUsersTab() {
     { role:'store_manager',   label:'Store Mgr',color:'var(--orange)',badge:'badge-blue' },
   ];
 
+  // Read filter state
+  const searchQ   = document.getElementById('um-search')?.value?.toLowerCase() || '';
+  const filterProj= document.getElementById('um-proj-filter')?.value || '';
+
   function userCard([username, u]) {
     const grp = roleGroups.find(g=>g.role===u.role) || roleGroups[2];
     const roleColor = grp.color;
@@ -4565,18 +4569,39 @@ function renderUsersTab() {
   }).join('');
 
   const activeGroup = roleGroups.find(g=>g.role===_activeUserRole) || roleGroups[0];
-  const activeUsers = Object.entries(users).filter(([,u])=>u.role===activeGroup.role||(activeGroup.role==='junior_engineer'&&u.role==='supervisor'));
+  let activeUsers = Object.entries(users).filter(([,u])=>u.role===activeGroup.role||(activeGroup.role==='junior_engineer'&&u.role==='supervisor'));
+
+  // Apply filters
+  if (searchQ) {
+    activeUsers = activeUsers.filter(([username, u]) =>
+      (u.name||'').toLowerCase().includes(searchQ) || username.toLowerCase().includes(searchQ)
+    );
+  }
+  if (filterProj) {
+    activeUsers = activeUsers.filter(([, u]) => (u.projects||[]).includes(filterProj));
+  }
 
   let html = `
     <div class="section-header">
       <div class="section-title">👥 User Management</div>
       <button class="btn btn-primary btn-sm" onclick="openAddUserUM()">+ New User</button>
     </div>
+    <!-- Filters -->
+    <div class="flex gap-2 mb-3">
+      <input id="um-search" type="text" placeholder="🔍 Search name / username"
+        value="${searchQ}" oninput="document.getElementById('main').innerHTML=renderUsersTab()"
+        style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
+      <select id="um-proj-filter" onchange="document.getElementById('main').innerHTML=renderUsersTab()"
+        style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+        <option value="">All Projects</option>
+        ${projects.map(p=>`<option value="${p}"${p===filterProj?' selected':''}>${p}</option>`).join('')}
+      </select>
+    </div>
     <div class="tab-bar" id="userMgmtTabs">${tabsHtml}</div>
     <div id="userMgmtContent">`;
 
   if (!activeUsers.length) {
-    html += `<div class="empty-state"><div class="icon">👤</div><p>No ${activeGroup.label}s yet.<br>Tap "+ New User" to add one.</p></div>`;
+    html += `<div class="empty-state"><div class="icon">👤</div><p>${searchQ||filterProj ? 'No users match filters.' : `No ${activeGroup.label}s yet.<br>Tap "+ New User" to add one.`}</p></div>`;
   } else {
     html += activeUsers.map(userCard).join('');
   }
