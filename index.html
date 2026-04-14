@@ -1240,8 +1240,6 @@ function renderCurrentTab() {
       }
       else {
         main.innerHTML=renderSubmitTab();
-        // Sync reports so latest data is available for prefill/chainage checks
-        if (!_syncing) doSync().then(()=>{ if(activeTab==='submit'&&(currentModule==='pipeline'||currentModule==='civil')) main.innerHTML=renderSubmitTab(); });
       }
       break;
     case 'reports':
