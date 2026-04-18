@@ -513,9 +513,11 @@ async function doSync() {
       try {
         const base = d.data_json ? JSON.parse(d.data_json) : {};
         // Fill from individual fields
-        ['type','project','route','date','supervisor','timestamp'].forEach(f => {
+        ['type','module','project','route','date','supervisor','timestamp'].forEach(f => {
           if (d[f]) base[f] = d[f];
         });
+        // Derive module from type if not stored
+        if (!base.module) base.module = (base.type||'').startsWith('civil_') ? 'civil' : 'pipeline';
         if (d.from_ch !== undefined) base.from = d.from_ch;
         if (d.to_ch   !== undefined) base.to   = d.to_ch;
         ['meters','volume','width','depth','qty','chainage','estConc','actualConc','netVol'].forEach(f => {
@@ -1054,6 +1056,7 @@ async function saveReportToAW(r) {
   const noPhotos = Object.assign({}, r, { photos: [], photosStart: [], photosEnd: [] });
   const doc = {
     type:       String(r.type||''),
+    module:     String(r.module || (r.type?.startsWith('civil_') ? 'civil' : 'pipeline')),
     project:    String(r.project||''),
     route:      String(r.route||''),
     date:       String(r.date||''),
