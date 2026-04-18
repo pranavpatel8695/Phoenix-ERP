@@ -980,13 +980,24 @@ async function pushConfig() {
   }
   let liveVal = JSON.stringify(liveData);
   if (liveVal.length > 64000) {
+    // Trim oldest reports first (keep last 14 days)
+    const cutoff14 = new Date(Date.now() - 14*24*60*60*1000).toISOString().slice(0,10);
+    liveData.reports = recentReportsLean.filter(r => (r.date||'') >= cutoff14);
     liveData.machLogs   = machLogs.slice(-20);
     liveData.storeTxns  = storeTxns.slice(-50);
     liveData.attendance = attendance.slice(-100);
     liveVal = JSON.stringify(liveData);
   }
   if (liveVal.length > 64000) {
+    // Trim to last 7 days of reports
+    const cutoff7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0,10);
+    liveData.reports = recentReportsLean.filter(r => (r.date||'') >= cutoff7);
     liveData.machLogs = [];
+    liveVal = JSON.stringify(liveData);
+  }
+  if (liveVal.length > 64000) {
+    // Last resort: no reports (doSync handles older ones)
+    liveData.reports = [];
     liveVal = JSON.stringify(liveData);
   }
 
