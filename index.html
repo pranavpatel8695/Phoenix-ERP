@@ -509,14 +509,15 @@ async function doSync() {
     }
 
     // 3. Parse docs
+    console.log('[doSync] fetched', docs.length, 'docs from Appwrite');
     const remote = docs.map(d => {
       try {
         const base = d.data_json ? JSON.parse(d.data_json) : {};
         // Fill from individual fields
-        ['type','module','project','route','date','supervisor','timestamp'].forEach(f => {
+        ['type','project','route','date','supervisor','timestamp'].forEach(f => {
           if (d[f]) base[f] = d[f];
         });
-        // Derive module from type if not stored
+        // Derive module from type if not in data_json
         if (!base.module) base.module = (base.type||'').startsWith('civil_') ? 'civil' : 'pipeline';
         if (d.from_ch !== undefined) base.from = d.from_ch;
         if (d.to_ch   !== undefined) base.to   = d.to_ch;
@@ -534,8 +535,10 @@ async function doSync() {
         if (!base.id) base.id = d.$id;
         base._awId = d.$id;
         return base;
-      } catch(e) { return null; }
+      } catch(e) { console.warn('[doSync] parse error:', e, d); return null; }
     }).filter(r => r && r.type);
+    console.log('[doSync] parsed', remote.length, 'valid reports, projects:', [...new Set(remote.map(r=>r.project))]);
+    console.log('[doSync] local has', getReports().length, 'reports');
 
     // 4. Merge: remote is source of truth, local-only kept only if newer than remote sync
     const deletedReports = LS.get('phx_deleted_reports', []);
@@ -1056,7 +1059,6 @@ async function saveReportToAW(r) {
   const noPhotos = Object.assign({}, r, { photos: [], photosStart: [], photosEnd: [] });
   const doc = {
     type:       String(r.type||''),
-    module:     String(r.module || (r.type?.startsWith('civil_') ? 'civil' : 'pipeline')),
     project:    String(r.project||''),
     route:      String(r.route||''),
     date:       String(r.date||''),
@@ -1099,7 +1101,8 @@ async function saveReportToAW(r) {
   if (!res) res = await aw('POST', `/databases/${AW.database}/collections/${AW.collections.reports}/documents`, {
     documentId: docId, data: doc, permissions: ['read("any")','update("any")','delete("any")']
   });
-  if (res) { r._awId = res.$id || docId; }
+  if (res) { r._awId = res.$id || docId; console.log('[saveReportToAW] saved OK, id:', r._awId); }
+  else { console.error('[saveReportToAW] FAILED for report', r.id, r.type); }
   return !!res;
 }
 
