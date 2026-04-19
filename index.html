@@ -5180,6 +5180,25 @@ function hideLoader() {
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
+  // One-time migration: fix PM's own attendance records that incorrectly have pmStatus='pending'
+  if (!localStorage.getItem('phx_att_pm_fix_v1')) {
+    try {
+      const att = LS.get('phx_attendance', []);
+      const users = getUsers();
+      let changed = false;
+      att.forEach(a => {
+        if (a.pmStatus === 'pending') {
+          const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+          if (pmEntry && pmEntry[0] === a.user) {
+            a.pmStatus = 'approved'; // PM can't approve own, auto-approve
+            changed = true;
+          }
+        }
+      });
+      if (changed) { LS.set('phx_attendance', att); pushConfig(); }
+    } catch(e) {}
+    localStorage.setItem('phx_att_pm_fix_v1', '1');
+  }
   // Migrate old data keys if any
   const oldReports = localStorage.getItem('aquatrack_reports');
   if (oldReports && !localStorage.getItem('phx_reports')) {
