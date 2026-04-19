@@ -5678,12 +5678,18 @@ function renderAttendanceAdmin() {
 
   if (pmPending.length) {
     const users2 = getUsers();
-    const pmNames = [...new Set(pmPending.map(a=>{
-      if(a.pmName) return a.pmName;
-      const e=Object.entries(users2).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
-      return e?.[1]?.name||e?.[0]||'Unknown PM';
-    }))].join(', ');
-    html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval — <strong>${pmNames}</strong></div>`;
+    // Group by PM
+    const perPM = {};
+    pmPending.forEach(a => {
+      const pmName = a.pmName || (() => {
+        const e = Object.entries(users2).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+        return e?.[1]?.name || e?.[0] || 'Unknown PM';
+      })();
+      if (!perPM[pmName]) perPM[pmName] = 0;
+      perPM[pmName]++;
+    });
+    const summary = Object.entries(perPM).map(([pm, count]) => `${count} record(s) → <strong>${pm}</strong>`).join(' · ');
+    html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval — ${summary}</div>`;
   }
 
   if (pending.length) {
