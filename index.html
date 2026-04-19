@@ -701,11 +701,11 @@ async function pullConfig(force=false) {
           if (!merged[u]) {
             merged[u] = rem;
           } else {
-            const localProjects = merged[u].projects;
-            merged[u] = { ...rem };
-            if (!merged[u].projects?.length && localProjects?.length) {
-              merged[u].projects = localProjects;
-            }
+            // Merge projects: union of local and remote (never lose locally-added projects)
+            const localProjects = merged[u].projects || [];
+            const remoteProjects = rem.projects || [];
+            const mergedProjects = [...new Set([...localProjects, ...remoteProjects])];
+            merged[u] = { ...rem, projects: mergedProjects };
           }
         });
 
@@ -1316,7 +1316,10 @@ function renderCurrentTab() {
     case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':
       main.innerHTML = renderUsersTab();
-      pullConfig(true).then(() => pushConfig()).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
+      pullConfig(true).then(() => {
+        if (activeTab === 'users') main.innerHTML = renderUsersTab();
+        return pushConfig();
+      }).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
       break;
   }
   if (activeTab === 'settings') initSettings();
