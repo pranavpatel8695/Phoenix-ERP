@@ -5615,7 +5615,18 @@ function renderAttendanceAdmin() {
   html += `<div class="section-title mt-2 mb-3">👥 All Staff Attendance</div>`;
 
   // Backdate marking for all staff (Admin privilege)
-  const allUsersForBack = Object.entries(users).filter(([u,v])=>v.role!=='admin'&&!deleted.includes(u));
+  // Only show users whose project has NO PM assigned
+  // Users with a PM should get attendance marked by their PM first
+  const allUsersForBack = Object.entries(users).filter(([u,v]) => {
+    if (v.role === 'admin') return false;
+    if (deleted.includes(u)) return false;
+    // Check if any project of this user has a PM
+    const userProjects = v.projects || [];
+    const hasPM = userProjects.some(proj =>
+      Object.values(users).some(pm => pm.role === 'pm' && (pm.projects||[]).includes(proj))
+    );
+    return !hasPM; // only show if no PM for their project
+  });
   const allAtt2 = getAttendance();
   const adminBackMissed = [];
   allUsersForBack.forEach(([u,v]) => {
