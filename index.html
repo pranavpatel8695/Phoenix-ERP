@@ -2916,10 +2916,12 @@ async function submitReport(type) {
     setSyncStatus(ok ? 'synced' : 'offline');
     if (!ok) showToast('⚠️ Saved locally — will sync when online');
     else {
-      // Persist _awId to localStorage so doSync knows this report was pushed
+      // Persist _awId to localStorage
       const reports = getReports();
       const idx = reports.findIndex(r => String(r.id) === String(data.id));
       if (idx >= 0 && data._awId) { reports[idx]._awId = data._awId; LS.set('phx_reports', reports); }
+      // Push liveData so other devices get the report via pullConfig (fast path)
+      pushConfig();
     }
   });
 }
