@@ -5616,15 +5616,26 @@ function renderAttendanceAdmin() {
   const deleted = LS.get('phx_deleted_users', []);
   const active = all.filter(a=>!deleted.includes(a.user));
   const usersMap = getUsers();
-  // A record is "truly pending PM" only if the submitting user is NOT the PM for that project
+  // A record is "truly pending PM" only if:
+  // 1. The user is NOT the PM themselves
+  // 2. The current PM for that user's project is still the same as pmUser in the record
   const isPMsOwnRecord = (a) => {
     const pmEntry = Object.entries(usersMap).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
     return pmEntry && pmEntry[0] === a.user;
   };
+  const getCurrentPM = (a) => {
+    const pmEntry = Object.entries(usersMap).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+    return pmEntry?.[0] || '';
+  };
   const pending = active.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending')
-    // Also include PM's own records with pmStatus=pending (treat as pm-approved)
     .concat(active.filter(a=>a.pmStatus==='pending'&&a.adminStatus==='pending'&&isPMsOwnRecord(a)));
-  const pmPending = active.filter(a=>a.pmStatus==='pending'&&!deleted.includes(a.user)&&!isPMsOwnRecord(a));
+  // Only count records where the user still exists, not deleted, and the project still has that PM
+  const pmPending = active.filter(a =>
+    a.pmStatus==='pending' &&
+    !deleted.includes(a.user) &&
+    !isPMsOwnRecord(a) &&
+    usersMap[a.user] // user still exists
+  );
   const done = active.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
 
   let html = `<div class="flex justify-between items-center mb-3">
