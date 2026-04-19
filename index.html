@@ -500,14 +500,14 @@ async function doSync() {
     await pullConfig();
 
     // 2. Fetch ALL reports from Appwrite using offset pagination
-    // Appwrite default page size is 25, so paginate in steps of 25
+    // Appwrite ignores limit param and returns 25 per page, so step by 25
     let docs = [], offset = 0;
     while (true) {
-      const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?queries%5B%5D=limit(25)&queries%5B%5D=offset(${offset})`);
+      const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?limit=25&offset=${offset}`);
       if (!res?.documents?.length) break;
       console.log('[doSync] page offset='+offset+' returned', res.documents.length, 'docs, total:', res.total);
       docs = docs.concat(res.documents);
-      if (docs.length >= res.total) break; // got all docs
+      if (docs.length >= (res.total || 0)) break; // got all
       if (res.documents.length < 25) break; // last page
       offset += 25;
       if (offset > 2000) break; // safety cap
