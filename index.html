@@ -54,7 +54,8 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 /* ── FORM ── */
 .field-group{margin-bottom:14px;}
 .field-group label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
-.field-group input,.field-group select,.field-group textarea{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;}
+.field-group input,.field-group select,.field-group textarea{width:100%;box-sizing:border-box;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;max-width:100%;}
+.field-group input[type="date"]{-webkit-appearance:none;appearance:none;display:block;}
 .field-group input:focus,.field-group select:focus,.field-group textarea:focus{outline:none;border-color:var(--blue);}
 .field-group select option{background:var(--surface2);}
 .radio-group{display:flex;gap:8px;flex-wrap:wrap;}
@@ -1018,6 +1019,7 @@ async function pushConfig() {
 
     if (!res.ok) {
       const errText = await res.text();
+      console.warn(`[push] PATCH ${docId} failed ${res.status}:`, errText.slice(0,200));
       // Document might not exist yet — create it
       res = await fetch(baseUrl, {
         method: 'POST',
@@ -1030,7 +1032,8 @@ async function pushConfig() {
       });
       if (!res.ok) {
         const errText2 = await res.text();
-        showToast('⚠️ Sync failed: ' + res.status);
+        console.error(`[push] POST ${docId} failed ${res.status}:`, errText2.slice(0,200));
+        showToast(`⚠️ Sync failed (${docId}): ${res.status}`);
         return false;
       }
     }
