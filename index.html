@@ -55,7 +55,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 .field-group{margin-bottom:14px;}
 .field-group label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
 .field-group input,.field-group select,.field-group textarea{width:100%;box-sizing:border-box;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;max-width:100%;}
-.field-group input[type="date"]{-webkit-appearance:none;appearance:none;display:block;}
+.field-group input[type="date"]{-webkit-appearance:none;appearance:none;display:block;width:100%;box-sizing:border-box;padding:11px 14px;font-size:13px;line-height:1.4;min-height:unset;height:auto;}
 .field-group input:focus,.field-group select:focus,.field-group textarea:focus{outline:none;border-color:var(--blue);}
 .field-group select option{background:var(--surface2);}
 .radio-group{display:flex;gap:8px;flex-wrap:wrap;}
@@ -915,7 +915,6 @@ async function pushConfig() {
   let storeTxns  = getStoreTxns();
 
   const deletedReports = LS.get('phx_deleted_reports', []);
-  // Include last 30 days of reports (stripped of photos) for cross-device sync via liveData
   const cutoffDate = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
   const recentReportsLean = getReports()
     .filter(r => (r.date||'') >= cutoffDate && !deletedReports.includes(String(r.id)))
@@ -930,10 +929,14 @@ async function pushConfig() {
     machService: getMachService(),
     machIssues:  getMachIssues(),
     deletedStoreItems: LS.get('phx_deleted_store_items', []),
-    reports:     recentReportsLean,
     deletedReports,
     updatedAt:   Date.now()
   };
+  // Only include reports if we have them locally - never push empty array
+  // (would overwrite reports pushed by another device that has them)
+  if (recentReportsLean.length > 0) {
+    liveData.reports = recentReportsLean;
+  }
 
   // Trim if needed before encoding
   const trimAndEncode = (data, key, arr, limit=60000) => {
