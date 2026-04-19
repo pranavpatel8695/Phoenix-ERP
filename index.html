@@ -502,7 +502,7 @@ async function doSync() {
     // 2. Fetch all reports from Appwrite
     let docs = [], offset = 0;
     while (true) {
-      const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?limit=100&offset=${offset}`);
+      const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?queries[]=limit(100)&queries[]=offset(${offset})`);
       if (!res?.documents) break;
       console.log('[doSync] page offset='+offset+' returned', res.documents.length, 'docs, total:', res.total);
       docs = docs.concat(res.documents);
