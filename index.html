@@ -4963,6 +4963,10 @@ async function saveUserUM() {
   const users = getUsers();
   if (users[user]) { showToast('⚠️ Username already exists'); return; }
 
+  // Check duplicate password
+  const dupPass = Object.entries(users).find(([u, v]) => v.pass === pass && u !== 'admin');
+  if (dupPass) { showToast(`⚠️ Password already used by @${dupPass[0]} — choose a different one`); return; }
+
   // If PM role, check no other PM already assigned to any selected project
   if (role === 'pm') {
     for (const proj of projs) {
@@ -5115,7 +5119,12 @@ async function updateUserUM(username) {
   users[username].name = name;
   users[username].role = role;
   delete users[username].designation;
-  if (pass) users[username].pass = pass;
+  if (pass) {
+    // Check duplicate password (excluding self)
+    const dupPass = Object.entries(users).find(([u, v]) => v.pass === pass && u !== username && u !== 'admin');
+    if (dupPass) { showToast(`⚠️ Password already used by @${dupPass[0]} — choose a different one`); return; }
+    users[username].pass = pass;
+  }
   saveUsers(users);
   closeFormModal();
   document.getElementById('main').innerHTML = renderUsersTab();
