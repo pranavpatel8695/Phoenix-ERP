@@ -5629,12 +5629,23 @@ function renderAttendanceAdmin() {
   };
   const pending = active.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending')
     .concat(active.filter(a=>a.pmStatus==='pending'&&a.adminStatus==='pending'&&isPMsOwnRecord(a)));
-  // Only count records where the user still exists, not deleted, and the project still has that PM
+  // Build map of current PM for each user (mirrors what PM's own team view shows)
+  const userCurrentPM = {};
+  Object.entries(usersMap).forEach(([u, v]) => {
+    if (isEngineer(v.role) && !deleted.includes(u)) {
+      const pmEntry = Object.entries(usersMap).find(([,pm]) =>
+        pm.role==='pm' && (pm.projects||[]).some(p=>(v.projects||[]).includes(p))
+      );
+      if (pmEntry) userCurrentPM[u] = pmEntry[0];
+    }
+  });
+  // Only count records where: pmStatus=pending, user still exists, user is still under a PM today
   const pmPending = active.filter(a =>
     a.pmStatus==='pending' &&
     !deleted.includes(a.user) &&
     !isPMsOwnRecord(a) &&
-    usersMap[a.user] // user still exists
+    usersMap[a.user] &&
+    userCurrentPM[a.user] // user is currently assigned to a PM
   );
   const done = active.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
 
@@ -5720,15 +5731,11 @@ function renderAttendanceAdmin() {
 
   if (pmPending.length) {
     const users2 = getUsers();
-    // Group by pmUser (actual PM username) for accurate counts
     const perPM = {};
     pmPending.forEach(a => {
-      // Find the PM for this record
-      const pmKey = a.pmUser || (() => {
-        const e = Object.entries(users2).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
-        return e?.[0] || 'unknown';
-      })();
-      const pmDisplayName = users2[pmKey]?.name || a.pmName || pmKey;
+      // Use current PM for this user (not stored pmUser which may be outdated)
+      const currentPMKey = userCurrentPM[a.user] || a.pmUser || 'unknown';
+      const pmDisplayName = users2[currentPMKey]?.name || a.pmName || currentPMKey;
       if (!perPM[pmDisplayName]) perPM[pmDisplayName] = 0;
       perPM[pmDisplayName]++;
     });
