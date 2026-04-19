@@ -1090,6 +1090,7 @@ async function pushConfig() {
       storePhotosVal.length < 64000 ? save('storePhotos', storePhotosVal) : Promise.resolve(),
       reportPhotosVal.length < 64000 ? save('reportPhotos', reportPhotosVal) : Promise.resolve()
     ]);
+    console.log('[pushConfig] saved. liveVal:', liveVal.length, 'chars, reports:', (JSON.parse(liveVal).reports||[]).length);
     // Only clear pending users flag after confirmed successful push
     const stillPending = LS.get('phx_pending_users', []);
     if (stillPending.length) {
@@ -5329,20 +5330,35 @@ function markAttendanceFor(status, date, targetUser) {
   const users = getUsers();
   const targetUserData = users[targetUser];
   const myProj = (targetUserData?.projects||[])[0] || getVisibleProjects()[0] || '';
-  const pmEntry = currentRole==='pm'
-    ? [currentUser, users[currentUser]]
-    : Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
+
+  // Find PM for this project
+  const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
   const pmUser = pmEntry?.[0]||'';
   const pmName = pmEntry?.[1]?.name||pmUser;
+
+  let pmStatus, adminStatus;
+  if (currentRole === 'pm') {
+    // PM marks → PM approved, needs admin approval
+    pmStatus = 'approved';
+    adminStatus = 'pending';
+  } else if (currentRole === 'admin') {
+    if (pmEntry) {
+      // Admin marks but PM exists → PM approved (admin acting on behalf), admin approved
+      pmStatus = 'approved';
+      adminStatus = 'approved';
+    } else {
+      // No PM for this project → admin auto-approves both
+      pmStatus = 'approved';
+      adminStatus = 'approved';
+    }
+  }
 
   all.push({
     id: 'ATT_'+Date.now(), user: targetUser,
     userName: targetUserData?.name||targetUser,
     project: myProj, atype: 'attendance', date, status,
     pmUser, pmName, isBackfill: true,
-    // PM marks → auto PM-approved; Admin marks → both approved
-    pmStatus: currentRole==='admin'?'approved':'approved',
-    adminStatus: currentRole==='admin'?'approved':'pending',
+    pmStatus, adminStatus,
     markedBy: currentUser, markedByName: users[currentUser]?.name||currentUser,
     timestamp: new Date().toISOString()
   });
@@ -5606,7 +5622,9 @@ function renderAttendanceAdmin() {
     for (let i = 1; i <= 7; i++) {
       const d = new Date(); d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().slice(0,10);
-      if (!allAtt2.find(a => a.user===u && a.date===dateStr && a.atype==='attendance')) {
+      const existing = allAtt2.find(a => a.user===u && a.date===dateStr && a.atype==='attendance');
+      // Only show if NOT already marked (by anyone - PM or admin)
+      if (!existing) {
         adminBackMissed.push({ user:u, name:v.name||u, date:dateStr,
           label: i===1?'Yesterday':d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) });
       }
