@@ -5390,16 +5390,18 @@ function markAttendance(status) {
   const today = localToday();
   const all = getAttendance();
   if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { showToast('Already marked'); return; }
-  // Find PM assigned to user's project
   const myProj = getVisibleProjects()[0]||'';
   const users = getUsers();
   const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
   const pmUser = pmEntry?.[0]||'';
   const pmName = pmEntry?.[1]?.name||pmUser;
-  all.push({ id:'ATT_'+Date.now(), user:currentUser, userName:getUsers()[currentUser]?.name||currentUser,
+  // If current user IS the PM for this project, auto-approve pmStatus
+  const isPM = currentRole === 'pm' || pmUser === currentUser;
+  all.push({ id:'ATT_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
     project: myProj, atype:'attendance', date:today, status,
     pmUser, pmName,
-    pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
+    pmStatus: isPM ? 'approved' : 'pending',
+    adminStatus: 'pending', timestamp:new Date().toISOString() });
   saveAttendance(all); pushConfig();
   showToast('✅ Attendance marked'); renderCurrentTab();
 }
@@ -5414,11 +5416,13 @@ function applyLeave() {
   const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
   const pmUser = pmEntry?.[0]||'';
   const pmName = pmEntry?.[1]?.name||pmUser;
+  const isPM = currentRole === 'pm' || pmUser === currentUser;
   const all = getAttendance();
-  all.push({ id:'LV_'+Date.now(), user:currentUser, userName:getUsers()[currentUser]?.name||currentUser,
+  all.push({ id:'LV_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
     project: myProj, atype:'leave', date:from, leaveFrom:from, leaveTo:to,
     leaveType:'Leave', reason, pmUser, pmName,
-    pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
+    pmStatus: isPM ? 'approved' : 'pending',
+    adminStatus:'pending', timestamp:new Date().toISOString() });
   saveAttendance(all); pushConfig();
   showToast('✅ Leave applied'); renderCurrentTab();
 }
@@ -5592,8 +5596,16 @@ function renderAttendanceAdmin() {
   const all = getAttendance();
   const deleted = LS.get('phx_deleted_users', []);
   const active = all.filter(a=>!deleted.includes(a.user));
-  const pending = active.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending');
-  const pmPending = active.filter(a=>a.pmStatus==='pending'&&!deleted.includes(a.user));
+  const usersMap = getUsers();
+  // A record is "truly pending PM" only if the submitting user is NOT the PM for that project
+  const isPMsOwnRecord = (a) => {
+    const pmEntry = Object.entries(usersMap).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+    return pmEntry && pmEntry[0] === a.user;
+  };
+  const pending = active.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending')
+    // Also include PM's own records with pmStatus=pending (treat as pm-approved)
+    .concat(active.filter(a=>a.pmStatus==='pending'&&a.adminStatus==='pending'&&isPMsOwnRecord(a)));
+  const pmPending = active.filter(a=>a.pmStatus==='pending'&&!deleted.includes(a.user)&&!isPMsOwnRecord(a));
   const done = active.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
 
   let html = `<div class="flex justify-between items-center mb-3">
@@ -5678,15 +5690,17 @@ function renderAttendanceAdmin() {
 
   if (pmPending.length) {
     const users2 = getUsers();
-    // Group by PM
+    // Group by pmUser (actual PM username) for accurate counts
     const perPM = {};
     pmPending.forEach(a => {
-      const pmName = a.pmName || (() => {
+      // Find the PM for this record
+      const pmKey = a.pmUser || (() => {
         const e = Object.entries(users2).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
-        return e?.[1]?.name || e?.[0] || 'Unknown PM';
+        return e?.[0] || 'unknown';
       })();
-      if (!perPM[pmName]) perPM[pmName] = 0;
-      perPM[pmName]++;
+      const pmDisplayName = users2[pmKey]?.name || a.pmName || pmKey;
+      if (!perPM[pmDisplayName]) perPM[pmDisplayName] = 0;
+      perPM[pmDisplayName]++;
     });
     const summary = Object.entries(perPM).map(([pm, count]) => `${count} record(s) → <strong>${pm}</strong>`).join(' · ');
     html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval — ${summary}</div>`;
@@ -5742,7 +5756,6 @@ function renderAttendanceHistoryCard(a) {
 function attendanceCard(a, role) {
   const statColor = s => s==='approved'?'var(--green)':s==='rejected'?'var(--red)':'var(--orange)';
   const statLabel = s => s==='approved'?'✅ Approved':s==='rejected'?'❌ Rejected':'⏳ Pending';
-  const canAct = (role==='pm' && a.pmStatus==='pending') || (role==='admin' && a.pmStatus==='approved' && a.adminStatus==='pending');
 
   const users = getUsers();
   const adminName = Object.entries(users).find(([,u])=>u.role==='admin')?.[1]?.name || 'Admin';
@@ -5750,6 +5763,16 @@ function attendanceCard(a, role) {
     const e = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
     return e?.[1]?.name || e?.[0] || '—';
   })();
+
+  // Check if this is PM's own record (PM submitted their own attendance)
+  const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
+  const isPMsOwnRecord = pmEntry && pmEntry[0] === a.user;
+
+  // For PM's own records: treat as PM-approved regardless of stored pmStatus
+  const effectivePmStatus = isPMsOwnRecord ? 'approved' : a.pmStatus;
+
+  const canAct = (role==='pm' && a.pmStatus==='pending' && !isPMsOwnRecord)
+    || (role==='admin' && (effectivePmStatus==='approved') && a.adminStatus==='pending');
 
   // Detect if directly marked by admin or PM (not self-submitted)
   const markedByAdmin = (a.markedBy && users[a.markedBy]?.role==='admin')
@@ -5766,25 +5789,39 @@ function attendanceCard(a, role) {
           <div style="color:var(--green);font-weight:700">✅ Marked by ${a.markedByName||pmDisplay}</div>
           <div style="color:var(--orange);margin-top:4px">⏳ Awaiting Admin approval</div>
          </div>`
-      : `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-            <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0"></div>
-            <div style="font-size:11px;color:var(--muted)">Submitted by</div>
-            <div style="font-size:11px;font-weight:700;color:var(--text)">${a.userName||a.user}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-            <div style="width:6px;height:6px;border-radius:50%;background:${statColor(a.pmStatus)};flex-shrink:0"></div>
-            <div style="font-size:11px;color:var(--muted)">PM</div>
-            <div style="font-size:11px;font-weight:700;color:var(--text)">${pmDisplay}</div>
-            <div style="font-size:10px;font-weight:700;color:${statColor(a.pmStatus)};margin-left:auto">${statLabel(a.pmStatus)}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <div style="width:6px;height:6px;border-radius:50%;background:${a.pmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};flex-shrink:0"></div>
-            <div style="font-size:11px;color:${a.pmStatus==='approved'?'var(--muted)':'var(--border)'}">Admin</div>
-            <div style="font-size:11px;font-weight:700;color:${a.pmStatus==='approved'?'var(--text)':'var(--border)'}"> ${adminName}</div>
-            <div style="font-size:10px;font-weight:700;color:${a.pmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};margin-left:auto">${a.pmStatus==='approved'?statLabel(a.adminStatus):'Waiting for PM'}</div>
-          </div>
-         </div>`;
+      : isPMsOwnRecord
+        ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0"></div>
+              <div style="font-size:11px;color:var(--muted)">Submitted by</div>
+              <div style="font-size:11px;font-weight:700;color:var(--text)">${a.userName||a.user} (PM)</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="width:6px;height:6px;border-radius:50%;background:${statColor(a.adminStatus)};flex-shrink:0"></div>
+              <div style="font-size:11px;color:var(--muted)">Admin</div>
+              <div style="font-size:11px;font-weight:700;color:var(--text)"> ${adminName}</div>
+              <div style="font-size:10px;font-weight:700;color:${statColor(a.adminStatus)};margin-left:auto">${statLabel(a.adminStatus)}</div>
+            </div>
+           </div>`
+        : `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0"></div>
+              <div style="font-size:11px;color:var(--muted)">Submitted by</div>
+              <div style="font-size:11px;font-weight:700;color:var(--text)">${a.userName||a.user}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <div style="width:6px;height:6px;border-radius:50%;background:${statColor(effectivePmStatus)};flex-shrink:0"></div>
+              <div style="font-size:11px;color:var(--muted)">PM</div>
+              <div style="font-size:11px;font-weight:700;color:var(--text)">${pmDisplay}</div>
+              <div style="font-size:10px;font-weight:700;color:${statColor(effectivePmStatus)};margin-left:auto">${statLabel(effectivePmStatus)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="width:6px;height:6px;border-radius:50%;background:${effectivePmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};flex-shrink:0"></div>
+              <div style="font-size:11px;color:${effectivePmStatus==='approved'?'var(--muted)':'var(--border)'}">Admin</div>
+              <div style="font-size:11px;font-weight:700;color:${effectivePmStatus==='approved'?'var(--text)':'var(--border)'}"> ${adminName}</div>
+              <div style="font-size:10px;font-weight:700;color:${effectivePmStatus==='approved'?statColor(a.adminStatus):'var(--border)'};margin-left:auto">${effectivePmStatus==='approved'?statLabel(a.adminStatus):'Waiting for PM'}</div>
+            </div>
+           </div>`;
 
   return `<div class="card mb-2" style="padding:10px 12px">
     <div class="flex justify-between items-center mb-1">
