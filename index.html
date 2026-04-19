@@ -915,10 +915,6 @@ async function pushConfig() {
   let storeTxns  = getStoreTxns();
 
   const deletedReports = LS.get('phx_deleted_reports', []);
-  const cutoffDate = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
-  const recentReportsLean = getReports()
-    .filter(r => (r.date||'') >= cutoffDate && !deletedReports.includes(String(r.id)))
-    .map(r => { const {photos, photosStart, photosEnd, ...rest} = r; return rest; });
 
   const liveData = {
     attendance,
@@ -932,11 +928,6 @@ async function pushConfig() {
     deletedReports,
     updatedAt:   Date.now()
   };
-  // Only include reports if we have them locally - never push empty array
-  // (would overwrite reports pushed by another device that has them)
-  if (recentReportsLean.length > 0) {
-    liveData.reports = recentReportsLean;
-  }
 
   // Trim if needed before encoding
   const trimAndEncode = (data, key, arr, limit=60000) => {
@@ -984,24 +975,13 @@ async function pushConfig() {
   }
   let liveVal = JSON.stringify(liveData);
   if (liveVal.length > 64000) {
-    // Trim oldest reports first (keep last 14 days)
-    const cutoff14 = new Date(Date.now() - 14*24*60*60*1000).toISOString().slice(0,10);
-    liveData.reports = recentReportsLean.filter(r => (r.date||'') >= cutoff14);
     liveData.machLogs   = machLogs.slice(-20);
     liveData.storeTxns  = storeTxns.slice(-50);
     liveData.attendance = attendance.slice(-100);
     liveVal = JSON.stringify(liveData);
   }
   if (liveVal.length > 64000) {
-    // Trim to last 7 days of reports
-    const cutoff7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0,10);
-    liveData.reports = recentReportsLean.filter(r => (r.date||'') >= cutoff7);
     liveData.machLogs = [];
-    liveVal = JSON.stringify(liveData);
-  }
-  if (liveVal.length > 64000) {
-    // Last resort: no reports (doSync handles older ones)
-    liveData.reports = [];
     liveVal = JSON.stringify(liveData);
   }
 
@@ -1314,8 +1294,8 @@ function renderCurrentTab() {
         break;
       }
       _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab();
-      // Fast sync via pullConfig (reports now in liveData)
-      pullConfig().then(()=>{ if(activeTab==='reports') { _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); } });
+      // Trigger doSync to fetch latest reports from Appwrite reports collection
+      if (!_syncing) doSync().then(()=>{ if(activeTab==='reports'&&(currentModule==='pipeline'||currentModule==='civil')) { _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); } });
       break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
