@@ -504,13 +504,14 @@ async function doSync() {
     while (true) {
       const res = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?limit=100&offset=${offset}`);
       if (!res?.documents) break;
+      console.log('[doSync] page offset='+offset+' returned', res.documents.length, 'docs, total:', res.total);
       docs = docs.concat(res.documents);
       if (res.documents.length < 100) break;
       offset += 100;
     }
 
     // 3. Parse docs
-    console.log('[doSync] fetched', docs.length, 'docs from Appwrite');
+    console.log('[doSync] fetched', docs.length, 'docs from Appwrite, total in collection:', docs.length);
     const remote = docs.map(d => {
       try {
         const base = d.data_json ? JSON.parse(d.data_json) : {};
@@ -1137,7 +1138,7 @@ async function saveReportToAW(r) {
   if (!res) res = await aw('POST', `/databases/${AW.database}/collections/${AW.collections.reports}/documents`, {
     documentId: docId, data: doc, permissions: ['read("any")','update("any")','delete("any")']
   });
-  if (res) { r._awId = res.$id || docId; console.log('[saveReportToAW] saved OK, id:', r._awId); }
+  if (res) { r._awId = res.$id || docId; console.log('[saveReportToAW] saved OK, awId:', res.$id, 'docId:', docId, 'r.id:', r.id); }
   else { console.error('[saveReportToAW] FAILED for report', r.id, r.type); }
   return !!res;
 }
