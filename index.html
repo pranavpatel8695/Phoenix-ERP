@@ -852,12 +852,15 @@ async function pullConfig(force=false) {
             if (locMap[a.id]===undefined) {
               loc.push(a);
             } else {
-              // Full replace of the record from remote (source of truth for approvals)
               const local = loc[locMap[a.id]];
+              // Local approved/rejected status always wins - never revert with remote pending
+              const pmStatus    = (local.pmStatus    === 'approved' || local.pmStatus    === 'rejected') ? local.pmStatus    : a.pmStatus;
+              const adminStatus = (local.adminStatus === 'approved' || local.adminStatus === 'rejected') ? local.adminStatus : a.adminStatus;
               loc[locMap[a.id]] = {
                 ...a,
-                // Preserve local fields not in remote
-                pmName: a.pmName || local.pmName,
+                pmStatus,
+                adminStatus,
+                pmName:   a.pmName   || local.pmName,
                 userName: a.userName || local.userName,
               };
             }
