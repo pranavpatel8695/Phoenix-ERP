@@ -6772,10 +6772,11 @@ function openDieselForm(type) {
   let formHtml = '';
   if (type === 'purchase') {
     formHtml = `
-      <div class="form-header"><button class="back-btn" onclick="closeFormModal()">←</button>
-        <div class="form-title">⛽ Diesel Purchase</div>
-        <button class="close-btn" onclick="closeFormModal()">× Close</button></div>
-      <div style="padding:0 16px 24px">
+      <div class="flex justify-between items-center mb-4">
+        <div class="section-title">⛽ Diesel Purchase</div>
+        <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕ Close</button>
+      </div>
+      <div>
         <div class="field-group"><label>DATE *</label><input type="date" id="dp-date" value="${today}"></div>
         <div class="field-group"><label>PROJECT *</label>
           <select id="dp-project">
@@ -6791,8 +6792,6 @@ function openDieselForm(type) {
           <input type="number" id="dp-rate" placeholder="e.g. 95.50" step="0.01" oninput="calcDieselTotal()"></div>
         <div class="field-group"><label>TOTAL COST (₹) — AUTO</label>
           <input type="number" id="dp-total" placeholder="Auto-calculated" step="0.01"></div>
-        <div class="field-group"><label>DELIVERY DATE</label>
-          <input type="date" id="dp-delivery" value="${today}"></div>
         <div class="field-group"><label>RECEIVED BY</label>
           <select id="dp-received">
             <option value="">— Select Person —</option>
@@ -6805,10 +6804,11 @@ function openDieselForm(type) {
       </div>`;
   } else {
     formHtml = `
-      <div class="form-header"><button class="back-btn" onclick="closeFormModal()">←</button>
-        <div class="form-title">🔧 Diesel Consumption</div>
-        <button class="close-btn" onclick="closeFormModal()">× Close</button></div>
-      <div style="padding:0 16px 24px">
+      <div class="flex justify-between items-center mb-4">
+        <div class="section-title">🔧 Diesel Consumption</div>
+        <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕ Close</button>
+      </div>
+      <div>
         <div class="field-group"><label>DATE *</label><input type="date" id="dc-date" value="${today}"></div>
         <div class="field-group"><label>PROJECT *</label>
           <select id="dc-project">
@@ -6866,7 +6866,7 @@ function saveDieselLog() {
       id: 'DSL_'+Date.now(), entryType:'purchase',
       date, project, vendor, qty, pricePerLitre: rate,
       totalCost: parseFloat(document.getElementById('dp-total')?.value)||qty*rate,
-      deliveryDate: document.getElementById('dp-delivery')?.value||date,
+
       receivedBy: document.getElementById('dp-received')?.value||'',
       notes: document.getElementById('dp-notes')?.value?.trim()||'',
     };
