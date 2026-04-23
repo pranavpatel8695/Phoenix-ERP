@@ -6636,8 +6636,23 @@ document.addEventListener('keydown', e => {
 });
 
 // ── DIESEL MODULE ─────────────────────────────────────────────
-const DIESEL_ROLES = ['admin','pm','senior_engineer'];
-function canAddDiesel() { return DIESEL_ROLES.includes(currentRole); }
+const DIESEL_ROLES = ['admin','pm','senior_engineer','store_manager'];
+function canAddDiesel() {
+  if (!DIESEL_ROLES.includes(currentRole)) return false;
+  if (currentRole === 'store_manager') {
+    // Store manager only for their own projects
+    return getVisibleProjects().length > 0;
+  }
+  return true;
+}
+
+function showDieselModal(html) {
+  const modal = document.getElementById('formModal');
+  document.getElementById('formModalContent').innerHTML = html;
+  modal.classList.remove('hidden');
+  // Call updateDieselForm after DOM is ready
+  setTimeout(updateDieselForm, 50);
+}
 
 function renderDieselTab() {
   const vp = getVisibleProjects();
@@ -6814,7 +6829,7 @@ function openDieselEntry() {
       </div>
       <button class="btn btn-primary w-full" onclick="saveDieselEntry()">✅ Save Entry</button>
     </div>`;
-  openFormModal(html);
+  showDieselModal(html);
 }
 
 function updateDieselForm() {
