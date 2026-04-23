@@ -400,6 +400,8 @@ const getStoreTxns      = () => LS.get('phx_store_txns', []);
 const saveStoreTxns     = v  => LS.set('phx_store_txns', v);
 const getMachinery      = () => LS.get('phx_machinery', []);
 const saveMachinery     = v  => LS.set('phx_machinery', v);
+const getDieselLogs     = () => LS.get('phx_diesel_logs', []);
+const saveDieselLogs    = v  => LS.set('phx_diesel_logs', v);
 const getMachLogs       = () => LS.get('phx_mach_logs', []);
 const saveMachLogs      = v  => LS.set('phx_mach_logs', v);
 const getMachService    = () => LS.get('phx_mach_service', []);
@@ -758,6 +760,13 @@ async function pullConfig(force=false) {
         });
         saveMachIssues(loc);
       }
+      // Diesel logs: merge-add only
+      if (d.dieselLogs?.length) {
+        const loc = getDieselLogs();
+        const ids = new Set(loc.map(x=>x.id));
+        d.dieselLogs.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
+        saveDieselLogs(loc);
+      }
 
       // Store items: full replace from remote, preserve local photos, remove zero-qty
       if (d.deletedStoreItems?.length) {
@@ -934,6 +943,7 @@ async function pushConfig() {
     machLogs,
     machService: getMachService(),
     machIssues:  getMachIssues(),
+    dieselLogs:  getDieselLogs(),
     deletedStoreItems: LS.get('phx_deleted_store_items', []),
     deletedReports,
     updatedAt:   Date.now()
@@ -1287,6 +1297,7 @@ function renderCurrentTab() {
     case 'submit':
       if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); }
       else if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); }
+      else if (currentModule==='diesel') { main.innerHTML=renderDieselTab(); pullConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='diesel') main.innerHTML=renderDieselTab(); }); }
       else if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
         pullConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
@@ -1298,6 +1309,7 @@ function renderCurrentTab() {
     case 'reports':
       if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;}
       if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;}
+      if(currentModule==='diesel'){ main.innerHTML=renderDieselTab(); pullConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='diesel') main.innerHTML=renderDieselTab(); }); break; }
       if(currentModule==='store'){
         main.innerHTML=renderStoreTab();
         pullConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
@@ -1391,6 +1403,11 @@ function renderHome() {
         <div class="icon">🏪</div>
         <div class="name">Store</div>
         <div class="count">${getStoreItems().filter(i=>i.project!=='central').length} site items</div>
+      </div>
+      <div class="module-card${currentModule==='diesel'?' selected':''}" onclick="currentModule='diesel';renderCurrentTab()" style="${currentModule==='diesel'?'border-color:var(--yellow);background:rgba(255,214,10,0.05)':''}">
+        <div class="icon">⛽</div>
+        <div class="name">Diesel</div>
+        <div class="count">${getDieselLogs().length} entries</div>
       </div>
     </div>`;
 
@@ -6617,6 +6634,253 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft')  lightboxNav(-1);
   if (e.key === 'ArrowRight') lightboxNav(1);
 });
+
+// ── DIESEL MODULE ─────────────────────────────────────────────
+const DIESEL_ROLES = ['admin','pm','senior_engineer'];
+function canAddDiesel() { return DIESEL_ROLES.includes(currentRole); }
+
+function renderDieselTab() {
+  const vp = getVisibleProjects();
+  const logs = getDieselLogs()
+    .filter(l => vp.includes(l.project))
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  const machines = getMachinery().filter(m=>vp.includes(m.project||''));
+
+  // Read filter state
+  const fProj  = document.getElementById('dsl-proj')?.value  || '';
+  const fMach  = document.getElementById('dsl-mach')?.value  || '';
+  const fMonth = document.getElementById('dsl-month')?.value || '';
+
+  let filtered = logs;
+  if (fProj)  filtered = filtered.filter(l=>l.project===fProj);
+  if (fMach)  filtered = filtered.filter(l=>l.machineName===fMach||l.machine===fMach);
+  if (fMonth) filtered = filtered.filter(l=>(l.date||'').slice(0,7)===fMonth);
+
+  // Summary stats
+  const totalLitres = filtered.reduce((s,l)=>s+(parseFloat(l.litres)||0),0);
+  const totalCost   = filtered.reduce((s,l)=>s+(parseFloat(l.totalCost)||0),0);
+
+  // Stock balance: opening stock + purchases - consumption
+  const allPurchase   = filtered.filter(l=>l.entryType==='purchase').reduce((s,l)=>s+(parseFloat(l.litres)||0),0);
+  const allConsumption= filtered.filter(l=>l.entryType==='consumption').reduce((s,l)=>s+(parseFloat(l.litres)||0),0);
+  const allOpening    = filtered.filter(l=>l.entryType==='opening').reduce((s,l)=>s+(parseFloat(l.litres)||0),0);
+  const stockBalance  = allOpening + allPurchase - allConsumption;
+
+  // Months for filter
+  const allMonths = [...new Set(logs.map(l=>(l.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const allMachNames = [...new Set(logs.map(l=>l.machineName||l.machine).filter(Boolean))];
+
+  let html = `
+    <div class="section-header">
+      <div class="section-title">⛽ Diesel Register</div>
+      ${canAddDiesel() ? `<button class="btn btn-primary btn-sm" onclick="openDieselEntry()">+ Add Entry</button>` : ''}
+    </div>
+
+    <!-- Filters -->
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <select id="dsl-proj" onchange="document.getElementById('main').innerHTML=renderDieselTab()"
+        style="flex:1;min-width:120px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+        <option value="">All Projects</option>
+        ${vp.map(p=>`<option value="${p}"${p===fProj?' selected':''}>${p}</option>`).join('')}
+      </select>
+      <select id="dsl-mach" onchange="document.getElementById('main').innerHTML=renderDieselTab()"
+        style="flex:1;min-width:100px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+        <option value="">All Machines</option>
+        ${allMachNames.map(m=>`<option value="${m}"${m===fMach?' selected':''}>${m}</option>`).join('')}
+      </select>
+      <select id="dsl-month" onchange="document.getElementById('main').innerHTML=renderDieselTab()"
+        style="flex:1;min-width:100px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+        <option value="">All Months</option>
+        ${allMonths.map(m=>`<option value="${m}"${m===fMonth?' selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="stat-grid mb-3">
+      <div class="stat-card"><div class="val text-yellow" style="color:#FFD60A">${totalLitres.toFixed(1)} L</div><div class="lbl">Total Filled</div></div>
+      <div class="stat-card"><div class="val text-green">₹${totalCost.toLocaleString('en-IN')}</div><div class="lbl">Total Cost</div></div>
+      <div class="stat-card"><div class="val" style="color:${stockBalance<50?'var(--red)':'var(--blue)'}">${stockBalance.toFixed(1)} L</div><div class="lbl">Stock Balance</div></div>
+      <div class="stat-card"><div class="val text-orange">${filtered.length}</div><div class="lbl">Entries</div></div>
+    </div>`;
+
+  if (!filtered.length) {
+    html += `<div class="empty-state"><div class="icon">⛽</div><p>No diesel entries yet.<br>${canAddDiesel()?'Tap "+ Add Entry" to start.':''}</p></div>`;
+  } else {
+    // Group by date
+    const byDate = {};
+    filtered.forEach(l=>{ if(!byDate[l.date]) byDate[l.date]=[]; byDate[l.date].push(l); });
+    Object.keys(byDate).sort().reverse().forEach(date => {
+      const dayTotal = byDate[date].filter(l=>l.entryType==='purchase').reduce((s,l)=>s+(parseFloat(l.litres)||0),0);
+      html += `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px">${new Date(date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}${dayTotal>0?` — ${dayTotal}L purchased`:''}</div>`;
+      byDate[date].forEach(l => { html += dieselCard(l); });
+    });
+  }
+  return html;
+}
+
+function dieselCard(l) {
+  const typeColor = l.entryType==='purchase'?'var(--green)':l.entryType==='consumption'?'var(--orange)':l.entryType==='opening'?'var(--blue)':'var(--muted)';
+  const typeLabel = l.entryType==='purchase'?'⛽ Purchase':l.entryType==='consumption'?'🔧 Consumption':l.entryType==='opening'?'📦 Opening Stock':'Entry';
+  return `
+    <div class="card mb-2" style="padding:10px 12px">
+      <div class="flex justify-between items-start mb-1">
+        <div style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</div>
+        <div class="flex gap-2 items-center">
+          <div style="font-size:14px;font-weight:700;color:#FFD60A">${parseFloat(l.litres||0).toFixed(1)} L</div>
+          ${canAddDiesel()?`<button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px" onclick="deleteDieselLog('${l.id}')">🗑️</button>`:''}
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text);font-weight:600;margin-bottom:4px">🚜 ${l.machineName||l.machine||'—'}</div>
+      <div style="font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px">
+        ${l.project?`<span>📁 ${l.project}</span>`:''}
+        ${l.vendor?`<span>🏪 ${l.vendor}</span>`:''}
+        ${l.billNo?`<span>🧾 ${l.billNo}</span>`:''}
+        ${l.ratePerLitre?`<span>₹${l.ratePerLitre}/L</span>`:''}
+        ${l.totalCost?`<span style="color:var(--green);font-weight:700">₹${parseFloat(l.totalCost).toLocaleString('en-IN')}</span>`:''}
+        ${l.runningHours?`<span>⏱️ ${l.runningHours} hrs</span>`:''}
+        ${l.workType?`<span>🔩 ${l.workType}</span>`:''}
+      </div>
+      ${l.remarks?`<div style="font-size:11px;color:var(--muted);margin-top:4px;font-style:italic">${l.remarks}</div>`:''}
+      <div style="font-size:10px;color:var(--muted);margin-top:4px">Added by ${l.addedByName||l.addedBy||'—'}</div>
+    </div>`;
+}
+
+function openDieselEntry() {
+  if (!canAddDiesel()) return;
+  const vp = getVisibleProjects();
+  const machines = getMachinery().filter(m=>vp.includes(m.project||''));
+  const today = localToday();
+  const html = `
+    <div class="form-header"><button class="back-btn" onclick="closeFormModal()">←</button><div class="form-title">⛽ Add Diesel Entry</div><button class="close-btn" onclick="closeFormModal()">× Close</button></div>
+    <div style="padding:0 16px 24px">
+      <div class="field-group">
+        <label>ENTRY TYPE *</label>
+        <select id="dsl-type" onchange="updateDieselForm()">
+          <option value="purchase">⛽ Purchase (Filling)</option>
+          <option value="consumption">🔧 Consumption</option>
+          <option value="opening">📦 Opening Stock</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>DATE *</label>
+        <input type="date" id="dsl-date" value="${today}">
+      </div>
+      <div class="field-group">
+        <label>PROJECT *</label>
+        <select id="dsl-proj-form">
+          <option value="">— Select Project —</option>
+          ${vp.map(p=>`<option value="${p}">${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-group">
+        <label>MACHINE / EQUIPMENT *</label>
+        <select id="dsl-machine-sel" onchange="document.getElementById('dsl-machine-name').value=this.value">
+          <option value="">— Select from list or type below —</option>
+          ${machines.map(m=>`<option value="${m.name}">${m.name} (${m.type||''})</option>`).join('')}
+        </select>
+        <input type="text" id="dsl-machine-name" placeholder="Machine name" style="margin-top:6px">
+      </div>
+      <div class="field-group" id="dsl-vendor-grp">
+        <label>VENDOR / SUPPLIER</label>
+        <input type="text" id="dsl-vendor" placeholder="e.g. HP Petrol Pump">
+      </div>
+      <div class="field-group" id="dsl-bill-grp">
+        <label>BILL / VOUCHER NO</label>
+        <input type="text" id="dsl-bill" placeholder="e.g. INV-001">
+      </div>
+      <div class="field-group">
+        <label>LITRES *</label>
+        <input type="number" id="dsl-litres" placeholder="e.g. 50" step="0.1" oninput="calcDieselCost()">
+      </div>
+      <div class="field-group" id="dsl-rate-grp">
+        <label>RATE PER LITRE (₹)</label>
+        <input type="number" id="dsl-rate" placeholder="e.g. 95.50" step="0.01" oninput="calcDieselCost()">
+      </div>
+      <div class="field-group" id="dsl-cost-grp">
+        <label>TOTAL COST (₹) — AUTO</label>
+        <input type="number" id="dsl-cost" placeholder="Auto-calculated" step="0.01">
+      </div>
+      <div class="field-group">
+        <label>RUNNING HOURS (at time of entry)</label>
+        <input type="number" id="dsl-hours" placeholder="e.g. 1250" step="1">
+      </div>
+      <div class="field-group" id="dsl-work-grp">
+        <label>WORK / PURPOSE</label>
+        <input type="text" id="dsl-work" placeholder="e.g. Excavation, Pipe Laying, Generator">
+      </div>
+      <div class="field-group">
+        <label>REMARKS</label>
+        <textarea id="dsl-remarks" rows="2" placeholder="Optional notes"></textarea>
+      </div>
+      <button class="btn btn-primary w-full" onclick="saveDieselEntry()">✅ Save Entry</button>
+    </div>`;
+  openFormModal(html);
+}
+
+function updateDieselForm() {
+  const type = document.getElementById('dsl-type')?.value;
+  const isPurchase = type === 'purchase';
+  const isConsumption = type === 'consumption';
+  ['dsl-vendor-grp','dsl-bill-grp','dsl-rate-grp','dsl-cost-grp'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (isPurchase ? '' : 'none');
+  });
+  const workGrp = document.getElementById('dsl-work-grp');
+  if (workGrp) workGrp.style.display = isConsumption ? '' : (isPurchase ? 'none' : 'none');
+}
+
+function calcDieselCost() {
+  const l = parseFloat(document.getElementById('dsl-litres')?.value)||0;
+  const r = parseFloat(document.getElementById('dsl-rate')?.value)||0;
+  const costEl = document.getElementById('dsl-cost');
+  if (costEl && l && r) costEl.value = (l*r).toFixed(2);
+}
+
+function saveDieselEntry() {
+  const type    = document.getElementById('dsl-type')?.value;
+  const date    = document.getElementById('dsl-date')?.value;
+  const project = document.getElementById('dsl-proj-form')?.value;
+  const machine = document.getElementById('dsl-machine-name')?.value?.trim();
+  const litres  = parseFloat(document.getElementById('dsl-litres')?.value)||0;
+  if (!date) { showToast('⚠️ Select date'); return; }
+  if (!project) { showToast('⚠️ Select project'); return; }
+  if (!machine) { showToast('⚠️ Enter machine name'); return; }
+  if (!litres) { showToast('⚠️ Enter litres'); return; }
+  const entry = {
+    id:           'DSL_'+Date.now(),
+    entryType:    type,
+    date, project,
+    machine:      machine,
+    machineName:  machine,
+    vendor:       document.getElementById('dsl-vendor')?.value?.trim()||'',
+    billNo:       document.getElementById('dsl-bill')?.value?.trim()||'',
+    litres,
+    ratePerLitre: parseFloat(document.getElementById('dsl-rate')?.value)||0,
+    totalCost:    parseFloat(document.getElementById('dsl-cost')?.value)||0,
+    runningHours: parseFloat(document.getElementById('dsl-hours')?.value)||0,
+    workType:     document.getElementById('dsl-work')?.value?.trim()||'',
+    remarks:      document.getElementById('dsl-remarks')?.value?.trim()||'',
+    addedBy:      currentUser,
+    addedByName:  getUsers()[currentUser]?.name||currentUser,
+    timestamp:    new Date().toISOString()
+  };
+  const logs = getDieselLogs();
+  logs.push(entry);
+  saveDieselLogs(logs);
+  closeFormModal();
+  showToast('✅ Diesel entry saved');
+  renderCurrentTab();
+  pushConfig();
+}
+
+function deleteDieselLog(id) {
+  if (!canAddDiesel()) return;
+  if (!confirm('Delete this diesel entry?')) return;
+  saveDieselLogs(getDieselLogs().filter(l=>l.id!==id));
+  showToast('🗑️ Deleted');
+  renderCurrentTab();
+  pushConfig();
+}
 
 // ── STORE MODULE ─────────────────────────────────────────────
 
