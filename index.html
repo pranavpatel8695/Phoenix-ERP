@@ -796,17 +796,11 @@ async function pullConfig(force=false) {
             return {...i, photo: savedPhoto};
           });
 
-        // Only keep local items that are NOT in remote if they were added AFTER the remote was last updated
-        // This prevents deleted items (missing from remote) from being re-added
-        const remoteUpdatedAt = d.updatedAt || 0;
+        // Keep ALL local items not in remote UNLESS explicitly deleted
+        // phx_deleted_store_items is the only reliable deletion signal
         getStoreItems().forEach(i=>{
           if (!remoteItemIds.has(i.id) && !deletedStoreItems.includes(i.id)) {
-            // Only keep if item was created after remote was last synced (truly new local item)
-            const itemTime = new Date(i.timestamp||0).getTime();
-            if (itemTime > remoteUpdatedAt) {
-              loc.push(i);
-            }
-            // Otherwise: item missing from remote = was deleted on another device, don't re-add
+            loc.push(i);
           }
         });
 
