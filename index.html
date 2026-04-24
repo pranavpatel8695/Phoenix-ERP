@@ -3087,11 +3087,58 @@ function exportToPDF() {
     if (excR.length) {
       const totalM = excR.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
       const totalV = excR.reduce((s,r)=>s+(parseFloat(r.volume)||0),0);
-      sections += secHead('#FF9F0A','⛏️','Excavation',`${excR.length} records | Total: ${fmtM(totalM)} | Vol: ${totalV.toFixed(2)} cum`);
-      sections += buildTable('#FF9F0A', {
-        headers:['#','Date','Chainage (From–To)','Length','Qty (cum)','Width (m)','Depth (m)','Soil Type','Route','Engineer'],
-        body: excR.map((r,i)=>{const bg=i%2?'#f8f9fc':'#fff';return`<tr style="background:${bg}">${td(i+1,bg)}${td(r.date,bg)}${td(`${r.from}m – ${r.to}m`,bg)}${td(fmtM(r.meters),bg)}${td(parseFloat(r.volume||0).toFixed(2),bg)}${td(r.width,bg)}${td(r.depth,bg)}${td(r.soil,bg)}${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}</tr>`;}).join('')
+
+      // Collect all unique strata types across all records
+      const allStrataTypes = [...new Set(
+        excR.flatMap(r => r.strata?.length ? r.strata.map(s=>s.type) : [r.soil||''])
+      )].filter(Boolean);
+
+      // Per-stratum totals
+      const strataVolTotals = {};
+      allStrataTypes.forEach(t => {
+        strataVolTotals[t] = excR.reduce((s,r) => {
+          if (r.strata?.length) {
+            const st = r.strata.find(x=>x.type===t);
+            if (st) return s + (parseFloat(r.meters)||0)*(parseFloat(r.width)||0)*(parseFloat(st.depth)||0);
+          } else if ((r.soil||'')=== t) {
+            return s + (parseFloat(r.volume)||0);
+          }
+          return s;
+        }, 0);
       });
+
+      const strataHeader = allStrataTypes.map(t=>`${t} (cum)`).join(' | ');
+      const strataSummary = allStrataTypes.map(t=>`${t}: ${strataVolTotals[t].toFixed(2)} cum`).join(' | ');
+
+      sections += secHead('#FF9F0A','⛏️','Excavation',`${excR.length} records | Total Length: ${fmtM(totalM)} | Total Vol: ${totalV.toFixed(2)} cum | ${strataSummary}`);
+      sections += buildTable('#FF9F0A', {
+        headers:['#','Date','Chainage (From–To)','Length (m)','Width (m)','Total Depth (m)','Total Vol (cum)', ...allStrataTypes.map(t=>`${t}\nDepth (m)`), ...allStrataTypes.map(t=>`${t}\nVol (cum)`),'Route','Engineer'],
+        body: excR.map((r,i)=>{
+          const bg = i%2?'#f8f9fc':'#fff';
+          const L = parseFloat(r.meters)||0;
+          const W = parseFloat(r.width)||0;
+          // Per-stratum depth and volume for this record
+          const strataDepths = allStrataTypes.map(t => {
+            if (r.strata?.length) { const s=r.strata.find(x=>x.type===t); return s?parseFloat(s.depth)||0:0; }
+            return (r.soil||'')=== t ? parseFloat(r.depth)||0 : 0;
+          });
+          const strataVols = strataDepths.map(d => L&&W&&d ? (L*W*d).toFixed(2) : '');
+          return `<tr style="background:${bg}">
+            ${td(i+1,bg)}${td(r.date,bg)}${td(`${r.from}m – ${r.to}m`,bg)}${td(fmtM(r.meters),bg)}
+            ${td(r.width||'',bg)}${td(r.depth||'',bg)}${td(parseFloat(r.volume||0).toFixed(2),bg)}
+            ${strataDepths.map(d=>td(d||'—',bg)).join('')}
+            ${strataVols.map(v=>td(v||'—',bg)).join('')}
+            ${td(getRouteName(r),bg)}${td(r.supervisorName||r.supervisor,bg)}
+          </tr>`;
+        }).join('')
+      });
+
+      // Strata summary row
+      const summaryBg = '#FFF3CD';
+      sections += `<div style="margin-top:-8px;margin-bottom:16px;background:#FFF3CD;border:1px solid #FF9F0A;border-radius:0 0 8px 8px;padding:8px 12px;font-size:11px;font-weight:700;color:#7B4F00">
+        📊 Strata Summary: ${allStrataTypes.map(t=>`${t}: <span style="color:#d4700a">${strataVolTotals[t].toFixed(2)} cum</span>`).join(' &nbsp;|&nbsp; ')}
+        &nbsp;&nbsp;|&nbsp;&nbsp; <span style="color:#d4700a">Grand Total: ${totalV.toFixed(2)} cum</span>
+      </div>`;
     }
 
     // Pipe Laying
