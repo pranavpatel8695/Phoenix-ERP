@@ -6844,10 +6844,13 @@ function renderDieselTab() {
   let html = `
     <div class="section-header">
       <div class="section-title">⛽ Diesel/Petrol Register</div>
-      ${canAddDiesel() ? `<div class="flex gap-2">
-        <button class="btn btn-primary btn-sm" onclick="openDieselForm('purchase')">⛽ Purchase</button>
-        <button class="btn btn-secondary btn-sm" onclick="openDieselForm('consumption')">🔧 Consumption</button>
-      </div>` : ''}
+      <div class="flex gap-2">
+        <button class="btn btn-ghost btn-sm" onclick="exportDieselReport()">📄 Export</button>
+        ${canAddDiesel() ? `<div class="flex gap-2">
+          <button class="btn btn-primary btn-sm" onclick="openDieselForm('purchase')">⛽ Purchase</button>
+          <button class="btn btn-secondary btn-sm" onclick="openDieselForm('consumption')">🔧 Consumption</button>
+        </div>` : ''}
+      </div>
     </div>
 
     <!-- Filters -->
@@ -7079,6 +7082,120 @@ function deleteDieselLog(id) {
   showToast('🗑️ Deleted');
   renderCurrentTab();
   pushConfig();
+}
+
+function exportDieselReport() {
+  const vp = getVisibleProjects();
+  const allLogs = getDieselLogs().filter(l => vp.includes(l.project)).sort((a,b)=>a.date.localeCompare(b.date));
+  if (!allLogs.length) { showToast('⚠️ No diesel entries to export'); return; }
+
+  const purchases   = allLogs.filter(l=>l.entryType==='purchase');
+  const consumption = allLogs.filter(l=>l.entryType==='consumption');
+  const totalPurch  = purchases.reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
+  const totalCons   = consumption.reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
+  const totalCost   = purchases.reduce((s,l)=>s+(parseFloat(l.totalCost)||0),0);
+  const balance     = totalPurch - totalCons;
+
+  const today = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const now   = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+
+  const thS  = c => `<th style="padding:6px 8px;background:${c};color:#fff;font-size:10px;font-weight:700;border:1px solid rgba(0,0,0,0.1);white-space:nowrap;text-align:left">${c.replace(/.*/, arguments[0])}</th>`;
+  const th   = (c,t) => `<th style="padding:6px 8px;background:${c};color:#fff;font-size:10px;font-weight:700;border:1px solid rgba(0,0,0,0.1);white-space:normal;text-align:left">${t}</th>`;
+  const td   = v => `<td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:10px;vertical-align:top;white-space:normal;word-break:break-word">${v===null||v===undefined||v===''?'—':v}</td>`;
+  const tdr  = v => `<td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:10px;vertical-align:top;text-align:right">${v===null||v===undefined||v===''?'—':v}</td>`;
+
+  const purchaseTable = purchases.length ? `
+    <div style="font-size:13px;font-weight:700;color:#d4700a;margin:18px 0 6px;border-bottom:2px solid #FF9F0A;padding-bottom:4px">⛽ Purchase Register</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
+      <thead><tr>
+        ${th('#FF9F0A','#')}${th('#FF9F0A','Date')}${th('#FF9F0A','Project')}${th('#FF9F0A','Vendor')}
+        ${th('#FF9F0A','Qty (L)')}${th('#FF9F0A','Rate (₹/L)')}${th('#FF9F0A','Total Cost (₹)')}
+        ${th('#FF9F0A','Filled In')}${th('#FF9F0A','Received By')}${th('#FF9F0A','Notes')}
+      </tr></thead>
+      <tbody>
+        ${purchases.map((l,i)=>`<tr style="background:${i%2?'#fff8f0':'#fff'}">
+          ${td(i+1)}${td(l.date)}${td(l.project)}${td(l.vendor||'—')}
+          ${tdr((parseFloat(l.qty)||0).toFixed(1))}${tdr(l.pricePerLitre||'—')}${tdr(l.totalCost?'₹'+parseFloat(l.totalCost).toLocaleString('en-IN'):'—')}
+          ${td(l.filledIn||'—')}${td(l.receivedBy||'—')}${td(l.notes||'—')}
+        </tr>`).join('')}
+        <tr style="background:#fff3cd;font-weight:700">
+          <td colspan="4" style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px">TOTAL</td>
+          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px;text-align:right">${totalPurch.toFixed(1)} L</td>
+          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px"></td>
+          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px;text-align:right">₹${totalCost.toLocaleString('en-IN')}</td>
+          <td colspan="3" style="padding:6px 8px;border:1px solid #e5e7eb"></td>
+        </tr>
+      </tbody>
+    </table>` : '';
+
+  const consumptionTable = consumption.length ? `
+    <div style="font-size:13px;font-weight:700;color:#c05200;margin:24px 0 6px;border-bottom:2px solid #FF6B00;padding-bottom:4px">🔧 Consumption Register</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
+      <thead><tr>
+        ${th('#e05a00','#')}${th('#e05a00','Date')}${th('#e05a00','Project')}${th('#e05a00','Machine')}
+        ${th('#e05a00','Qty (L)')}${th('#e05a00','Notes')}
+      </tr></thead>
+      <tbody>
+        ${consumption.map((l,i)=>`<tr style="background:${i%2?'#fff8f0':'#fff'}">
+          ${td(i+1)}${td(l.date)}${td(l.project)}${td(l.machinery||l.machine||'—')}
+          ${tdr((parseFloat(l.qty)||0).toFixed(1))}${td(l.notes||'—')}
+        </tr>`).join('')}
+        <tr style="background:#ffe8d6;font-weight:700">
+          <td colspan="4" style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px">TOTAL CONSUMED</td>
+          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px;text-align:right">${totalCons.toFixed(1)} L</td>
+          <td style="padding:6px 8px;border:1px solid #e5e7eb"></td>
+        </tr>
+      </tbody>
+    </table>` : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Diesel/Petrol Report</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Noto Serif',Cambria,Georgia,serif;background:#f0f2f5;color:#1a1a2e}
+    .page{max-width:1100px;margin:0 auto;background:#fff;padding:24px 28px}
+    @media print{body{background:#fff}@page{size:A4 landscape;margin:10mm}.no-print{display:none}}
+  </style></head><body><div class="page">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #FF9F0A">
+      <div>
+        <div style="font-size:22px;font-weight:700;color:#FF9F0A">Phoenix ERP</div>
+        <div style="font-size:13px;color:#64748b;margin-top:2px">Diesel/Petrol Register</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:14px;font-weight:700">Fuel Register Report</div>
+        <div style="font-size:11px;color:#64748b">${vp.join(', ')} | Generated: ${today}, ${now}</div>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <div style="flex:1;min-width:140px;background:#FF9F0A;color:#fff;border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700">${totalPurch.toFixed(1)} L</div>
+        <div style="font-size:11px;margin-top:4px">Total Purchased</div>
+      </div>
+      <div style="flex:1;min-width:140px;background:#e05a00;color:#fff;border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700">${totalCons.toFixed(1)} L</div>
+        <div style="font-size:11px;margin-top:4px">Total Consumed</div>
+      </div>
+      <div style="flex:1;min-width:140px;background:${balance<0?'#dc2626':balance<50?'#f59e0b':'#16a34a'};color:#fff;border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700">${balance.toFixed(1)} L</div>
+        <div style="font-size:11px;margin-top:4px">Balance</div>
+      </div>
+      <div style="flex:1;min-width:140px;background:#1d4ed8;color:#fff;border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700">₹${totalCost.toLocaleString('en-IN')}</div>
+        <div style="font-size:11px;margin-top:4px">Total Cost</div>
+      </div>
+    </div>
+
+    ${purchaseTable}
+    ${consumptionTable}
+
+    <div style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#94a3b8;text-align:center">
+      Generated by Phoenix ERP · ${today} · ${now}
+    </div>
+  </div></body></html>`;
+
+  showReportPreview(html, `PhoenixERP_Diesel_Report_${new Date().toISOString().slice(0,10)}.html`);
 }
 
 // ── STORE MODULE ─────────────────────────────────────────────
