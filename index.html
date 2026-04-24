@@ -4442,15 +4442,18 @@ function manageRoutes(proj) {
     </div>
     ${routes.map((rt,i) => `
       <div class="card mb-2">
-        <div class="flex justify-between items-center">
-          <div>
+        <div class="flex justify-between items-center mb-1">
+          <div style="flex:1;min-width:0">
             <div class="font-bold" style="font-size:13px">${rt.name}</div>
-            <div class="text-xs text-muted">${fmtM(rt.length)}</div>
+            <div class="text-xs text-muted">${fmtM(rt.length)}${rt.startCh>0?` · Starts at Ch. ${rt.startCh}m`:' · Starts at Ch. 0m'}</div>
             ${(rt.pipes||[rt.pipe]).filter(Boolean).map(p=>
               `<div style="font-size:11px;color:var(--blue);margin-top:2px">🔩 ${typeof p==='string'?p:(p.dia||'')+(p.material?' — '+p.material:'')}</div>`
             ).join('')}
           </div>
-          <button class="btn btn-danger btn-sm" onclick="deleteRoute('${proj}',${i})">✕</button>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-sm" onclick="editRouteStartCh('${proj}',${i},${rt.startCh||0})" title="Edit Starting Chainage">✏️ Ch</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteRoute('${proj}',${i})">✕</button>
+          </div>
         </div>
       </div>`).join('')}
     ${!routes.length ? '<div class="text-sm text-muted mb-3">No routes yet.</div>' : ''}
@@ -4465,8 +4468,19 @@ function manageRoutes(proj) {
     <button class="btn btn-primary w-full" onclick="addRoute('${proj}')">Add Route</button>`;
   document.getElementById('formModalContent').innerHTML = html;
   document.getElementById('formModal').classList.remove('hidden');
-  // Add first pipe row by default
   addRoutePipeRow();
+}
+
+function editRouteStartCh(proj, idx, current) {
+  const val = prompt(`Starting Chainage (m) for this route:\n(Enter 0 if route starts from zero)`, current||0);
+  if (val === null) return;
+  const startCh = parseFloat(val)||0;
+  const routes = getRoutes();
+  routes[proj][idx].startCh = startCh;
+  saveRoutes(routes);
+  pushConfig();
+  manageRoutes(proj);
+  showToast(`✅ Starting chainage set to ${startCh}m`);
 }
 
 function addRoutePipeRow() {
