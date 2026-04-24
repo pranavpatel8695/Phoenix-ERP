@@ -4063,8 +4063,8 @@ function renderTrackerTab() {
             <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:12px">PROGRESS</div>
             ${[
               {icon:'⛏️', label:'Excavation', reps:excReps,  color:'var(--orange)', pct:excPct,  done:excM,  key:'exc_'+rt.id,  gaps:[]},
-              {icon:'🔩', label:'Pipe Laying', reps:pipeReps, color:'var(--blue)',   pct:pipePct, done:pipeM, key:'pipe_'+rt.id, gaps:pipeGaps},
-              {icon:'🪣', label:'Refilling',   reps:refReps,  color:'var(--green)',  pct:refPct,  done:refM,  key:'ref_'+rt.id,  gaps:refGaps},
+              {icon:'🔩', label:'Pipe Laying', reps:pipeReps, color:'var(--blue)',   pct:pipePct, done:pipeM, key:'pipe_'+rt.id, gaps:pipeM>0?pipeGaps:[]},
+              {icon:'🪣', label:'Refilling',   reps:refReps,  color:'var(--green)',  pct:refPct,  done:refM,  key:'ref_'+rt.id,  gaps:refM>0?refGaps:[]},
             ].map(row => {
               const gapsJson = JSON.stringify(row.gaps);
               return `
