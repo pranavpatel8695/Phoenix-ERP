@@ -1673,17 +1673,31 @@ function buildTypeFields(type, p={}) {
         <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
         <div class="form-row">
           <div class="field-group"><label>Width (m) <span class="req">*</span></label><input type="number" id="f-width" step="0.01" value="${p.width||''}" oninput="autoCalcVolume()" placeholder="e.g. 1.20"></div>
-          <div class="field-group"><label>Depth (m) <span class="req">*</span></label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" oninput="autoCalcVolume()" placeholder="e.g. 1.80"></div>
+          <div class="field-group"><label>Total Depth (m) — Auto</label><input type="number" id="f-depth" step="0.01" value="${p.depth||''}" readonly style="opacity:0.6" placeholder="Sum of strata"></div>
+        </div>
+        <!-- Strata Section -->
+        <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:10px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px">🪨 Soil Strata (Depth Breakdown)</div>
+            <button type="button" onclick="addExcavStratum()" style="background:var(--orange);color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">+ Add</button>
+          </div>
+          <div id="f-strata-list">
+            ${(p.strata&&p.strata.length ? p.strata : [{type:'Soft Soil',depth:''}]).map((s,i)=>`
+            <div class="strata-row" id="strata-${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+              <select onchange="autoCalcVolume()" style="flex:2;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+                ${['Soft Soil','Hard Soil','Murrum','Rock (Soft)','Rock (Hard)','Sandy','Black Cotton','Mixed'].map(t=>`<option${(s.type||'Soft Soil')===t?' selected':''}>${t}</option>`).join('')}
+              </select>
+              <input type="number" step="0.01" placeholder="Depth (m)" value="${s.depth||''}" oninput="autoCalcVolume()"
+                style="flex:1;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+              ${i>0?`<button type="button" onclick="removeExcavStratum(this)" style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">✕</button>`:'<div style="width:28px"></div>'}
+            </div>`).join('')}
+          </div>
+          <!-- Per-stratum volumes -->
+          <div id="f-strata-volumes" style="margin-top:6px;font-size:11px;color:var(--muted)"></div>
         </div>
         <div class="field-group">
-          <label>Volume of Excavation (m³) — Auto</label>
-          <input type="number" id="f-volume" value="${p.volume||''}" readonly style="opacity:0.6;background:rgba(255,159,10,0.08);border-color:rgba(255,159,10,0.3)" placeholder="Auto-calculated (L × W × D)">
-        </div>
-      </div>
-      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🪨 Soil Conditions</div>
-        <div class="field-group"><label>Soil Strata</label>
-          <select id="f-soil">${['Soft Soil','Hard Soil','Murrum','Rock (Soft)','Rock (Hard)','Sandy','Black Cotton','Mixed'].map(s=>`<option${p.soil===s?' selected':''}>${s}</option>`).join('')}</select>
+          <label>Total Volume of Excavation (m³) — Auto</label>
+          <input type="number" id="f-volume" value="${p.volume||''}" readonly style="opacity:0.6;background:rgba(255,159,10,0.08);border-color:rgba(255,159,10,0.3)" placeholder="Auto-calculated (L × W × ΣDepth)">
         </div>
       </div>
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
@@ -2113,12 +2127,64 @@ function autoCalc() {
   autoCalcRefillVol();
 }
 
+function addExcavStratum() {
+  const list = document.getElementById('f-strata-list');
+  if (!list) return;
+  const idx = list.querySelectorAll('.strata-row').length;
+  const div = document.createElement('div');
+  div.className = 'strata-row'; div.id = 'strata-'+idx;
+  div.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+  div.innerHTML = `
+    <select onchange="autoCalcVolume()" style="flex:2;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+      ${['Soft Soil','Hard Soil','Murrum','Rock (Soft)','Rock (Hard)','Sandy','Black Cotton','Mixed'].map(t=>`<option>${t}</option>`).join('')}
+    </select>
+    <input type="number" step="0.01" placeholder="Depth (m)" oninput="autoCalcVolume()"
+      style="flex:1;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
+    <button type="button" onclick="removeExcavStratum(this)" style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">✕</button>`;
+  list.appendChild(div);
+  autoCalcVolume();
+}
+
+function removeExcavStratum(btn) {
+  btn.closest('.strata-row').remove();
+  autoCalcVolume();
+}
+
+function getExcavStrata() {
+  const rows = document.querySelectorAll('#f-strata-list .strata-row');
+  return Array.from(rows).map(row => ({
+    type:  row.querySelector('select')?.value || 'Soft Soil',
+    depth: parseFloat(row.querySelector('input')?.value) || 0
+  })).filter(s => s.depth > 0);
+}
+
 function autoCalcVolume() {
   const meters = parseFloat(document.getElementById('f-meters')?.value) || 0;
   const width  = parseFloat(document.getElementById('f-width')?.value)  || 0;
-  const depth  = parseFloat(document.getElementById('f-depth')?.value)  || 0;
-  const el     = document.getElementById('f-volume');
-  if (el) el.value = (meters > 0 && width > 0 && depth > 0) ? (meters * width * depth).toFixed(2) : '';
+  const strata = getExcavStrata();
+  const totalDepth = strata.reduce((s,r) => s+r.depth, 0);
+
+  // Update total depth display
+  const depthEl = document.getElementById('f-depth');
+  if (depthEl) depthEl.value = totalDepth > 0 ? totalDepth.toFixed(2) : '';
+
+  // Total volume
+  const volEl = document.getElementById('f-volume');
+  if (volEl) volEl.value = (meters>0 && width>0 && totalDepth>0) ? (meters*width*totalDepth).toFixed(3) : '';
+
+  // Per-stratum volumes
+  const volDiv = document.getElementById('f-strata-volumes');
+  if (volDiv && strata.length > 0 && meters > 0 && width > 0) {
+    volDiv.innerHTML = strata.map(s => {
+      const v = (meters * width * s.depth).toFixed(3);
+      return `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border)">
+        <span>🪨 ${s.type} (${s.depth}m)</span>
+        <span style="color:var(--orange);font-weight:700">${v} m³</span>
+      </div>`;
+    }).join('') + `<div style="display:flex;justify-content:space-between;padding:4px 0;font-weight:700;color:var(--text)">
+        <span>Total</span><span style="color:var(--orange)">${(meters*width*totalDepth).toFixed(3)} m³</span>
+      </div>`;
+  } else if (volDiv) { volDiv.innerHTML = ''; }
 }
 
 function autoCalcRefillVol() {
@@ -2656,8 +2722,7 @@ async function submitReport(type) {
     if (!req(g('f-to'), 'Enter To Chainage')) return;
     if (gf('f-to') <= gf('f-from')) { showToast('⚠️ To Chainage must be greater than From Chainage'); return; }
     if (!req(g('f-width'), 'Enter Width')) return;
-    if (!req(g('f-depth'), 'Enter Depth')) return;
-    if (!req(g('f-soil'), 'Select Soil Type')) return;
+    if (getExcavStrata().length === 0) { showToast('⚠️ Add at least one stratum with depth'); return; }
   }
   if (type === 'pipe') {
     if (!req(g('f-from'), 'Enter From Chainage')) return;
@@ -2806,8 +2871,12 @@ async function submitReport(type) {
     data.meters = gf('f-meters') || (data.to - data.from);
   }
   if (type==='excavation') {
-    data.width=gf('f-width'); data.depth=gf('f-depth'); data.soil=g('f-soil');
-    data.volume=gf('f-volume') || (data.width * data.depth * data.meters);
+    const strata = getExcavStrata();
+    data.strata = strata;
+    data.soil   = strata.map(s=>s.type).join(', ') || 'Mixed';
+    data.width  = gf('f-width');
+    data.depth  = gf('f-depth') || strata.reduce((s,r)=>s+r.depth,0);
+    data.volume = gf('f-volume') || (data.width * data.depth * data.meters);
   }
   if (type==='pipe') {
     data.pipeSpec    = g('f-pipeSpec');
@@ -3314,9 +3383,20 @@ function reportItemHTML(r, showActions=true) {
   if (r.type === 'excavation') {
     details += row('Chainage', `Ch:${r.from}–${r.to}m`);
     details += row('Length', fmtM(r.meters));
-    details += row('Width × Depth', r.width && r.depth ? `${r.width}m × ${r.depth}m` : '');
-    details += row('Volume', r.volume ? `${parseFloat(r.volume).toFixed(2)} m³` : '');
-    details += row('Soil Type', r.soil);
+    details += row('Width', r.width ? `${r.width}m` : '');
+    if (r.strata && r.strata.length > 1) {
+      // Multi-stratum breakdown
+      r.strata.forEach(s => {
+        const svol = r.meters && r.width ? (parseFloat(r.meters)*parseFloat(r.width)*parseFloat(s.depth)).toFixed(2) : '';
+        details += row(`🪨 ${s.type}`, `${s.depth}m${svol?' → '+svol+' m³':''}`);
+      });
+      details += row('Total Depth', r.depth ? `${r.depth}m` : '');
+      details += row('Total Volume', r.volume ? `${parseFloat(r.volume).toFixed(2)} m³` : '');
+    } else {
+      details += row('Depth', r.depth ? `${r.depth}m` : '');
+      details += row('Volume', r.volume ? `${parseFloat(r.volume).toFixed(2)} m³` : '');
+      details += row('Soil Type', r.soil);
+    }
   }
   if (r.type === 'pipe') {
     details += row('Chainage', `Ch:${r.from}–${r.to}m`);
