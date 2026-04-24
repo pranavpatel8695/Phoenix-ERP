@@ -1593,7 +1593,7 @@ function buildReportForm(type, prefill={}) {
     </div>
     <div class="field-group">
       <label>Route <span class="req">*</span></label>
-      <select id="f-route" onchange="updatePipeSpecDisplay()"></select>
+      <select id="f-route" onchange="updatePipeSpecDisplay();updateChainageHint()"></select>
     </div>
     <div class="field-group">
       <label>Date <span class="req">*</span></label>
@@ -1668,7 +1668,7 @@ function buildTypeFields(type, p={}) {
     const sch0  = rt0?.startCh || 0;
     html += `
       <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage & Dimensions${sch0>0?` <span style="font-weight:400;color:var(--muted);text-transform:none">(Route starts at Ch. ${sch0}m)</span>`:''}</div>
+        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage & Dimensions <span id="f-ch-hint" style="font-weight:400;color:var(--muted);text-transform:none">${sch0>0?`(Route starts at Ch. ${sch0}m)`:''}</span></div>
         <div class="form-row">
           <div class="field-group"><label>From Ch. (m) <span class="req">*</span></label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. ${sch0}"></div>
           <div class="field-group"><label>To Ch. (m) <span class="req">*</span></label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. ${sch0+490}"></div>
@@ -2415,8 +2415,26 @@ function updateFormRoutes(selectedRoute) {
   const routes = getRoutes()[proj] || [];
   sel.innerHTML = routes.map(r => `<option value="${r.id}"${(selectedRoute||'')==r.id?' selected':''}>${r.name}</option>`).join('');
   if (!routes.length) sel.innerHTML = '<option value="">No routes — add in Settings</option>';
+  // Update startCh hint and placeholders
+  updateChainageHint();
   // Refresh pipe spec display if on pipe form
   updatePipeSpecDisplay();
+}
+
+function updateChainageHint() {
+  const proj    = document.getElementById('f-project')?.value;
+  const routeId = document.getElementById('f-route')?.value;
+  if (!proj || !routeId) return;
+  const rt = (getRoutes()[proj]||[]).find(r=>r.id===routeId);
+  const sch = parseFloat(rt?.startCh)||0;
+  // Update the chainage section header hint
+  const hintEl = document.getElementById('f-ch-hint');
+  if (hintEl) hintEl.textContent = sch > 0 ? `(Route starts at Ch. ${sch}m)` : '';
+  // Update placeholders
+  const fromEl = document.getElementById('f-from');
+  const toEl   = document.getElementById('f-to');
+  if (fromEl) fromEl.placeholder = `e.g. ${sch}`;
+  if (toEl)   toEl.placeholder   = `e.g. ${sch + 490}`;
 }
 
 function updatePipeSpecDisplay() {
@@ -3942,14 +3960,14 @@ function renderTrackerTab() {
       const pendingPipeM = Math.max(0, excM - pipeM);
       const pendingCount = pendingPipeM > 0 ? 1 : 0; // simplified — gaps calc below
 
-      // Gap analysis: find uncovered pipe stretches where excavation exists (for dependency bars)
-      const pipeGaps = findAllGaps(excReps, pipeReps, len);
-      const refGaps  = findAllGaps(pipeReps, refReps, len);
+      // Gap analysis: pass startCh so chainages are normalized correctly
+      const pipeGaps = findAllGaps(excReps, pipeReps, len, startCh);
+      const refGaps  = findAllGaps(pipeReps, refReps, len, startCh);
 
-      // Full-route gaps for display list (offset by startCh for display)
-      const pipeGapsFull = findAllGapsFullRoute(pipeReps, len).map(g=>({...g, from:g.from+startCh, to:g.to+startCh}));
-      const refGapsFull  = findAllGapsFullRoute(refReps, len).map(g=>({...g, from:g.from+startCh, to:g.to+startCh}));
-      const excGapsFull  = findAllGapsFullRoute(excReps, len).map(g=>({...g, from:g.from+startCh, to:g.to+startCh}));
+      // Full-route gaps for display list
+      const pipeGapsFull = findAllGapsFullRoute(pipeReps, len, startCh);
+      const refGapsFull  = findAllGapsFullRoute(refReps, len, startCh);
+      const excGapsFull  = findAllGapsFullRoute(excReps, len, startCh);
 
       // ── Pending special works ──
       const concrReps = reps.filter(r=>r.type==='structure');
@@ -4202,29 +4220,31 @@ function renderTrackerTab() {
 }
 
 // Returns all gap segments in [0, len] where prereqReps cover but targetReps don't
-function findAllGaps(prereqReps, targetReps, len) {
+function findAllGaps(prereqReps, targetReps, len, startCh=0) {
   const gaps = [];
   if (!prereqReps.length) return gaps;
   const prereqSegs = prereqReps
-    .map(r=>({f:parseFloat(r.from)||0, t:parseFloat(r.to)||0}))
+    .map(r=>({f:(parseFloat(r.from)||0)-startCh, t:(parseFloat(r.to)||0)-startCh}))
     .filter(s=>s.t>s.f).sort((a,b)=>a.f-b.f);
   const merged = [];
   for (const s of prereqSegs) {
     if (!merged.length || s.f > merged[merged.length-1].t + 0.001) merged.push({...s});
     else merged[merged.length-1].t = Math.max(merged[merged.length-1].t, s.t);
   }
+  // Normalize target reps too
+  const normTarget = targetReps.map(r=>({...r, from:(parseFloat(r.from)||0)-startCh, to:(parseFloat(r.to)||0)-startCh}));
   for (const seg of merged) {
-    const gap = findUncoveredRange(seg.f, seg.t, targetReps);
-    if (gap) gaps.push({from: Math.round(gap.from), to: Math.round(gap.to)});
+    const gap = findUncoveredRange(seg.f, seg.t, normTarget);
+    if (gap) gaps.push({from: Math.round(gap.from+startCh), to: Math.round(gap.to+startCh)});
   }
   return gaps;
 }
 
-// Gaps across full route [0, len] regardless of prereq
-function findAllGapsFullRoute(targetReps, len) {
+// Gaps across full route [startCh, startCh+len] regardless of prereq
+function findAllGapsFullRoute(targetReps, len, startCh=0) {
   const gaps = [];
   const segs = targetReps
-    .map(r=>({f:parseFloat(r.from)||0, t:parseFloat(r.to)||0}))
+    .map(r=>({f:(parseFloat(r.from)||0)-startCh, t:(parseFloat(r.to)||0)-startCh}))
     .filter(s=>s.t>s.f).sort((a,b)=>a.f-b.f);
   const merged = [];
   for (const s of segs) {
@@ -4233,10 +4253,10 @@ function findAllGapsFullRoute(targetReps, len) {
   }
   let cursor = 0;
   for (const s of merged) {
-    if (s.f > cursor + 0.001) gaps.push({from: Math.round(cursor), to: Math.round(s.f)});
-    cursor = s.t;
+    if (s.f > cursor + 0.001) gaps.push({from: Math.round(cursor+startCh), to: Math.round(s.f+startCh)});
+    cursor = Math.max(cursor, s.t);
   }
-  if (cursor < len - 0.001) gaps.push({from: Math.round(cursor), to: Math.round(len)});
+  if (cursor < len - 0.001) gaps.push({from: Math.round(cursor+startCh), to: Math.round(len+startCh)});
   return gaps;
 }
 
