@@ -4500,10 +4500,35 @@ function addRoute(proj) {
 
 function deleteRoute(proj, idx) {
   const routes = getRoutes();
-  routes[proj].splice(idx, 1);
-  saveRoutes(routes);
-  pushConfig();
-  manageRoutes(proj);
+  const rt = routes[proj][idx];
+  if (!rt) return;
+
+  // Check if any reports reference this route
+  const reports = getReports().filter(r => r.project === proj && r.route === rt.id);
+  if (reports.length) {
+    const types = [...new Set(reports.map(r=>r.type))].join(', ');
+    showConfirm(
+      '⚠️ Route Has Entries',
+      `"${rt.name}" has <strong>${reports.length} report(s)</strong> (${types}).<br><br>Deleting this route will <strong>not</strong> delete the reports, but they will lose their route reference.<br><br>Are you sure you want to delete this route?`,
+      () => {
+        routes[proj].splice(idx, 1);
+        saveRoutes(routes);
+        pushConfig();
+        manageRoutes(proj);
+        showToast('🗑️ Route deleted');
+      }
+    );
+    return;
+  }
+
+  // No entries — confirm simple delete
+  showConfirm('Delete Route', `Delete route "${rt.name}"?`, () => {
+    routes[proj].splice(idx, 1);
+    saveRoutes(routes);
+    pushConfig();
+    manageRoutes(proj);
+    showToast('🗑️ Route deleted');
+  });
 }
 
 function renderSettingsAccounts() {
