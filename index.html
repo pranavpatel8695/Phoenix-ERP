@@ -1382,7 +1382,7 @@ function renderHome() {
       </div>
       <div class="module-card${currentModule==='diesel'?' selected':''}" onclick="currentModule='diesel';renderCurrentTab()" style="${currentModule==='diesel'?'border-color:var(--yellow);background:rgba(255,214,10,0.05)':''}">
         <div class="icon">⛽</div>
-        <div class="name">Diesel</div>
+        <div class="name">Diesel/Petrol</div>
         <div class="count">${getDieselLogs().length} entries</div>
       </div>
     </div>`;
@@ -6843,7 +6843,7 @@ function renderDieselTab() {
 
   let html = `
     <div class="section-header">
-      <div class="section-title">⛽ Diesel Register</div>
+      <div class="section-title">⛽ Diesel/Petrol Register</div>
       ${canAddDiesel() ? `<div class="flex gap-2">
         <button class="btn btn-primary btn-sm" onclick="openDieselForm('purchase')">⛽ Purchase</button>
         <button class="btn btn-secondary btn-sm" onclick="openDieselForm('consumption')">🔧 Consumption</button>
@@ -6919,9 +6919,9 @@ function dieselCard(l) {
       <div style="font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px">
         ${isPurchase ? `
           ${l.vendor?`<span>🏪 ${l.vendor}</span>`:''}
+          ${l.filledIn?`<span>🛢️ ${l.filledIn}</span>`:''}
           ${l.pricePerLitre?`<span>₹${l.pricePerLitre}/L</span>`:''}
           ${l.totalCost?`<span style="color:var(--green);font-weight:700">₹${parseFloat(l.totalCost).toLocaleString('en-IN')}</span>`:''}
-          ${l.deliveryDate&&l.deliveryDate!==l.date?`<span>🚚 Delivered: ${l.deliveryDate}</span>`:''}
           ${l.receivedBy?`<span>👤 Rcvd: ${l.receivedBy}</span>`:''}
         ` : `
           ${l.machinery?`<span>🚜 ${l.machinery}</span>`:''}
@@ -6947,7 +6947,7 @@ function openDieselForm(type) {
   if (type === 'purchase') {
     formHtml = `
       <div class="flex justify-between items-center mb-4">
-        <div class="section-title">⛽ Diesel Purchase</div>
+        <div class="section-title">⛽ Diesel/Petrol Purchase</div>
         <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕ Close</button>
       </div>
       <div>
@@ -6972,6 +6972,12 @@ function openDieselForm(type) {
             ${staffList.map(([u,v])=>`<option value="${v.name||u}">${v.name||u}</option>`).join('')}
           </select>
         </div>
+        <div class="field-group"><label>FILLED IN</label>
+          <select id="dp-filledin">
+            <option value="Directly in Machine">Directly in Machine</option>
+            <option value="Barrel">Barrel</option>
+          </select>
+        </div>
         <div class="field-group"><label>COMMENTS / NOTES</label>
           <textarea id="dp-notes" rows="2" placeholder="Optional notes..."></textarea></div>
         <button class="btn btn-primary w-full" onclick="saveDieselLog()">✅ Save Purchase</button>
@@ -6979,7 +6985,7 @@ function openDieselForm(type) {
   } else {
     formHtml = `
       <div class="flex justify-between items-center mb-4">
-        <div class="section-title">🔧 Diesel Consumption</div>
+        <div class="section-title">🔧 Diesel/Petrol Consumption</div>
         <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕ Close</button>
       </div>
       <div>
@@ -7005,8 +7011,6 @@ function openDieselForm(type) {
             ${staffList.map(([u,v])=>`<option value="${v.name||u}">${v.name||u}</option>`).join('')}
           </select>
         </div>
-        <div class="field-group"><label>WORK DONE *</label>
-          <input type="text" id="dc-work" placeholder="e.g. Excavation at Ch. 0-100, Dewatering, Generator"></div>
         <div class="field-group"><label>COMMENTS / NOTES</label>
           <textarea id="dc-notes" rows="2" placeholder="Optional notes..."></textarea></div>
         <button class="btn btn-primary w-full" onclick="saveDieselLog()">✅ Save Consumption</button>
@@ -7042,6 +7046,7 @@ function saveDieselLog() {
       totalCost: parseFloat(document.getElementById('dp-total')?.value)||qty*rate,
 
       receivedBy: document.getElementById('dp-received')?.value||'',
+      filledIn:   document.getElementById('dp-filledin')?.value||'Directly in Machine',
       notes: document.getElementById('dp-notes')?.value?.trim()||'',
     };
   } else {
@@ -7049,17 +7054,14 @@ function saveDieselLog() {
     const project   = document.getElementById('dc-project')?.value;
     const machinery = document.getElementById('dc-machinery')?.value?.trim();
     const qty       = parseFloat(document.getElementById('dc-qty')?.value)||0;
-    const work      = document.getElementById('dc-work')?.value?.trim();
     if (!date)      { showToast('⚠️ Select date'); return; }
     if (!project)   { showToast('⚠️ Select project'); return; }
     if (!machinery) { showToast('⚠️ Enter machinery name'); return; }
     if (!qty)       { showToast('⚠️ Enter quantity consumed'); return; }
-    if (!work)      { showToast('⚠️ Enter work done'); return; }
     entry = {
       id: 'DSL_'+Date.now(), entryType:'consumption',
       date, project, machinery, qty,
       operator: document.getElementById('dc-operator')?.value||'',
-      workDone: work,
       notes: document.getElementById('dc-notes')?.value?.trim()||'',
     };
   }
