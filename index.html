@@ -1665,7 +1665,7 @@ function buildTypeFields(type, p={}) {
   if (type === 'excavation') {
     const proj0 = p.project || getVisibleProjects()[0] || '';
     const rt0   = (getRoutes()[proj0]||[]).find(r=>r.id===p.route);
-    const sch0  = rt0?.startCh || 0;
+    const sch0 = parseFloat(rt0?.startCh) || 0;
     html += `
       <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage & Dimensions <span id="f-ch-hint" style="font-weight:400;color:var(--muted);text-transform:none">${sch0>0?`(Route starts at Ch. ${sch0}m)`:''}</span></div>
@@ -1742,7 +1742,7 @@ function buildTypeFields(type, p={}) {
 
     html += `
       <div style="background:rgba(10,132,255,0.06);border:1px solid rgba(10,132,255,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage</div>
+        <div style="font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage <span id="f-ch-hint" style="font-weight:400;color:var(--muted);text-transform:none"></span></div>
         <div class="form-row">
           <div class="field-group"><label>From Ch. (m) <span class="req">*</span></label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. 0"></div>
           <div class="field-group"><label>To Ch. (m) <span class="req">*</span></label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. 490"></div>
@@ -2426,11 +2426,9 @@ function updateChainageHint() {
   const routeId = document.getElementById('f-route')?.value;
   if (!proj || !routeId) return;
   const rt = (getRoutes()[proj]||[]).find(r=>r.id===routeId);
-  const sch = parseFloat(rt?.startCh)||0;
-  // Update the chainage section header hint
+  const sch = parseFloat(rt?.startCh) || 0;
   const hintEl = document.getElementById('f-ch-hint');
   if (hintEl) hintEl.textContent = sch > 0 ? `(Route starts at Ch. ${sch}m)` : '';
-  // Update placeholders
   const fromEl = document.getElementById('f-from');
   const toEl   = document.getElementById('f-to');
   if (fromEl) fromEl.placeholder = `e.g. ${sch}`;
