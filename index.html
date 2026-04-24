@@ -915,6 +915,7 @@ async function pushConfig() {
   Object.keys(fullRoutes).forEach(proj => {
     slimRoutes[proj] = (fullRoutes[proj]||[]).map(r=>({
       id:r.id, name:r.name, length:r.length,
+      startCh: r.startCh || 0,
       pipes: r.pipes, pipe: r.pipe
     }));
   });
