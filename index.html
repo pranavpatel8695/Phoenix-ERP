@@ -3959,9 +3959,10 @@ function renderTrackerTab() {
       const pipeM = pipeReps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
       const refM  = refReps.reduce((s,r)=>s+(parseFloat(r.meters)||0),0);
 
-      const excPct  = Math.min(100, Math.round(excM/len*100));
-      const pipePct = Math.min(100, Math.round(pipeM/len*100));
-      const refPct  = Math.min(100, Math.round(refM/len*100));
+      const fmtPct = v => v >= 1 ? Math.round(v)+'%' : v > 0 ? v.toFixed(1)+'%' : '0%';
+      const excPct  = Math.min(100, excM/len*100);
+      const pipePct = Math.min(100, pipeM/len*100);
+      const refPct  = Math.min(100, refM/len*100);
 
       // Counts
       const valveC    = reps.filter(r=>r.type==='valve').length;
@@ -4043,7 +4044,7 @@ function renderTrackerTab() {
           <!-- Summary badges -->
           <div style="display:flex;gap:8px;margin-bottom:14px">
             <div style="flex:1;background:rgba(10,132,255,0.12);border:1px solid rgba(10,132,255,0.25);border-radius:10px;padding:10px;text-align:center">
-              <div style="font-size:22px;font-weight:800;color:var(--blue)">${pipePct}%</div>
+              <div style="font-size:22px;font-weight:800;color:var(--blue)">${fmtPct(pipePct)}</div>
               <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-top:2px">Pipe Done</div>
             </div>
             ${totalGaps > 0
@@ -4071,7 +4072,7 @@ function renderTrackerTab() {
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
                   <div style="font-size:13px;font-weight:600">${row.icon} ${row.label}</div>
                   <div style="display:flex;align-items:center;gap:8px">
-                    <span style="font-size:13px;font-weight:700;color:${row.color}">${row.pct}%</span>
+                    <span style="font-size:13px;font-weight:700;color:${row.color}">${fmtPct(row.pct)}</span>
                     <span style="font-size:11px;color:var(--muted)">${fmtM(row.done)}</span>
                   </div>
                 </div>
@@ -4082,12 +4083,13 @@ function renderTrackerTab() {
                   onmouseleave="hideTrackerTip('${row.key}')"
                   ontouchstart="showTrackerTip(event,'${row.key}',${len})" ontouchend="event.preventDefault()">
                   ${row.reps.map(r=>{
-                    const f=parseFloat(r.from)||0, t=parseFloat(r.to)||0;
+                    const f=Math.max(0,(parseFloat(r.from)||0)-startCh), t=Math.max(0,(parseFloat(r.to)||0)-startCh);
                     const left=(f/len*100).toFixed(2), width=Math.max(0.5,((t-f)/len*100)).toFixed(2);
                     return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:${row.color};border-radius:4px"></div>`;
                   }).join('')}
                   ${row.gaps.map(g=>{
-                    const left=((g.from)/len*100).toFixed(2), width=Math.max(0.5,((g.to-g.from)/len*100)).toFixed(2);
+                    const gf=Math.max(0,(g.from||0)-startCh), gt=Math.max(0,(g.to||0)-startCh);
+                    const left=(gf/len*100).toFixed(2), width=Math.max(0.5,((gt-gf)/len*100)).toFixed(2);
                     return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:repeating-linear-gradient(90deg,rgba(255,69,58,0.7) 0px,rgba(255,69,58,0.7) 3px,rgba(255,69,58,0.15) 3px,rgba(255,69,58,0.15) 6px);border-radius:4px"></div>`;
                   }).join('')}
                   <div id="tip_${row.key}" style="display:none;position:absolute;bottom:24px;transform:translateX(-50%);background:#0f0f14;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none"></div>
