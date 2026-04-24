@@ -664,7 +664,22 @@ async function pullConfig(force=false) {
     try {
       const d = JSON.parse(configRes.value);
       if (d.projects?.length)                      saveProjects(d.projects);
-      if (d.routes && Object.keys(d.routes).length) saveRoutes(d.routes);
+      if (d.routes && Object.keys(d.routes).length) {
+        // Merge routes: remote is base, preserve local fields like startCh that remote may not have
+        const localRoutes = getRoutes();
+        const merged = {};
+        Object.keys(d.routes).forEach(proj => {
+          merged[proj] = d.routes[proj].map(remRt => {
+            const localRt = (localRoutes[proj]||[]).find(lr => lr.id === remRt.id);
+            return {
+              ...remRt,
+              // Preserve startCh from local if remote doesn't have it (or local has newer value)
+              startCh: remRt.startCh || localRt?.startCh || 0,
+            };
+          });
+        });
+        saveRoutes(merged);
+      }
 
       // Merge remote deletedReports into local
       if (d.deletedReports?.length) {
