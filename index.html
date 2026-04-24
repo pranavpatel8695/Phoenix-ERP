@@ -1641,6 +1641,7 @@ function buildReportForm(type, prefill={}) {
 
   setTimeout(() => {
     updateFormRoutes(prefill.route);
+    setTimeout(updateChainageHint, 50); // ensure route dropdown value is settled
     if (type === 'excavation') {
       if (prefill.photosStart?.length) prefill.photosStart.forEach(p => addExcavPhotoPreview(p.src||p, 'start'));
       if (prefill.photosEnd?.length)   prefill.photosEnd.forEach(p => addExcavPhotoPreview(p.src||p, 'end'));
