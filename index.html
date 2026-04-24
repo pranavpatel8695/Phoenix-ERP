@@ -962,7 +962,7 @@ async function pushConfig() {
     // Routes can be large - strip pipe specs to save space
     const slimRoutes = {};
     Object.keys(configData.routes||{}).forEach(proj => {
-      slimRoutes[proj] = (configData.routes[proj]||[]).map(r=>({id:r.id,name:r.name,length:r.length}));
+      slimRoutes[proj] = (configData.routes[proj]||[]).map(r=>({id:r.id,name:r.name,length:r.length,startCh:r.startCh||0,pipe:r.pipe,pipes:r.pipes}));
     });
     configData.routes = slimRoutes;
     configVal = JSON.stringify(configData);
@@ -1663,12 +1663,15 @@ function buildTypeFields(type, p={}) {
 
   // ── 1. EXCAVATION ──────────────────────────────────────────
   if (type === 'excavation') {
+    const proj0 = p.project || getVisibleProjects()[0] || '';
+    const rt0   = (getRoutes()[proj0]||[]).find(r=>r.id===p.route);
+    const sch0  = rt0?.startCh || 0;
     html += `
       <div style="background:rgba(255,159,10,0.06);border:1px solid rgba(255,159,10,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage & Dimensions</div>
+        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📐 Chainage & Dimensions${sch0>0?` <span style="font-weight:400;color:var(--muted);text-transform:none">(Route starts at Ch. ${sch0}m)</span>`:''}</div>
         <div class="form-row">
-          <div class="field-group"><label>From Ch. (m) <span class="req">*</span></label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. 0"></div>
-          <div class="field-group"><label>To Ch. (m) <span class="req">*</span></label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. 490"></div>
+          <div class="field-group"><label>From Ch. (m) <span class="req">*</span></label><input type="number" id="f-from" value="${p.from||''}" oninput="autoCalc()" placeholder="e.g. ${sch0}"></div>
+          <div class="field-group"><label>To Ch. (m) <span class="req">*</span></label><input type="number" id="f-to" value="${p.to||''}" oninput="autoCalc()" placeholder="e.g. ${sch0+490}"></div>
         </div>
         <div class="field-group"><label>Length (m) — Auto</label><input type="number" id="f-meters" value="${p.meters||''}" readonly style="opacity:0.6" placeholder="Auto-calculated"></div>
         <div class="form-row">
@@ -1685,7 +1688,7 @@ function buildTypeFields(type, p={}) {
             ${(p.strata&&p.strata.length ? p.strata : [{type:'Soft Soil',depth:''}]).map((s,i)=>`
             <div class="strata-row" id="strata-${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
               <select onchange="autoCalcVolume()" style="flex:2;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-                ${['Soft Soil','Hard Soil','Murrum','Rock (Soft)','Rock (Hard)','Sandy','Black Cotton','Mixed'].map(t=>`<option${(s.type||'Soft Soil')===t?' selected':''}>${t}</option>`).join('')}
+                ${['Soft Soil / Soft Murrum','Hard Murrum','Soft Rock','Hard Rock'].map(t=>`<option${(s.type||'Soft Soil')===t?' selected':''}>${t}</option>`).join('')}
               </select>
               <input type="number" step="0.01" placeholder="Depth (m)" value="${s.depth||''}" oninput="autoCalcVolume()"
                 style="flex:1;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
@@ -2136,7 +2139,7 @@ function addExcavStratum() {
   div.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
   div.innerHTML = `
     <select onchange="autoCalcVolume()" style="flex:2;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-      ${['Soft Soil','Hard Soil','Murrum','Rock (Soft)','Rock (Hard)','Sandy','Black Cotton','Mixed'].map(t=>`<option>${t}</option>`).join('')}
+      ${['Soft Soil / Soft Murrum','Hard Murrum','Soft Rock','Hard Rock'].map(t=>`<option>${t}</option>`).join('')}
     </select>
     <input type="number" step="0.01" placeholder="Depth (m)" oninput="autoCalcVolume()"
       style="flex:1;padding:8px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
@@ -3915,7 +3918,8 @@ function renderTrackerTab() {
     routes.forEach(rt => {
       const reps  = reports.filter(r => r.project === proj && r.route === rt.id);
       const len   = rt.length || 1;
-
+      const startCh = parseFloat(rt.startCh) || 0;
+      const endCh   = startCh + len;
       const excReps  = reps.filter(r => r.type==='excavation');
       const pipeReps = reps.filter(r => r.type==='pipe');
       const refReps  = reps.filter(r => r.type==='refill');
@@ -3942,10 +3946,10 @@ function renderTrackerTab() {
       const pipeGaps = findAllGaps(excReps, pipeReps, len);
       const refGaps  = findAllGaps(pipeReps, refReps, len);
 
-      // Full-route gaps for display list
-      const pipeGapsFull = findAllGapsFullRoute(pipeReps, len);
-      const refGapsFull  = findAllGapsFullRoute(refReps, len);
-      const excGapsFull  = findAllGapsFullRoute(excReps, len);
+      // Full-route gaps for display list (offset by startCh for display)
+      const pipeGapsFull = findAllGapsFullRoute(pipeReps, len).map(g=>({...g, from:g.from+startCh, to:g.to+startCh}));
+      const refGapsFull  = findAllGapsFullRoute(refReps, len).map(g=>({...g, from:g.from+startCh, to:g.to+startCh}));
+      const excGapsFull  = findAllGapsFullRoute(excReps, len).map(g=>({...g, from:g.from+startCh, to:g.to+startCh}));
 
       // ── Pending special works ──
       const concrReps = reps.filter(r=>r.type==='structure');
@@ -4003,7 +4007,7 @@ function renderTrackerTab() {
           <!-- Header -->
           <div style="margin-bottom:12px">
             <div style="font-size:15px;font-weight:700">🔩 ${rt.name}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${rt.pipe||'—'} · Total ${fmtM(len)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${rt.pipe||'—'} · Total ${fmtM(len)}${startCh>0?` · Ch. ${startCh}m – ${endCh}m`:''}</div>
           </div>
           <!-- Summary badges -->
           <div style="display:flex;gap:8px;margin-bottom:14px">
@@ -4433,6 +4437,7 @@ function manageRoutes(proj) {
     <div class="divider"></div>
     <div class="card-title">+ Add Route</div>
     <div class="field-group"><label>Route Name</label><input type="text" id="rt-name" placeholder="e.g. WTP to ESR"></div>
+    <div class="field-group"><label>Starting Chainage (m) <span style="color:var(--muted);font-weight:400">— default 0</span></label><input type="number" id="rt-startCh" placeholder="e.g. 0" value="0" min="0"></div>
     <div class="field-group"><label>Total Length (m)</label><input type="number" id="rt-len" placeholder="e.g. 6898"></div>
     <div class="card-title mt-3" style="font-size:12px">Pipe Specifications</div>
     <div id="rt-pipes-list"></div>
@@ -4468,8 +4473,9 @@ function addRoutePipeRow() {
 }
 
 function addRoute(proj) {
-  const name = document.getElementById('rt-name').value.trim();
-  const len  = parseFloat(document.getElementById('rt-len').value) || 0;
+  const name    = document.getElementById('rt-name').value.trim();
+  const len     = parseFloat(document.getElementById('rt-len').value) || 0;
+  const startCh = parseFloat(document.getElementById('rt-startCh').value) || 0;
   if (!name || !len) { showToast('Enter route name and length'); return; }
 
   // Collect all pipe spec rows
@@ -4481,12 +4487,11 @@ function addRoute(proj) {
     return dia ? { dia, material: mat } : null;
   }).filter(Boolean) : [];
 
-  // Backward-compatible: also set pipe as first spec string
   const pipe = pipes.length ? `${pipes[0].dia} ${pipes[0].material}` : '';
 
   const routes = getRoutes();
   if (!routes[proj]) routes[proj] = [];
-  routes[proj].push({ id: 'R' + Date.now(), name, length: len, pipe, pipes });
+  routes[proj].push({ id: 'R' + Date.now(), name, length: len, startCh, pipe, pipes });
   saveRoutes(routes);
   pushConfig();
   manageRoutes(proj);
