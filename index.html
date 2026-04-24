@@ -3100,7 +3100,7 @@ function exportToPDF() {
   };
 
   const th = (bg,txt) => `<th style="padding:7px 8px;text-align:left;font-size:9.5px;font-weight:700;color:#fff;background:${bg};border:1px solid rgba(255,255,255,0.2);white-space:nowrap">${txt}</th>`;
-  const td = (val,bg) => `<td style="padding:5px 8px;border:1px solid #e8e8e8;vertical-align:middle;font-size:10px;background:${bg}">${val===null||val===undefined||val===''?'—':val}</td>`;
+  const td = (val,bg) => `<td style="padding:5px 8px;border:1px solid #e8e8e8;vertical-align:middle;font-size:10px;background:${bg};white-space:nowrap">${val===null||val===undefined||val===''?'—':val}</td>`;
   const badge = v => `<span style="display:inline-block;padding:2px 6px;border-radius:8px;font-size:8.5px;font-weight:700;background:#f1f5f9;color:#475569">${v}</span>`;
 
   // Summary stat card
@@ -3109,8 +3109,8 @@ function exportToPDF() {
   // Section header
   const secHead = (bg,icon,lbl,sub) => `<div style="background:${bg};color:#fff;padding:8px 14px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;margin-top:18px">${icon} ${lbl} <span style="font-weight:400;font-size:10px;opacity:0.85">— ${sub}</span></div>`;
 
-  // Build table for each type
-  const buildTable = (bg, rows) => `<table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:4px"><thead><tr>${rows.headers.map(h=>th(bg,h)).join('')}</tr></thead><tbody>${rows.body}</tbody></table>`;
+  // Build table - wrapped in scrollable container to prevent overflow
+  const buildTable = (bg, rows) => `<div class="tbl-wrap" style="margin-bottom:4px"><table style="min-width:100%;border-collapse:collapse;font-size:10px;table-layout:auto"><thead><tr>${rows.headers.map(h=>th(bg,h)).join('')}</tr></thead><tbody>${rows.body}</tbody></table></div>`;
 
   let sections = '';
 
@@ -3280,9 +3280,10 @@ function exportToPDF() {
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Noto Serif',Cambria,Georgia,serif; background:#f0f2f5; color:#1a1a2e; }
-    .page { max-width:960px; margin:0 auto; background:#fff; }
+    .page { max-width:1200px; margin:0 auto; background:#fff; }
     table { border-collapse:collapse; }
-    @media print { body{background:#fff;} }
+    .tbl-wrap { overflow-x:auto; width:100%; -webkit-overflow-scrolling:touch; }
+    @media print { body{background:#fff;} .tbl-wrap{overflow:visible;} }
   </style>
   </head><body>
   <div class="page">
