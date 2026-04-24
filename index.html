@@ -400,8 +400,6 @@ const getStoreTxns      = () => LS.get('phx_store_txns', []);
 const saveStoreTxns     = v  => LS.set('phx_store_txns', v);
 const getMachinery      = () => LS.get('phx_machinery', []);
 const saveMachinery     = v  => LS.set('phx_machinery', v);
-const getDieselLogs     = () => LS.get('phx_diesel_logs', []);
-const saveDieselLogs    = v  => LS.set('phx_diesel_logs', v);
 const getMachLogs       = () => LS.get('phx_mach_logs', []);
 const saveMachLogs      = v  => LS.set('phx_mach_logs', v);
 const getMachService    = () => LS.get('phx_mach_service', []);
@@ -741,13 +739,7 @@ async function pullConfig(force=false) {
         });
         saveMachIssues(loc);
       }
-      // Diesel logs: merge-add only
-      if (d.dieselLogs?.length) {
-        const loc = getDieselLogs();
-        const ids = new Set(loc.map(x=>x.id));
-        d.dieselLogs.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
-        saveDieselLogs(loc);
-      }
+
 
       // Store items: full replace from remote, preserve local photos, remove zero-qty
       if (d.deletedStoreItems?.length) {
@@ -919,7 +911,6 @@ async function pushConfig() {
     machLogs,
     machService: getMachService(),
     machIssues:  getMachIssues(),
-    dieselLogs:  getDieselLogs(),
     deletedStoreItems: LS.get('phx_deleted_store_items', []),
     deletedReports,
     updatedAt:   Date.now()
@@ -1273,7 +1264,6 @@ function renderCurrentTab() {
     case 'submit':
       if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); }
       else if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); }
-      else if (currentModule==='diesel') { main.innerHTML=renderDieselTab(); pullConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='diesel') main.innerHTML=renderDieselTab(); }); }
       else if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
         pullConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
@@ -1285,7 +1275,6 @@ function renderCurrentTab() {
     case 'reports':
       if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;}
       if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;}
-      if(currentModule==='diesel'){ main.innerHTML=renderDieselTab(); pullConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='diesel') main.innerHTML=renderDieselTab(); }); break; }
       if(currentModule==='store'){
         main.innerHTML=renderStoreTab();
         pullConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
@@ -1380,11 +1369,7 @@ function renderHome() {
         <div class="name">Store</div>
         <div class="count">${getStoreItems().filter(i=>i.project!=='central').length} site items</div>
       </div>
-      <div class="module-card${currentModule==='diesel'?' selected':''}" onclick="currentModule='diesel';renderCurrentTab()" style="${currentModule==='diesel'?'border-color:var(--yellow);background:rgba(255,214,10,0.05)':''}">
-        <div class="icon">⛽</div>
-        <div class="name">Diesel/Petrol</div>
-        <div class="count">${getDieselLogs().length} entries</div>
-      </div>
+
     </div>`;
 
   // Pipeline stats
@@ -6802,401 +6787,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft')  lightboxNav(-1);
   if (e.key === 'ArrowRight') lightboxNav(1);
 });
-
-// ── DIESEL MODULE ─────────────────────────────────────────────
-const DIESEL_ROLES = ['admin','pm','senior_engineer','store_manager'];
-function canAddDiesel() { return DIESEL_ROLES.includes(currentRole); }
-
-function showDieselModal(html) {
-  document.getElementById('formModalContent').innerHTML = html;
-  document.getElementById('formModal').classList.remove('hidden');
-}
-
-let _dieselFormType = 'purchase'; // 'purchase' | 'consumption'
-
-function renderDieselTab() {
-  const vp = getVisibleProjects();
-  const logs = getDieselLogs()
-    .filter(l => vp.includes(l.project))
-    .sort((a,b) => b.date.localeCompare(a.date));
-
-  const fProj  = document.getElementById('dsl-proj')?.value  || '';
-  const fMach  = document.getElementById('dsl-mach')?.value  || '';
-  const fMonth = document.getElementById('dsl-month')?.value || '';
-  const fType  = document.getElementById('dsl-type-f')?.value|| '';
-
-  let filtered = logs;
-  if (fProj)  filtered = filtered.filter(l => l.project === fProj);
-  if (fMach)  filtered = filtered.filter(l => (l.machinery||'') === fMach);
-  if (fMonth) filtered = filtered.filter(l => (l.date||'').slice(0,7) === fMonth);
-  if (fType)  filtered = filtered.filter(l => l.entryType === fType);
-
-  const totalPurchased  = filtered.filter(l=>l.entryType==='purchase').reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
-  const totalConsumed   = filtered.filter(l=>l.entryType==='consumption').reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
-  const totalCost       = filtered.filter(l=>l.entryType==='purchase').reduce((s,l)=>s+(parseFloat(l.totalCost)||0),0);
-  const stockBalance    = totalPurchased - totalConsumed;
-
-  const allMonths   = [...new Set(logs.map(l=>(l.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  const allMachines = [...new Set(logs.filter(l=>l.machinery).map(l=>l.machinery))];
-
-  const re = (id) => `document.getElementById('main').innerHTML=renderDieselTab()`;
-
-  let html = `
-    <div class="section-header">
-      <div class="section-title">⛽ Diesel/Petrol Register</div>
-      <div class="flex gap-2">
-        <button class="btn btn-ghost btn-sm" onclick="exportDieselReport()">📄 Export</button>
-        ${canAddDiesel() ? `<div class="flex gap-2">
-          <button class="btn btn-primary btn-sm" onclick="openDieselForm('purchase')">⛽ Purchase</button>
-          <button class="btn btn-secondary btn-sm" onclick="openDieselForm('consumption')">🔧 Consumption</button>
-        </div>` : ''}
-      </div>
-    </div>
-
-    <!-- Filters -->
-    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-      <select id="dsl-proj" onchange="${re('dsl-proj')}"
-        style="flex:1;min-width:110px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-        <option value="">All Projects</option>
-        ${vp.map(p=>`<option value="${p}"${p===fProj?' selected':''}>${p}</option>`).join('')}
-      </select>
-      <select id="dsl-type-f" onchange="${re('dsl-type-f')}"
-        style="flex:1;min-width:100px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-        <option value="">All Types</option>
-        <option value="purchase"${fType==='purchase'?' selected':''}>⛽ Purchase</option>
-        <option value="consumption"${fType==='consumption'?' selected':''}>🔧 Consumption</option>
-      </select>
-      <select id="dsl-mach" onchange="${re('dsl-mach')}"
-        style="flex:1;min-width:100px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-        <option value="">All Machines</option>
-        ${allMachines.map(m=>`<option value="${m}"${m===fMach?' selected':''}>${m}</option>`).join('')}
-      </select>
-      <select id="dsl-month" onchange="${re('dsl-month')}"
-        style="flex:1;min-width:100px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px">
-        <option value="">All Months</option>
-        ${allMonths.map(m=>`<option value="${m}"${m===fMonth?' selected':''}>${m}</option>`).join('')}
-      </select>
-    </div>
-
-    <!-- Summary -->
-    <div class="stat-grid mb-3">
-      <div class="stat-card"><div class="val" style="color:#FFD60A">${totalPurchased.toFixed(1)}</div><div class="lbl">Purchased (L)</div></div>
-      <div class="stat-card"><div class="val text-orange">${totalConsumed.toFixed(1)}</div><div class="lbl">Consumed (L)</div></div>
-      <div class="stat-card"><div class="val" style="color:${stockBalance<50?'var(--red)':'var(--green)'}">${stockBalance.toFixed(1)}</div><div class="lbl">Balance (L)</div></div>
-      <div class="stat-card"><div class="val text-green">₹${totalCost.toLocaleString('en-IN')}</div><div class="lbl">Total Cost</div></div>
-    </div>`;
-
-  if (!filtered.length) {
-    html += `<div class="empty-state"><div class="icon">⛽</div><p>No diesel entries yet.${canAddDiesel()?'<br>Tap Purchase or Consumption to add.':''}</p></div>`;
-  } else {
-    const byDate = {};
-    filtered.forEach(l => { if(!byDate[l.date]) byDate[l.date]=[]; byDate[l.date].push(l); });
-    Object.keys(byDate).sort().reverse().forEach(date => {
-      const dayBought = byDate[date].filter(l=>l.entryType==='purchase').reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
-      const dayUsed   = byDate[date].filter(l=>l.entryType==='consumption').reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
-      const dayLabel  = [dayBought>0?`⛽ ${dayBought}L purchased`:'', dayUsed>0?`🔧 ${dayUsed}L consumed`:''].filter(Boolean).join(' · ');
-      html += `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px">
-        ${new Date(date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}
-        ${dayLabel?`<span style="font-weight:400;color:var(--text);margin-left:6px">${dayLabel}</span>`:''}
-      </div>`;
-      byDate[date].forEach(l => { html += dieselCard(l); });
-    });
-  }
-  return html;
-}
-
-function dieselCard(l) {
-  const isPurchase = l.entryType === 'purchase';
-  const color = isPurchase ? '#FFD60A' : 'var(--orange)';
-  const badge = isPurchase ? '⛽ Purchase' : '🔧 Consumption';
-  return `
-    <div class="card mb-2" style="padding:10px 12px;border-left:3px solid ${color}">
-      <div class="flex justify-between items-start mb-1">
-        <div style="font-size:12px;font-weight:700;color:${color}">${badge}</div>
-        <div class="flex gap-2 items-center">
-          <div style="font-size:15px;font-weight:800;color:${color}">${parseFloat(l.qty||0).toFixed(1)} L</div>
-          ${canAddDiesel()?`<button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px" onclick="deleteDieselLog('${l.id}')">🗑️</button>`:''}
-        </div>
-      </div>
-      <div style="font-size:12px;color:var(--text);font-weight:600;margin-bottom:4px">📁 ${l.project||'—'}</div>
-      <div style="font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px">
-        ${isPurchase ? `
-          ${l.vendor?`<span>🏪 ${l.vendor}</span>`:''}
-          ${l.filledIn?`<span>🛢️ ${l.filledIn}</span>`:''}
-          ${l.pricePerLitre?`<span>₹${l.pricePerLitre}/L</span>`:''}
-          ${l.totalCost?`<span style="color:var(--green);font-weight:700">₹${parseFloat(l.totalCost).toLocaleString('en-IN')}</span>`:''}
-          ${l.receivedBy?`<span>👤 Rcvd: ${l.receivedBy}</span>`:''}
-        ` : `
-          ${l.machinery?`<span>🚜 ${l.machinery}</span>`:''}
-          ${l.operator?`<span>👤 ${l.operator}</span>`:''}
-          ${l.workDone?`<span>🔩 ${l.workDone}</span>`:''}
-        `}
-      </div>
-      ${l.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px;font-style:italic">💬 ${l.notes}</div>`:''}
-      <div style="font-size:10px;color:var(--muted);margin-top:4px">Added by ${l.addedByName||l.addedBy||'—'} · ${l.timestamp?new Date(l.timestamp).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):''}</div>
-    </div>`;
-}
-
-function openDieselForm(type) {
-  if (!canAddDiesel()) return;
-  _dieselFormType = type;
-  const vp = getVisibleProjects();
-  const machines = getMachinery().filter(m=>vp.includes(m.project||''));
-  const users = getUsers();
-  const today = localToday();
-  const staffList = Object.entries(users).filter(([,u])=>isEngineer(u.role)||u.role==='pm');
-
-  let formHtml = '';
-  if (type === 'purchase') {
-    formHtml = `
-      <div class="flex justify-between items-center mb-4">
-        <div class="section-title">⛽ Diesel/Petrol Purchase</div>
-        <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕ Close</button>
-      </div>
-      <div>
-        <div class="field-group"><label>DATE *</label><input type="date" id="dp-date" value="${today}"></div>
-        <div class="field-group"><label>PROJECT *</label>
-          <select id="dp-project">
-            <option value="">— Select Project —</option>
-            ${vp.map(p=>`<option value="${p}">${p}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-group"><label>VENDOR NAME *</label>
-          <input type="text" id="dp-vendor" placeholder="e.g. HP Petrol Pump, BPCL Dealer"></div>
-        <div class="field-group"><label>QUANTITY PURCHASED (Liters) *</label>
-          <input type="number" id="dp-qty" placeholder="e.g. 100" step="0.1" oninput="calcDieselTotal()"></div>
-        <div class="field-group"><label>PRICE PER LITER (₹) *</label>
-          <input type="number" id="dp-rate" placeholder="e.g. 95.50" step="0.01" oninput="calcDieselTotal()"></div>
-        <div class="field-group"><label>TOTAL COST (₹) — AUTO</label>
-          <input type="number" id="dp-total" placeholder="Auto-calculated" step="0.01"></div>
-        <div class="field-group"><label>RECEIVED BY</label>
-          <select id="dp-received">
-            <option value="">— Select Person —</option>
-            ${staffList.map(([u,v])=>`<option value="${v.name||u}">${v.name||u}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-group"><label>FILLED IN</label>
-          <select id="dp-filledin">
-            <option value="Directly in Machine">Directly in Machine</option>
-            <option value="Barrel">Barrel</option>
-          </select>
-        </div>
-        <div class="field-group"><label>COMMENTS / NOTES</label>
-          <textarea id="dp-notes" rows="2" placeholder="Optional notes..."></textarea></div>
-        <button class="btn btn-primary w-full" onclick="saveDieselLog()">✅ Save Purchase</button>
-      </div>`;
-  } else {
-    formHtml = `
-      <div class="flex justify-between items-center mb-4">
-        <div class="section-title">🔧 Diesel/Petrol Consumption</div>
-        <button class="btn btn-secondary btn-sm" onclick="closeFormModal()">✕ Close</button>
-      </div>
-      <div>
-        <div class="field-group"><label>DATE *</label><input type="date" id="dc-date" value="${today}"></div>
-        <div class="field-group"><label>PROJECT *</label>
-          <select id="dc-project">
-            <option value="">— Select Project —</option>
-            ${vp.map(p=>`<option value="${p}">${p}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-group"><label>MACHINERY / EQUIPMENT *</label>
-          <select id="dc-mach-sel" onchange="document.getElementById('dc-machinery').value=this.options[this.selectedIndex].text.split(' (')[0]">
-            <option value="">— Select from list or type below —</option>
-            ${machines.map(m=>`<option value="${m.id}">${m.name}${m.type?' ('+m.type+')':''}${m.regNo||m.chassisNo?' · '+(m.regNo||m.chassisNo):''}</option>`).join('')}
-          </select>
-          <input type="text" id="dc-machinery" placeholder="Or type machine name" style="margin-top:6px">
-        </div>
-        <div class="field-group"><label>QUANTITY CONSUMED (Liters) *</label>
-          <input type="number" id="dc-qty" placeholder="e.g. 35" step="0.1"></div>
-        <div class="field-group"><label>COMMENTS / NOTES</label>
-          <textarea id="dc-notes" rows="2" placeholder="Optional notes..."></textarea></div>
-        <button class="btn btn-primary w-full" onclick="saveDieselLog()">✅ Save Consumption</button>
-      </div>`;
-  }
-  showDieselModal(formHtml);
-}
-
-function calcDieselTotal() {
-  const qty  = parseFloat(document.getElementById('dp-qty')?.value)||0;
-  const rate = parseFloat(document.getElementById('dp-rate')?.value)||0;
-  const el = document.getElementById('dp-total');
-  if (el && qty && rate) el.value = (qty*rate).toFixed(2);
-}
-
-function saveDieselLog() {
-  const isPurchase = _dieselFormType === 'purchase';
-  let entry = {};
-  if (isPurchase) {
-    const date    = document.getElementById('dp-date')?.value;
-    const project = document.getElementById('dp-project')?.value;
-    const vendor  = document.getElementById('dp-vendor')?.value?.trim();
-    const qty     = parseFloat(document.getElementById('dp-qty')?.value)||0;
-    const rate    = parseFloat(document.getElementById('dp-rate')?.value)||0;
-    if (!date)    { showToast('⚠️ Select date'); return; }
-    if (!project) { showToast('⚠️ Select project'); return; }
-    if (!vendor)  { showToast('⚠️ Enter vendor name'); return; }
-    if (!qty)     { showToast('⚠️ Enter quantity'); return; }
-    if (!rate)    { showToast('⚠️ Enter price per liter'); return; }
-    entry = {
-      id: 'DSL_'+Date.now(), entryType:'purchase',
-      date, project, vendor, qty, pricePerLitre: rate,
-      totalCost: parseFloat(document.getElementById('dp-total')?.value)||qty*rate,
-
-      receivedBy: document.getElementById('dp-received')?.value||'',
-      filledIn:   document.getElementById('dp-filledin')?.value||'Directly in Machine',
-      notes: document.getElementById('dp-notes')?.value?.trim()||'',
-    };
-  } else {
-    const date      = document.getElementById('dc-date')?.value;
-    const project   = document.getElementById('dc-project')?.value;
-    const machinery = document.getElementById('dc-machinery')?.value?.trim();
-    const qty       = parseFloat(document.getElementById('dc-qty')?.value)||0;
-    if (!date)      { showToast('⚠️ Select date'); return; }
-    if (!project)   { showToast('⚠️ Select project'); return; }
-    if (!machinery) { showToast('⚠️ Enter machinery name'); return; }
-    if (!qty)       { showToast('⚠️ Enter quantity consumed'); return; }
-    entry = {
-      id: 'DSL_'+Date.now(), entryType:'consumption',
-      date, project, machinery, qty,
-      operator: '',
-      notes: document.getElementById('dc-notes')?.value?.trim()||'',
-    };
-  }
-  entry.addedBy     = currentUser;
-  entry.addedByName = getUsers()[currentUser]?.name||currentUser;
-  entry.timestamp   = new Date().toISOString();
-
-  const logs = getDieselLogs();
-  logs.push(entry);
-  saveDieselLogs(logs);
-  closeFormModal();
-  showToast(isPurchase ? '✅ Purchase saved' : '✅ Consumption saved');
-  renderCurrentTab();
-  pushConfig();
-}
-
-function deleteDieselLog(id) {
-  if (!canAddDiesel()) return;
-  if (!confirm('Delete this diesel entry?')) return;
-  saveDieselLogs(getDieselLogs().filter(l => l.id !== id));
-  showToast('🗑️ Deleted');
-  renderCurrentTab();
-  pushConfig();
-}
-
-function exportDieselReport() {
-  const vp = getVisibleProjects();
-  const allLogs = getDieselLogs().filter(l => vp.includes(l.project)).sort((a,b)=>a.date.localeCompare(b.date));
-  if (!allLogs.length) { showToast('⚠️ No diesel entries to export'); return; }
-
-  const purchases   = allLogs.filter(l=>l.entryType==='purchase');
-  const consumption = allLogs.filter(l=>l.entryType==='consumption');
-  const totalPurch  = purchases.reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
-  const totalCons   = consumption.reduce((s,l)=>s+(parseFloat(l.qty)||0),0);
-  const totalCost   = purchases.reduce((s,l)=>s+(parseFloat(l.totalCost)||0),0);
-  const balance     = totalPurch - totalCons;
-
-  const today = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const now   = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-
-  const thS  = c => `<th style="padding:6px 8px;background:${c};color:#fff;font-size:10px;font-weight:700;border:1px solid rgba(0,0,0,0.1);white-space:nowrap;text-align:left">${c.replace(/.*/, arguments[0])}</th>`;
-  const th   = (c,t) => `<th style="padding:6px 8px;background:${c};color:#fff;font-size:10px;font-weight:700;border:1px solid rgba(0,0,0,0.1);white-space:normal;text-align:left">${t}</th>`;
-  const td   = v => `<td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:10px;vertical-align:top;white-space:normal;word-break:break-word">${v===null||v===undefined||v===''?'—':v}</td>`;
-  const tdr  = v => `<td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:10px;vertical-align:top;text-align:right">${v===null||v===undefined||v===''?'—':v}</td>`;
-
-  const purchaseTable = purchases.length ? `
-    <div style="font-size:13px;font-weight:700;color:#d4700a;margin:18px 0 6px;border-bottom:2px solid #FF9F0A;padding-bottom:4px">⛽ Purchase Register</div>
-    <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
-      <thead><tr>
-        ${th('#FF9F0A','#')}${th('#FF9F0A','Date')}${th('#FF9F0A','Project')}${th('#FF9F0A','Vendor')}
-        ${th('#FF9F0A','Qty (L)')}${th('#FF9F0A','Rate (₹/L)')}${th('#FF9F0A','Total Cost (₹)')}
-        ${th('#FF9F0A','Filled In')}${th('#FF9F0A','Received By')}${th('#FF9F0A','Notes')}
-      </tr></thead>
-      <tbody>
-        ${purchases.map((l,i)=>`<tr style="background:${i%2?'#fff8f0':'#fff'}">
-          ${td(i+1)}${td(l.date)}${td(l.project)}${td(l.vendor||'—')}
-          ${tdr((parseFloat(l.qty)||0).toFixed(1))}${tdr(l.pricePerLitre||'—')}${tdr(l.totalCost?'₹'+parseFloat(l.totalCost).toLocaleString('en-IN'):'—')}
-          ${td(l.filledIn||'—')}${td(l.receivedBy||'—')}${td(l.notes||'—')}
-        </tr>`).join('')}
-        <tr style="background:#fff3cd;font-weight:700">
-          <td colspan="4" style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px">TOTAL</td>
-          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px;text-align:right">${totalPurch.toFixed(1)} L</td>
-          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px"></td>
-          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px;text-align:right">₹${totalCost.toLocaleString('en-IN')}</td>
-          <td colspan="3" style="padding:6px 8px;border:1px solid #e5e7eb"></td>
-        </tr>
-      </tbody>
-    </table>` : '';
-
-  const consumptionTable = consumption.length ? `
-    <div style="font-size:13px;font-weight:700;color:#c05200;margin:24px 0 6px;border-bottom:2px solid #FF6B00;padding-bottom:4px">🔧 Consumption Register</div>
-    <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
-      <thead><tr>
-        ${th('#e05a00','#')}${th('#e05a00','Date')}${th('#e05a00','Project')}${th('#e05a00','Machine')}
-        ${th('#e05a00','Qty (L)')}${th('#e05a00','Notes')}
-      </tr></thead>
-      <tbody>
-        ${consumption.map((l,i)=>`<tr style="background:${i%2?'#fff8f0':'#fff'}">
-          ${td(i+1)}${td(l.date)}${td(l.project)}${td(l.machinery||l.machine||'—')}
-          ${tdr((parseFloat(l.qty)||0).toFixed(1))}${td(l.notes||'—')}
-        </tr>`).join('')}
-        <tr style="background:#ffe8d6;font-weight:700">
-          <td colspan="4" style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px">TOTAL CONSUMED</td>
-          <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:10px;text-align:right">${totalCons.toFixed(1)} L</td>
-          <td style="padding:6px 8px;border:1px solid #e5e7eb"></td>
-        </tr>
-      </tbody>
-    </table>` : '';
-
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>Diesel/Petrol Report</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Noto Serif',Cambria,Georgia,serif;background:#f0f2f5;color:#1a1a2e}
-    .page{max-width:1100px;margin:0 auto;background:#fff;padding:24px 28px}
-    @media print{body{background:#fff}@page{size:A4 landscape;margin:10mm}.no-print{display:none}}
-  </style></head><body><div class="page">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #FF9F0A">
-      <div>
-        <div style="font-size:22px;font-weight:700;color:#FF9F0A">Phoenix ERP</div>
-        <div style="font-size:13px;color:#64748b;margin-top:2px">Diesel/Petrol Register</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:14px;font-weight:700">Fuel Register Report</div>
-        <div style="font-size:11px;color:#64748b">${vp.join(', ')} | Generated: ${today}, ${now}</div>
-      </div>
-    </div>
-
-    <!-- Summary cards -->
-    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <div style="flex:1;min-width:140px;background:#FF9F0A;color:#fff;border-radius:10px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:700">${totalPurch.toFixed(1)} L</div>
-        <div style="font-size:11px;margin-top:4px">Total Purchased</div>
-      </div>
-      <div style="flex:1;min-width:140px;background:#e05a00;color:#fff;border-radius:10px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:700">${totalCons.toFixed(1)} L</div>
-        <div style="font-size:11px;margin-top:4px">Total Consumed</div>
-      </div>
-      <div style="flex:1;min-width:140px;background:${balance<0?'#dc2626':balance<50?'#f59e0b':'#16a34a'};color:#fff;border-radius:10px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:700">${balance.toFixed(1)} L</div>
-        <div style="font-size:11px;margin-top:4px">Balance</div>
-      </div>
-      <div style="flex:1;min-width:140px;background:#1d4ed8;color:#fff;border-radius:10px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:700">₹${totalCost.toLocaleString('en-IN')}</div>
-        <div style="font-size:11px;margin-top:4px">Total Cost</div>
-      </div>
-    </div>
-
-    ${purchaseTable}
-    ${consumptionTable}
-
-    <div style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#94a3b8;text-align:center">
-      Generated by Phoenix ERP · ${today} · ${now}
-    </div>
-  </div></body></html>`;
-
-  showReportPreview(html, `PhoenixERP_Diesel_Report_${new Date().toISOString().slice(0,10)}.html`);
-}
 
 // ── STORE MODULE ─────────────────────────────────────────────
 
