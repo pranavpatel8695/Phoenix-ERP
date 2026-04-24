@@ -6999,7 +6999,7 @@ function openDieselForm(type) {
         <div class="field-group"><label>MACHINERY / EQUIPMENT *</label>
           <select id="dc-mach-sel" onchange="document.getElementById('dc-machinery').value=this.options[this.selectedIndex].text.split(' (')[0]">
             <option value="">— Select from list or type below —</option>
-            ${machines.map(m=>`<option value="${m.id}">${m.name}${m.type?' ('+m.type+')':''}</option>`).join('')}
+            ${machines.map(m=>`<option value="${m.id}">${m.name}${m.type?' ('+m.type+')':''}${m.regNo||m.chassisNo?' · '+(m.regNo||m.chassisNo):''}</option>`).join('')}
           </select>
           <input type="text" id="dc-machinery" placeholder="Or type machine name" style="margin-top:6px">
         </div>
