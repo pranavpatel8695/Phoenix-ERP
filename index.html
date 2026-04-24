@@ -498,35 +498,11 @@ async function doSync() {
   setSyncStatus('syncing');
 
   try {
-    // 1. Pull config (gets liveData, adminData, storePhotos, reportPhotos)
+    // pullConfig fetches adminData, liveData, storePhotos, reportPhotos, AND reportsData
+    // and merges all of them into local storage
     await pullConfig();
 
-    // 2. Fetch reportsData from config collection (reliable, single doc fetch by ID)
-    const reportsDoc = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/reportsData`);
-    if (reportsDoc?.value) {
-      try {
-        const d = JSON.parse(reportsDoc.value);
-        const remoteReports = d.reports || [];
-        const deletedReports = LS.get('phx_deleted_reports', []);
-        const local = getReports();
-        const localMap = local.reduce((m, r) => { m[String(r.id)] = r; return m; }, {});
-        let changed = false;
-        remoteReports.forEach(r => {
-          if (!r.id || deletedReports.includes(String(r.id))) return;
-          if (!r.module) r.module = (r.type||'').startsWith('civil_') ? 'civil' : 'pipeline';
-          if (!localMap[String(r.id)]) {
-            // Restore photos
-            const stored = getPhotosForReport(r.id);
-            local.push({ ...r, photosStart: stored?.photosStart||[], photosEnd: stored?.photosEnd||[], photos: stored?.photos||[] });
-            changed = true;
-          }
-        });
-        if (changed) saveReports(local);
-        console.log('[doSync] reportsData: remote='+remoteReports.length+' local='+getReports().length);
-      } catch(e) { console.warn('[doSync] reportsData parse error:', e); }
-    }
-
-    // 3. Push local reports to reportsData (read-merge-write to avoid overwrites)
+    // Push local reports to reportsData so other devices get them
     await pushReportsData();
 
     setSyncStatus('synced');
@@ -549,29 +525,19 @@ async function pushReportsData() {
 
   if (!localReports.length) return;
 
-  // Read current remote reportsData, merge, then write back
-  let remoteReports = [];
-  try {
-    const cur = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/reportsData`);
-    if (cur?.value) { const d = JSON.parse(cur.value); remoteReports = d.reports || []; }
-  } catch(e) {}
-
-  // Merge: local wins for same ID, include remote reports not in local
-  const merged = {};
-  remoteReports.forEach(r => { if (r.id && !deletedReports.includes(String(r.id))) merged[String(r.id)] = r; });
-  localReports.forEach(r => { merged[String(r.id)] = r; }); // local overrides remote
-
-  let allReports = Object.values(merged);
-  // Trim if too large (keep most recent 90 days)
+  // Just push all local reports — no read-merge-write (avoids race conditions)
+  // Each device pushes its own full set; pullConfig merges from remote into local
+  let allReports = localReports;
   let val = JSON.stringify({ reports: allReports, updatedAt: Date.now() });
+  // Trim if too large
   if (val.length > 63000) {
-    const cutoff = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10);
-    allReports = allReports.filter(r => (r.date||'') >= cutoff);
+    const cutoff90 = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10);
+    allReports = allReports.filter(r => (r.date||'') >= cutoff90);
     val = JSON.stringify({ reports: allReports, updatedAt: Date.now() });
   }
   if (val.length > 63000) {
-    const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
-    allReports = allReports.filter(r => (r.date||'') >= cutoff);
+    const cutoff30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
+    allReports = allReports.filter(r => (r.date||'') >= cutoff30);
     val = JSON.stringify({ reports: allReports, updatedAt: Date.now() });
   }
 
