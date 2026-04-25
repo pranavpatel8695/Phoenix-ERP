@@ -1176,7 +1176,7 @@ function setSyncStatus(s) {
 }
 
 // Auto sync every 2 min
-setInterval(() => { if (navigator.onLine && !_syncing) doSync(); }, 30000);
+setInterval(() => { if (navigator.onLine && !_syncing) doSync(); }, 15000);
 window.addEventListener('online', () => setTimeout(doSync, 2000));
 
 // ── AUTH ─────────────────────────────────────────────────────
