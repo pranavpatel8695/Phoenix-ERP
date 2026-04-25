@@ -714,9 +714,29 @@ async function pullConfig(force=false) {
       const d = JSON.parse(liveSource.value);
       const deletedUsers = LS.get('phx_deleted_users', []);
 
-      // Machinery: full replace from remote (source of truth)
-      if (d.machinery?.length)    saveMachinery(d.machinery);
-      if (d.machService?.length)  saveMachService(d.machService);
+      // Machinery: merge-add from remote (never lose local entries)
+      if (d.machinery?.length) {
+        const loc = getMachinery();
+        const locMap = {};
+        loc.forEach((x,i) => { locMap[x.id] = i; });
+        d.machinery.forEach(x => {
+          if (locMap[x.id] === undefined) {
+            loc.push(x); // new from remote
+          } else {
+            // Remote wins for status/fields, but keep local if local is newer
+            const localTs  = new Date(loc[locMap[x.id]].updatedAt||0).getTime();
+            const remoteTs = new Date(x.updatedAt||0).getTime();
+            if (remoteTs >= localTs) loc[locMap[x.id]] = x;
+          }
+        });
+        saveMachinery(loc);
+      }
+      if (d.machService?.length) {
+        const loc = getMachService();
+        const ids = new Set(loc.map(x=>x.id));
+        d.machService.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
+        saveMachService(loc);
+      }
 
       // MachLogs/Issues: merge-add only (append new, update status fields)
       if (d.machLogs?.length) {
@@ -823,16 +843,19 @@ async function pullConfig(force=false) {
           d.attendance.forEach(a=>{
             if (deletedUsers.includes(a.user)) return;
             if (locMap[a.id]===undefined) {
-              loc.push(a);
+              loc.push(a); // new from remote
             } else {
               const local = loc[locMap[a.id]];
-              // Local approved/rejected status always wins - never revert with remote pending
+              // Local approved/rejected always wins (never revert with remote pending)
               const pmStatus    = (local.pmStatus    === 'approved' || local.pmStatus    === 'rejected') ? local.pmStatus    : a.pmStatus;
               const adminStatus = (local.adminStatus === 'approved' || local.adminStatus === 'rejected') ? local.adminStatus : a.adminStatus;
+              // Keep whichever record is newer for other fields
+              const localTs  = new Date(local.timestamp||0).getTime();
+              const remoteTs = new Date(a.timestamp||0).getTime();
+              const base = remoteTs > localTs ? a : local;
               loc[locMap[a.id]] = {
-                ...a,
-                pmStatus,
-                adminStatus,
+                ...base,
+                pmStatus, adminStatus,
                 pmName:   a.pmName   || local.pmName,
                 userName: a.userName || local.userName,
               };
@@ -898,10 +921,14 @@ async function pushConfig() {
   let machLogs   = getMachLogs();
   let storeTxns  = getStoreTxns();
 
+  // Trim old attendance from push (keep 90 days) so liveData stays under 64KB
+  const attCutoff = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10);
+  const attendanceTrimmed = attendance.filter(a => (a.date||'') >= attCutoff || a.adminStatus === 'pending' || a.pmStatus === 'pending');
+
   const deletedReports = LS.get('phx_deleted_reports', []);
 
   const liveData = {
-    attendance,
+    attendance:  attendanceTrimmed,
     storeItems:  storeItemsLean,
     storeTxns,
     machinery:   getMachinery(),
@@ -6533,7 +6560,8 @@ function saveMachine(editId) {
     purchaseDate: document.getElementById('mf-date')?.value||'',
     status: document.getElementById('mf-status')?.value||'active',
     remarks: document.getElementById('mf-remarks')?.value||'',
-    createdBy: currentUser, timestamp: new Date().toISOString()
+    createdBy: currentUser, timestamp: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
   if (editId) { const i=machines.findIndex(m=>m.id===editId); if(i>-1) machines[i]=obj; }
   else machines.push(obj);
