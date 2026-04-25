@@ -6858,6 +6858,15 @@ function renderStoreInventory() {
     card += '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:' + statBg + ';color:' + statColor + '">' + (item.status==='in_use'?'⚡ In Use':'💤 Idle') + '</span></div>';
     if (item.location) card += '<div style="font-size:10px;color:var(--muted);margin-top:4px">📍 ' + item.location + '</div>';
     if (item.description) card += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + item.description + '</div>';
+    // Show who added and last updated
+    const addedName = item.addedByName || item.addedBy || '';
+    const updatedName = item.updatedByName || item.updatedBy || '';
+    if (addedName || updatedName) {
+      card += '<div style="font-size:10px;color:var(--muted);margin-top:4px">';
+      if (addedName) card += '➕ Added by <strong>' + addedName + '</strong>';
+      if (updatedName && updatedName !== addedName) card += (addedName ? ' · ' : '') + '✏️ Updated by <strong>' + updatedName + '</strong>';
+      card += '</div>';
+    }
     if (canManageStore()) {
       card += '<div class="flex gap-2 mt-2">';
       card += '<button class="btn btn-ghost btn-sm" onclick="openEditStoreItem(\'' + item.id + '\')">✏️</button>';
@@ -7180,7 +7189,9 @@ function saveStoreItem(editId, txnType) {
       condition: document.getElementById('si-condition')?.value||'working',
       status: document.getElementById('si-status')?.value||'idle',
       photo: photoSrc,
-      updatedBy: currentUser, timestamp: new Date().toISOString()
+      updatedBy: currentUser,
+      updatedByName: getUsers()[currentUser]?.name||currentUser,
+      timestamp: new Date().toISOString()
     };
     // Save photo separately so it survives sync (not stripped in push)
     if (photoSrc) { try { localStorage.setItem('phx_si_photo_'+items[idx].id, photoSrc); } catch(e) {} }
@@ -7206,7 +7217,11 @@ function saveStoreItem(editId, txnType) {
     condition: document.getElementById('si-condition')?.value||'working',
     status: document.getElementById('si-status')?.value||'idle',
     photo: newPhotoSrc,
-    updatedBy: currentUser, timestamp: new Date().toISOString()
+    addedBy: existingIdx>-1 ? (items[existingIdx].addedBy||currentUser) : currentUser,
+    addedByName: existingIdx>-1 ? (items[existingIdx].addedByName||getUsers()[currentUser]?.name||currentUser) : (getUsers()[currentUser]?.name||currentUser),
+    updatedBy: currentUser,
+    updatedByName: getUsers()[currentUser]?.name||currentUser,
+    timestamp: new Date().toISOString()
   };
   // Save photo separately so it survives sync (photos stripped in push to save space)
   if (newPhotoSrc) { try { localStorage.setItem('phx_si_photo_'+obj.id, newPhotoSrc); } catch(e) {} }
