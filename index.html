@@ -741,10 +741,11 @@ async function pullConfig(force=false) {
       }
 
 
-      // Store items: full replace from remote, preserve local photos, remove zero-qty
-      if (d.deletedStoreItems?.length) {
+      // Store deleted items: always merge from remote (regardless of length)
+      if (Array.isArray(d.deletedStoreItems)) {
         const existing = LS.get('phx_deleted_store_items', []);
-        LS.set('phx_deleted_store_items', [...new Set([...existing, ...d.deletedStoreItems])]);
+        const merged = [...new Set([...existing, ...d.deletedStoreItems])];
+        LS.set('phx_deleted_store_items', merged);
       }
       const deletedStoreItems = LS.get('phx_deleted_store_items', []);
 
@@ -753,11 +754,6 @@ async function pullConfig(force=false) {
         const localPhotos = {};
         getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
 
-        // Remote is source of truth for store items
-        // Items in remote: take them (with photo restoration)
-        // Items NOT in remote but in local: ONLY keep if they're newer than the remote push
-        //   (i.e. added locally after last sync) - identified by not having _awId or being very new
-        // Items in deletedStoreItems: always remove
         const remoteItemIds = new Set(d.storeItems.map(i=>i.id));
 
         let loc = d.storeItems
@@ -769,14 +765,15 @@ async function pullConfig(force=false) {
             return {...i, photo: savedPhoto};
           });
 
-        // Keep ALL local items not in remote UNLESS explicitly deleted
-        // phx_deleted_store_items is the only reliable deletion signal
+        // Keep local items not in remote UNLESS explicitly deleted
         getStoreItems().forEach(i=>{
           if (!remoteItemIds.has(i.id) && !deletedStoreItems.includes(i.id)) {
             loc.push(i);
           }
         });
 
+        // Final safety filter — guard against any item that crept back in
+        loc = loc.filter(i => !deletedStoreItems.includes(i.id));
         saveStoreItems(loc);
       }
 
