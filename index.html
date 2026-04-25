@@ -181,6 +181,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
 .chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--surface2);color:var(--muted);border:1px solid var(--border);}
 .chip.active{background:rgba(10,132,255,0.1);color:var(--blue);border-color:rgba(10,132,255,0.3);}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.2/dist/iife/sdk.min.js"></script>
 </head>
 <body>
 
@@ -318,11 +319,25 @@ const AW = {
   project:  '69bf775300049155a9d9',
   database: '69bf7846002d6b0b65f6',
   collections: {
-    reports: 'reports',
-    config:  'config'
+    config:      'config',
+    reports:     'reports',
+    attendance:  'attendance',
+    storeItems:  'store_items',
+    storeTxns:   'store_txns',
+    machinery:   'machinery',
+    machLogs:    'mach_logs',
+    machService: 'mach_service',
+    machIssues:  'mach_issues',
   }
 };
-const APP_VERSION = '3.0';
+
+// ── APPWRITE SDK CLIENT ──────────────────────────────────────
+const _awClient = new Appwrite.Client()
+  .setEndpoint(AW.endpoint)
+  .setProject(AW.project);
+const _awDB = new Appwrite.Databases(_awClient);
+const _awRealtime = new Appwrite.Realtime(_awClient);
+const APP_VERSION = '4.0'; // Realtime Edition
 
 // ── STATE ───────────────────────────────────────────────────
 let currentUser = null;
@@ -490,639 +505,451 @@ function injectPhotosIntoReports(reports) {
   });
 }
 
-async function doSync() {
-  if (_syncing) return;
-  _syncing = true;
-  setSyncStatus('syncing');
+// ── APPWRITE REALTIME SYNC ────────────────────────────────────────────────────
+// Each module's data is stored as individual Appwrite documents.
+// Realtime subscriptions push changes instantly to all connected devices.
+// localStorage is used as offline cache; Realtime keeps it up-to-date.
 
+let _rtUnsubscribe = null;
+let _rtConnected = false;
+
+// ── DIRECT APPWRITE CRUD HELPERS ─────────────────────────────────────────────
+async function awGet(collectionId, docId) {
+  try { return await _awDB.getDocument(AW.database, collectionId, docId); }
+  catch(e) { return null; }
+}
+
+async function awList(collectionId, queries=[]) {
   try {
-    // pullConfig fetches adminData, liveData, storePhotos, reportPhotos, AND reportsData
-    // and merges all of them into local storage
-    await pullConfig();
+    const res = await _awDB.listDocuments(AW.database, collectionId, queries);
+    return res.documents || [];
+  } catch(e) { console.warn('awList error:', collectionId, e); return []; }
+}
 
-    // Push local reports to reportsData so other devices get them
-    await pushReportsData();
+async function awCreate(collectionId, docId, data) {
+  try {
+    return await _awDB.createDocument(AW.database, collectionId, docId, data,
+      ['read("any")', 'update("any")', 'delete("any")']);
+  } catch(e) { console.warn('awCreate error:', e); return null; }
+}
 
+async function awUpdate(collectionId, docId, data) {
+  try { return await _awDB.updateDocument(AW.database, collectionId, docId, data); }
+  catch(e) {
+    if (e.code === 404) return await awCreate(collectionId, docId, data);
+    console.warn('awUpdate error:', e); return null;
+  }
+}
+
+async function awDelete(collectionId, docId) {
+  try { await _awDB.deleteDocument(AW.database, collectionId, docId); return true; }
+  catch(e) { console.warn('awDelete error:', e); return false; }
+}
+
+// ── SAVE TO APPWRITE (with localStorage cache) ────────────────────────────────
+async function saveDoc(collectionId, id, record) {
+  const docId = String(id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  const data = { data: JSON.stringify(record) };
+  return await awUpdate(collectionId, docId, data);
+}
+
+async function deleteDoc(collectionId, id) {
+  const docId = String(id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  return await awDelete(collectionId, docId);
+}
+
+// ── INITIAL DATA FETCH ────────────────────────────────────────────────────────
+async function fetchAllData() {
+  setSyncStatus('syncing');
+  try {
+    await Promise.all([
+      fetchConfig(),
+      fetchReports(),
+      fetchCollection(AW.collections.attendance,  saveAttendance,  'phx_attendance'),
+      fetchCollection(AW.collections.storeItems,   saveStoreItems,  'phx_store_items'),
+      fetchCollection(AW.collections.storeTxns,    saveStoreTxns,   'phx_store_txns'),
+      fetchCollection(AW.collections.machinery,    saveMachinery,   'phx_machinery'),
+      fetchCollection(AW.collections.machLogs,     saveMachLogs,    'phx_mach_logs'),
+      fetchCollection(AW.collections.machService,  saveMachService, 'phx_mach_service'),
+      fetchCollection(AW.collections.machIssues,   saveMachIssues,  'phx_mach_issues'),
+    ]);
     setSyncStatus('synced');
     renderCurrentTab();
-
   } catch(e) {
-    console.warn('Sync failed:', e);
+    console.warn('fetchAllData error:', e);
     setSyncStatus('offline');
-  } finally {
-    _syncing = false;
   }
 }
 
-// Push all local reports to a dedicated config document (avoids reports collection pagination issues)
-async function pushReportsData() {
-  const deletedReports = LS.get('phx_deleted_reports', []);
-  const localReports = getReports()
-    .filter(r => r.id && !deletedReports.includes(String(r.id)))
-    .map(r => { const {photos, photosStart, photosEnd, ...rest} = r; return rest; });
-
-  if (!localReports.length) return;
-
-  // Just push all local reports — no read-merge-write (avoids race conditions)
-  // Each device pushes its own full set; pullConfig merges from remote into local
-  let allReports = localReports;
-  let val = JSON.stringify({ reports: allReports, updatedAt: Date.now() });
-  // Trim if too large
-  if (val.length > 63000) {
-    const cutoff90 = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10);
-    allReports = allReports.filter(r => (r.date||'') >= cutoff90);
-    val = JSON.stringify({ reports: allReports, updatedAt: Date.now() });
-  }
-  if (val.length > 63000) {
-    const cutoff30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
-    allReports = allReports.filter(r => (r.date||'') >= cutoff30);
-    val = JSON.stringify({ reports: allReports, updatedAt: Date.now() });
-  }
-
-  const baseUrl = `${AW.endpoint}/databases/${AW.database}/collections/${AW.collections.config}/documents`;
-  const headers = { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' };
-  let res = await fetch(`${baseUrl}/reportsData`, { method:'PATCH', headers, body: JSON.stringify({ data: { value: val } }) });
-  if (!res.ok) {
-    res = await fetch(baseUrl, { method:'POST', headers, body: JSON.stringify({ documentId:'reportsData', data:{ key:'reportsData', value: val }, permissions:['read("any")','update("any")','delete("any")'] }) });
-  }
-  console.log('[pushReportsData] pushed', allReports.length, 'reports, size:', val.length);
-}
-
-async function pullConfig(force=false) {
-  // Fetch config, live data, store photos, report photos, and reportsData in parallel
-  const [configRes, liveRes, photosRes, reportPhotosRes, reportsDataRes] = await Promise.all([
-    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/adminData`),
-    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/liveData`),
-    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/storePhotos`),
-    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/reportPhotos`),
-    aw('GET', `/databases/${AW.database}/collections/${AW.collections.config}/documents/reportsData`)
-  ]);
-
-  // Apply store photos to localStorage
-  if (photosRes?.value) {
+async function fetchConfig() {
+  const adminDoc = await awGet(AW.collections.config, 'adminData');
+  if (adminDoc?.value) {
     try {
-      const photos = JSON.parse(photosRes.value);
-      Object.keys(photos).forEach(id => {
-        if (photos[id]) { try { localStorage.setItem('phx_si_photo_'+id, photos[id]); } catch(e) {} }
-      });
-    } catch(e) {}
-  }
-
-  // Apply report photos to localStorage
-  if (reportPhotosRes?.value) {
-    try {
-      const rPhotos = JSON.parse(reportPhotosRes.value);
-      Object.keys(rPhotos).forEach(id => {
-        const items = rPhotos[id];
-        if (!Array.isArray(items)) return;
-        const photosStart = items.filter(p=>p.zone==='start').map(p=>({src:p.src}));
-        const photosEnd   = items.filter(p=>p.zone==='end').map(p=>({src:p.src}));
-        const photos      = items.filter(p=>p.zone==='main').map(p=>({src:p.src}));
-        // Always save - remote is source of truth for cross-device photos
-        if (photosStart.length || photosEnd.length || photos.length) {
-          savePhotosForReport(id, photosStart, photosEnd, photos);
-        }
-      });
-    } catch(e) {}
-  }
-
-  // Process reportsData - cross-device report sync via config collection
-  if (reportsDataRes?.value) {
-    try {
-      const d = JSON.parse(reportsDataRes.value);
-      const remoteReports = d.reports || [];
-      const delReps = LS.get('phx_deleted_reports', []);
-      const local = getReports();
-      const localMap = {};
-      local.forEach(r => { localMap[String(r.id)] = r; });
-      let changed = false;
-      remoteReports.forEach(r => {
-        if (!r.id || delReps.includes(String(r.id))) return;
-        if (!r.module) r.module = (r.type||'').startsWith('civil_') ? 'civil' : 'pipeline';
-        if (!localMap[String(r.id)]) {
-          const stored = getPhotosForReport(r.id);
-          local.push({ ...r, photosStart: stored?.photosStart||[], photosEnd: stored?.photosEnd||[], photos: stored?.photos||[] });
-          changed = true;
-        }
-      });
-      if (changed) saveReports(local);
-    } catch(e) { console.warn('reportsData pull error:', e); }
-  }
-
-  const mergeArr = (getter,saver,arr,updateFields) => {
-    if(!arr?.length) return;
-    const loc=getter();
-    const locMap = {};
-    loc.forEach((x,i)=>{ locMap[x.id]=i; });
-    arr.forEach(x=>{
-      if(locMap[x.id]===undefined){ loc.push(x); }
-      else if(updateFields) {
-        updateFields.forEach(f=>{ if(x[f]!==undefined) loc[locMap[x.id]][f]=x[f]; });
-      }
-    });
-    saver(loc);
-  };
-
-  // ── Process config document (users, projects, routes) ──
-  if (configRes?.value) {
-    try {
-      const d = JSON.parse(configRes.value);
-      if (d.projects?.length)                      saveProjects(d.projects);
-      if (d.routes && Object.keys(d.routes).length) {
-        // Merge routes: remote is base, preserve local fields like startCh that remote may not have
-        const localRoutes = getRoutes();
-        const merged = {};
-        Object.keys(d.routes).forEach(proj => {
-          merged[proj] = d.routes[proj].map(remRt => {
-            const localRt = (localRoutes[proj]||[]).find(lr => lr.id === remRt.id);
-            // Use remote startCh if explicitly set (even if 0), fall back to local
-            const startCh = (remRt.startCh !== undefined && remRt.startCh !== null)
-              ? remRt.startCh
-              : (localRt?.startCh || 0);
-            return { ...remRt, startCh };
-          });
-        });
-        saveRoutes(merged);
-      }
-
-      // Merge remote deletedReports into local
+      const d = JSON.parse(adminDoc.value);
+      if (d.projects?.length) saveProjects(d.projects);
+      if (d.routes && Object.keys(d.routes).length) mergeRoutes(d.routes);
+      if (d.assignments) saveAssignments(d.assignments);
+      if (d.specials) saveSpecials(d.specials);
+      if (d.valveSpecials) saveValveSpecials(d.valveSpecials);
+      if (d.users) mergeUsers(d.users, d.deletedUsers||[]);
       if (d.deletedReports?.length) {
-        const existing = LS.get('phx_deleted_reports', []);
-        LS.set('phx_deleted_reports', [...new Set([...existing, ...d.deletedReports.map(String)])]);
+        const ex = LS.get('phx_deleted_reports',[]);
+        LS.set('phx_deleted_reports',[...new Set([...ex,...d.deletedReports.map(String)])]);
       }
-      if (d.assignments)                            saveAssignments(d.assignments);
-      if (d.specials)                               saveSpecials(d.specials);
-      if (d.valveSpecials)                          saveValveSpecials(d.valveSpecials);
-
-      // Process deletedUsers first
-      if (d.deletedUsers?.length) {
-        const existing = LS.get('phx_deleted_users', []);
-        // Add to deleted list if remote deleted them AND remote doesn't have them active (not re-created)
-        const toDelete = d.deletedUsers.filter(u => !d.users?.[u]);
-        LS.set('phx_deleted_users', [...new Set([...existing, ...toDelete])]);
-      }
-
-      // If remote has a user that we have in local deletedUsers, remove from deleted list
-      // (means the user was re-created on another device)
-      if (d.users) {
-        const localDeleted = LS.get('phx_deleted_users', []);
-        const reactivated = localDeleted.filter(u => d.users[u]);
-        if (reactivated.length) {
-          LS.set('phx_deleted_users', localDeleted.filter(u => !reactivated.includes(u)));
-        }
-      }
-
-      if (d.users) {
-        const local = getUsers();
-        const adminPass = local.admin?.pass || 'admin';
-        const deleted = LS.get('phx_deleted_users', []);
-
-        // Start with ALL local users
-        const merged = {};
-        Object.keys(local).forEach(u => {
-          if (!deleted.includes(u)) merged[u] = local[u];
-        });
-
-        // Add/update from remote, skip deleted
-        Object.keys(d.users).forEach(u => {
-          if (deleted.includes(u) || u === 'admin') return;
-          const rem = d.users[u];
-          if (!merged[u]) {
-            merged[u] = rem;
-          } else {
-            // Merge projects: union of local and remote (never lose locally-added projects)
-            const localProjects = merged[u].projects || [];
-            const remoteProjects = rem.projects || [];
-            const mergedProjects = [...new Set([...localProjects, ...remoteProjects])];
-            merged[u] = { ...rem, projects: mergedProjects };
-          }
-        });
-
-        // Admin always gets local password
-        merged.admin = { ...(d.users.admin || local.admin || {}), pass: adminPass };
-
-        saveUsers(merged);
-      }
-    } catch(e) { console.warn('pullConfig configDoc error:', e); }
+    } catch(e) { console.warn('fetchConfig parse error:', e); }
   }
-
-  // ── Process live data document (attendance, store, machinery) ──
-  // Fall back to adminData if liveData not yet created (backward compat)
-  const liveSource = liveRes?.value ? liveRes : configRes;
-  if (liveSource?.value) {
+  // Fetch report photos
+  const rpDoc = await awGet(AW.collections.config, 'reportPhotos');
+  if (rpDoc?.value) {
     try {
-      const d = JSON.parse(liveSource.value);
-      const deletedUsers = LS.get('phx_deleted_users', []);
-
-      // Machinery: merge-add from remote (never lose local entries)
-      if (d.machinery?.length) {
-        const loc = getMachinery();
-        const locMap = {};
-        loc.forEach((x,i) => { locMap[x.id] = i; });
-        d.machinery.forEach(x => {
-          if (locMap[x.id] === undefined) {
-            loc.push(x); // new from remote
-          } else {
-            // Remote wins for status/fields, but keep local if local is newer
-            const localTs  = new Date(loc[locMap[x.id]].updatedAt||0).getTime();
-            const remoteTs = new Date(x.updatedAt||0).getTime();
-            if (remoteTs >= localTs) loc[locMap[x.id]] = x;
-          }
-        });
-        saveMachinery(loc);
-      }
-      if (d.machService?.length) {
-        const loc = getMachService();
-        const ids = new Set(loc.map(x=>x.id));
-        d.machService.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
-        saveMachService(loc);
-      }
-
-      // MachLogs/Issues: merge-add only (append new, update status fields)
-      if (d.machLogs?.length) {
-        const loc = getMachLogs();
-        const ids = new Set(loc.map(x=>x.id));
-        d.machLogs.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
-        saveMachLogs(loc);
-      }
-      if (d.machIssues?.length) {
-        const loc = getMachIssues();
-        const locMap = {};
-        loc.forEach((x,i)=>{ locMap[x.id]=i; });
-        d.machIssues.forEach(x=>{
-          if(locMap[x.id]===undefined){ loc.push(x); }
-          else {
-            loc[locMap[x.id]].status      = x.status;
-            loc[locMap[x.id]].resolution  = x.resolution;
-            loc[locMap[x.id]].resolvedDate= x.resolvedDate;
-          }
-        });
-        saveMachIssues(loc);
-      }
-
-
-      // Store deleted items: always merge from remote (regardless of length)
-      if (Array.isArray(d.deletedStoreItems)) {
-        const existing = LS.get('phx_deleted_store_items', []);
-        const merged = [...new Set([...existing, ...d.deletedStoreItems])];
-        LS.set('phx_deleted_store_items', merged);
-      }
-      const deletedStoreItems = LS.get('phx_deleted_store_items', []);
-
-      if (Array.isArray(d.storeItems)) {
-        // Build map of local photos to preserve
-        const localPhotos = {};
-        getStoreItems().forEach(i=>{ if(i.photo) localPhotos[i.id]=i.photo; });
-
-        const remoteItemIds = new Set(d.storeItems.map(i=>i.id));
-
-        let loc = d.storeItems
-          .filter(i=>(parseFloat(i.qty)||0)>0)
-          .filter(i=>!deletedStoreItems.includes(i.id))
-          .map(i=>{
-            const savedPhoto = i.photo || localStorage.getItem('phx_si_photo_'+i.id) || localPhotos[i.id] || '';
-            if (savedPhoto) { try { localStorage.setItem('phx_si_photo_'+i.id, savedPhoto); } catch(e) {} }
-            return {...i, photo: savedPhoto};
-          });
-
-        // Keep local items not in remote UNLESS explicitly deleted
-        getStoreItems().forEach(i=>{
-          if (!remoteItemIds.has(i.id) && !deletedStoreItems.includes(i.id)) {
-            loc.push(i);
-          }
-        });
-
-        // Final safety filter — guard against any item that crept back in
-        loc = loc.filter(i => !deletedStoreItems.includes(i.id));
-        saveStoreItems(loc);
-      }
-
-      // StoreTxns: merge-add only (append new)
-      if (d.storeTxns?.length) {
-        const loc = getStoreTxns();
-        const ids = new Set(loc.map(x=>x.id));
-        d.storeTxns.forEach(x=>{ if(!ids.has(x.id)) loc.push(x); });
-        saveStoreTxns(loc);
-      }
-
-      // Reports: merge from liveData (recent reports, cross-device sync)
-      if (Array.isArray(d.reports) && d.reports.length) {
-        const delReps = LS.get('phx_deleted_reports', []);
-        if (d.deletedReports?.length) {
-          const existing = LS.get('phx_deleted_reports', []);
-          LS.set('phx_deleted_reports', [...new Set([...existing, ...d.deletedReports.map(String)])]);
+      const rp = JSON.parse(rpDoc.value);
+      Object.keys(rp).forEach(id => {
+        const items = rp[id];
+        if (!Array.isArray(items)) return;
+        const existing = getPhotosForReport(id);
+        if (!existing?.photosStart?.length && !existing?.photosEnd?.length && !existing?.photos?.length) {
+          savePhotosForReport(id,
+            items.filter(p=>p.zone==='start').map(p=>({src:p.src})),
+            items.filter(p=>p.zone==='end').map(p=>({src:p.src})),
+            items.filter(p=>p.zone==='main').map(p=>({src:p.src}))
+          );
         }
-        const local = getReports();
-        const localMap = {};
-        local.forEach(r => { localMap[String(r.id)] = r; });
-        let changed = false;
-        d.reports.forEach(r => {
-          if (!r.id || delReps.includes(String(r.id))) return;
-          if (!localMap[String(r.id)]) {
-            // New report from another device - add it with photo restoration
-            const stored = getPhotosForReport(r.id);
-            local.push({
-              ...r,
-              module: r.module || (r.type?.startsWith('civil_') ? 'civil' : 'pipeline'),
-              photosStart: stored?.photosStart || [],
-              photosEnd:   stored?.photosEnd   || [],
-              photos:      stored?.photos      || [],
-            });
-            changed = true;
-          }
-        });
-        if (changed) saveReports(local);
-      }
-
-      // Attendance: merge with full status update from remote
-      {
-        let loc = getAttendance().filter(a => !deletedUsers.includes(a.user));
-        if (d.attendance?.length) {
-          const locMap = {};
-          loc.forEach((a,i)=>{ locMap[a.id]=i; });
-          d.attendance.forEach(a=>{
-            if (deletedUsers.includes(a.user)) return;
-            if (locMap[a.id]===undefined) {
-              loc.push(a); // new from remote
-            } else {
-              const local = loc[locMap[a.id]];
-              // Local approved/rejected always wins (never revert with remote pending)
-              const pmStatus    = (local.pmStatus    === 'approved' || local.pmStatus    === 'rejected') ? local.pmStatus    : a.pmStatus;
-              const adminStatus = (local.adminStatus === 'approved' || local.adminStatus === 'rejected') ? local.adminStatus : a.adminStatus;
-              // Keep whichever record is newer for other fields
-              const localTs  = new Date(local.timestamp||0).getTime();
-              const remoteTs = new Date(a.timestamp||0).getTime();
-              const base = remoteTs > localTs ? a : local;
-              loc[locMap[a.id]] = {
-                ...base,
-                pmStatus, adminStatus,
-                pmName:   a.pmName   || local.pmName,
-                userName: a.userName || local.userName,
-              };
-            }
-          });
-        }
-        saveAttendance(loc);
-      }
-    } catch(e) { console.warn('pullConfig liveDoc error:', e); }
+      });
+    } catch(e) {}
+  }
+  // Store photos
+  const spDoc = await awGet(AW.collections.config, 'storePhotos');
+  if (spDoc?.value) {
+    try {
+      const sp = JSON.parse(spDoc.value);
+      Object.keys(sp).forEach(id => { if(sp[id]) { try { localStorage.setItem('phx_si_photo_'+id, sp[id]); } catch(e){} } });
+    } catch(e) {}
   }
 }
 
-let _pushing = false;
+async function fetchCollection(collectionId, saveFn, cacheKey) {
+  try {
+    const docs = await awList(collectionId, [Appwrite.Query.limit(5000)]);
+    const records = docs.map(d => {
+      try { return JSON.parse(d.data); } catch(e) { return null; }
+    }).filter(Boolean);
+    if (records.length) saveFn(records);
+  } catch(e) { console.warn('fetchCollection error:', collectionId, e); }
+}
 
+async function fetchReports() {
+  try {
+    const deletedReports = LS.get('phx_deleted_reports', []);
+    const docs = await awList(AW.collections.reports, [Appwrite.Query.limit(5000)]);
+    const remote = docs.map(d => {
+      try {
+        const base = d.data_json ? JSON.parse(d.data_json) : {};
+        ['type','project','route','date','supervisor','timestamp'].forEach(f => { if(d[f]) base[f]=d[f]; });
+        if (!base.module) base.module = (base.type||'').startsWith('civil_')?'civil':'pipeline';
+        if (d.from_ch !== undefined) base.from = d.from_ch;
+        if (d.to_ch !== undefined) base.to = d.to_ch;
+        ['meters','volume','width','depth','qty','chainage','estConc','actualConc','netVol'].forEach(f=>{ if(d[f]!==undefined) base[f]=d[f]; });
+        ['soil','size','material','encasing','road','valType','chamberReq','chamType','chamStatus','slab','slabKept','fitType','thrustBlock','special','strType','remarks'].forEach(f=>{ if(d[f]) base[f]=d[f]; });
+        ['encasings','valves','connections'].forEach(f=>{ if(d[f]) try{ base[f]=JSON.parse(d[f]); }catch(e){} });
+        if (!base.id) base.id = d.$id;
+        base._awId = d.$id;
+        return base;
+      } catch(e) { return null; }
+    }).filter(r => r && r.type && !deletedReports.includes(String(r.id)));
+
+    // Merge with local (preserve photos, keep local-only unpushed)
+    const local = getReports();
+    const localMap = {};
+    local.forEach(r => { localMap[String(r.id)] = r; });
+    const remoteIds = new Set(remote.map(r => String(r.id)));
+
+    const merged = remote.map(r => {
+      const loc = localMap[String(r.id)];
+      const stored = getPhotosForReport(r.id);
+      const ps = r.photosStart?.length ? r.photosStart : (loc?.photosStart||stored?.photosStart||[]);
+      const pe = r.photosEnd?.length   ? r.photosEnd   : (loc?.photosEnd||stored?.photosEnd||[]);
+      const ph = r.photos?.length      ? r.photos      : (loc?.photos||stored?.photos||[]);
+      if (ps.length||pe.length||ph.length) savePhotosForReport(r.id,ps,pe,ph);
+      return {...r, photosStart:ps, photosEnd:pe, photos:ph};
+    });
+
+    // Keep local-only (not yet pushed) reports
+    local.filter(r => r.id && !remoteIds.has(String(r.id)) && !deletedReports.includes(String(r.id)) && !r._awId)
+      .forEach(r => merged.push(r));
+
+    saveReports(merged);
+  } catch(e) { console.warn('fetchReports error:', e); }
+}
+
+// ── REALTIME SUBSCRIPTIONS ────────────────────────────────────────────────────
+function startRealtime() {
+  if (_rtUnsubscribe) { try { _rtUnsubscribe(); } catch(e){} }
+
+  const channels = [
+    `databases.${AW.database}.collections.${AW.collections.config}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.reports}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.attendance}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.storeItems}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.storeTxns}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.machinery}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.machLogs}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.machService}.documents`,
+    `databases.${AW.database}.collections.${AW.collections.machIssues}.documents`,
+  ];
+
+  _rtUnsubscribe = _awRealtime.subscribe(channels, handleRealtimeEvent);
+  _rtConnected = true;
+  console.log('[Realtime] connected to', channels.length, 'channels');
+}
+
+function stopRealtime() {
+  if (_rtUnsubscribe) { try { _rtUnsubscribe(); } catch(e){} _rtUnsubscribe = null; }
+  _rtConnected = false;
+}
+
+function handleRealtimeEvent(response) {
+  const { events, payload } = response;
+  if (!events || !payload) return;
+
+  const isCreate = events.some(e => e.includes('.create'));
+  const isUpdate = events.some(e => e.includes('.update'));
+  const isDelete = events.some(e => e.includes('.delete'));
+  const collId = events[0]?.split('.')?.find((_, i, arr) => arr[i-1] === 'collections');
+
+  setSyncStatus('syncing');
+  try {
+    if (collId === AW.collections.config) {
+      // Re-fetch config on any config change
+      fetchConfig().then(() => { setSyncStatus('synced'); renderCurrentTab(); });
+      return;
+    }
+
+    if (collId === AW.collections.reports) {
+      handleReportEvent(payload, isCreate, isUpdate, isDelete);
+    } else if (collId === AW.collections.attendance) {
+      handleGenericEvent(payload, isDelete, getAttendance, saveAttendance);
+    } else if (collId === AW.collections.storeItems) {
+      handleGenericEvent(payload, isDelete, getStoreItems, saveStoreItems);
+    } else if (collId === AW.collections.storeTxns) {
+      handleGenericEvent(payload, isDelete, getStoreTxns, saveStoreTxns);
+    } else if (collId === AW.collections.machinery) {
+      handleGenericEvent(payload, isDelete, getMachinery, saveMachinery);
+    } else if (collId === AW.collections.machLogs) {
+      handleGenericEvent(payload, isDelete, getMachLogs, saveMachLogs);
+    } else if (collId === AW.collections.machService) {
+      handleGenericEvent(payload, isDelete, getMachService, saveMachService);
+    } else if (collId === AW.collections.machIssues) {
+      handleGenericEvent(payload, isDelete, getMachIssues, saveMachIssues);
+    }
+    setSyncStatus('synced');
+    renderCurrentTab();
+  } catch(e) {
+    console.warn('[Realtime] event error:', e);
+    setSyncStatus('synced');
+  }
+}
+
+function handleGenericEvent(payload, isDelete, getFn, saveFn) {
+  try {
+    const record = JSON.parse(payload.data || '{}');
+    if (!record.id) return;
+    const items = getFn();
+    if (isDelete) {
+      saveFn(items.filter(x => String(x.id) !== String(record.id)));
+    } else {
+      const idx = items.findIndex(x => String(x.id) === String(record.id));
+      if (idx >= 0) items[idx] = record;
+      else items.push(record);
+      saveFn(items);
+    }
+  } catch(e) { console.warn('[Realtime] handleGenericEvent error:', e); }
+}
+
+function handleReportEvent(payload, isCreate, isUpdate, isDelete) {
+  try {
+    const deletedReports = LS.get('phx_deleted_reports', []);
+    const reports = getReports();
+    if (isDelete) {
+      const id = payload.$id || payload.id;
+      saveReports(reports.filter(r => String(r.id) !== String(id) && r._awId !== id));
+      return;
+    }
+    // Parse the report
+    const base = payload.data_json ? JSON.parse(payload.data_json) : {};
+    ['type','project','route','date','supervisor','timestamp'].forEach(f => { if(payload[f]) base[f]=payload[f]; });
+    if (!base.module) base.module = (base.type||'').startsWith('civil_')?'civil':'pipeline';
+    if (payload.from_ch !== undefined) base.from = payload.from_ch;
+    if (payload.to_ch !== undefined) base.to = payload.to_ch;
+    if (!base.id) base.id = payload.$id;
+    base._awId = payload.$id;
+    if (deletedReports.includes(String(base.id))) return;
+    // Restore photos
+    const stored = getPhotosForReport(base.id);
+    const loc = reports.find(r => String(r.id) === String(base.id));
+    base.photosStart = base.photosStart?.length ? base.photosStart : (loc?.photosStart||stored?.photosStart||[]);
+    base.photosEnd   = base.photosEnd?.length   ? base.photosEnd   : (loc?.photosEnd||stored?.photosEnd||[]);
+    base.photos      = base.photos?.length       ? base.photos      : (loc?.photos||stored?.photos||[]);
+    const idx = reports.findIndex(r => String(r.id) === String(base.id));
+    if (idx >= 0) reports[idx] = base;
+    else reports.push(base);
+    saveReports(reports);
+  } catch(e) { console.warn('[Realtime] handleReportEvent error:', e); }
+}
+
+// ── VISIBILITY CHANGE: disconnect when screen off, reconnect when on ───────────
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopRealtime();
+    console.log('[Realtime] disconnected (screen off)');
+  } else {
+    // Reconnect and fetch missed changes
+    if (currentUser) {
+      fetchAllData().then(() => startRealtime());
+      console.log('[Realtime] reconnected (screen on)');
+    }
+  }
+});
+
+window.addEventListener('online', () => {
+  if (currentUser) { fetchAllData().then(() => startRealtime()); setSyncStatus('synced'); }
+});
+window.addEventListener('offline', () => { setSyncStatus('offline'); stopRealtime(); });
+
+// ── PUSH FUNCTIONS (write to Appwrite + update cache) ─────────────────────────
+// Config (users, projects, routes) - kept as JSON doc (rare changes)
 async function pushConfig() {
-  _pushing = true;
   const deletedUsers = LS.get('phx_deleted_users', []);
-
-  // Push local users (without deleted ones) — pullConfig already merged remote before this call
   const localUsers = getUsers();
   const cleanUsers = Object.fromEntries(
     Object.entries(localUsers)
       .filter(([u]) => !deletedUsers.includes(u))
-      .map(([u, v]) => [u, {
-        role: v.role,
-        pass: v.pass,
-        name: v.name,
-        projects: v.projects || []
-      }])
+      .map(([u,v]) => [u, { role:v.role, pass:v.pass, name:v.name, projects:v.projects||[] }])
   );
 
-  // Minimize routes - only store essential fields to save space
-  const slimRoutes = {};
   const fullRoutes = getRoutes();
+  const slimRoutes = {};
   Object.keys(fullRoutes).forEach(proj => {
-    slimRoutes[proj] = (fullRoutes[proj]||[]).map(r=>({
-      id:r.id, name:r.name, length:r.length,
-      startCh: r.startCh || 0,
-      pipes: r.pipes, pipe: r.pipe
+    slimRoutes[proj] = (fullRoutes[proj]||[]).map(r => ({
+      id:r.id, name:r.name, length:r.length, startCh:r.startCh||0, pipe:r.pipe, pipes:r.pipes
     }));
   });
 
   const configData = {
-    projects:     getProjects(),
-    routes:       slimRoutes,
-    assignments:  getAssignments(),
-    specials:     getSpecials(),
+    projects:      getProjects(),
+    routes:        slimRoutes,
+    assignments:   getAssignments(),
+    specials:      getSpecials(),
     valveSpecials: getValveSpecials(),
-    users:        cleanUsers,
+    users:         cleanUsers,
     deletedUsers,
     deletedReports: LS.get('phx_deleted_reports', []),
-    updatedAt:    Date.now()
+    updatedAt:     Date.now()
   };
 
-  // Doc 2: Live/operational data (attendance, store, machinery)
-  const deletedStoreItems = LS.get('phx_deleted_store_items', []);
-  // Store items WITHOUT photos (photos go in separate doc)
-  const storeItemsLean = getStoreItems()
-    .filter(i => (parseFloat(i.qty)||0) > 0 && !deletedStoreItems.includes(i.id))
-    .map(i => { const {photo,...rest}=i; return rest; });
-
-  let attendance = getAttendance();
-  let machLogs   = getMachLogs();
-  let storeTxns  = getStoreTxns();
-
-  // Trim old attendance from push (keep 90 days) so liveData stays under 64KB
-  const attCutoff = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10);
-  const attendanceTrimmed = attendance.filter(a => (a.date||'') >= attCutoff || a.adminStatus === 'pending' || a.pmStatus === 'pending');
-
-  const deletedReports = LS.get('phx_deleted_reports', []);
-
-  const liveData = {
-    attendance:  attendanceTrimmed,
-    storeItems:  storeItemsLean,
-    storeTxns,
-    machinery:   getMachinery(),
-    machLogs,
-    machService: getMachService(),
-    machIssues:  getMachIssues(),
-    deletedStoreItems: LS.get('phx_deleted_store_items', []),
-    deletedReports,
-    updatedAt:   Date.now()
-  };
-
-  // Trim if needed before encoding
-  const trimAndEncode = (data, key, arr, limit=60000) => {
-    let v = JSON.stringify(data);
-    let trimCount = 10;
-    while (v.length > limit && trimCount > 0) {
-      data[key] = arr.slice(-Math.floor(arr.length * 0.8));
-      arr = data[key];
-      v = JSON.stringify(data);
-      trimCount--;
-    }
-    return v.slice(0, 65000);
-  };
-
-  // Ensure configData fits in 65KB - trim routes if needed (they can be large)
   let configVal = JSON.stringify(configData);
+  // Trim if > 64KB
   if (configVal.length > 64000) {
-    // Routes can be large - strip pipe specs to save space
-    const slimRoutes = {};
-    Object.keys(configData.routes||{}).forEach(proj => {
-      slimRoutes[proj] = (configData.routes[proj]||[]).map(r=>({id:r.id,name:r.name,length:r.length,startCh:r.startCh||0,pipe:r.pipe,pipes:r.pipes}));
-    });
-    configData.routes = slimRoutes;
+    configData.specials = {}; configData.valveSpecials = {};
     configVal = JSON.stringify(configData);
   }
-  if (configVal.length > 64000) {
-    // Still too big - remove specials
-    configData.specials = {};
-    configData.valveSpecials = {};
-    configVal = JSON.stringify(configData);
-  }
-  // NEVER truncate - truncated JSON is invalid and breaks everything
-  // If still too big, at minimum always keep users + projects
-  if (configVal.length > 64000) {
-    configVal = JSON.stringify({
-      projects: configData.projects,
-      users:    configData.users,
-      deletedUsers: configData.deletedUsers,
-      routes:   {},
-      assignments: configData.assignments,
-      specials: {},
-      valveSpecials: {},
-      updatedAt: configData.updatedAt
-    });
-  }
-  let liveVal = JSON.stringify(liveData);
-  if (liveVal.length > 64000) {
-    liveData.machLogs   = machLogs.slice(-20);
-    liveData.storeTxns  = storeTxns.slice(-50);
-    liveData.attendance = attendance.slice(-100);
-    liveVal = JSON.stringify(liveData);
-  }
-  if (liveVal.length > 64000) {
-    liveData.machLogs = [];
-    liveVal = JSON.stringify(liveData);
-  }
 
-  const save = async (docId, val) => {
-    try { JSON.parse(val); } catch(e) {
-      console.error('Invalid JSON for', docId, e);
-      return false;
+  await awUpdate(AW.collections.config, 'adminData', { key:'adminData', value: configVal });
+
+  // Push report photos
+  const deletedReports = LS.get('phx_deleted_reports', []);
+  const rpMap = {};
+  const cutoff = new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
+  const recentR = getReports().filter(r=>(r.date||'')>=cutoff&&!deletedReports.includes(String(r.id)));
+  const rpPromises = recentR.map(async r => {
+    const stored = getPhotosForReport(r.id);
+    const all = [
+      ...(stored?.photosStart||[]).map(p=>({zone:'start',src:p?.src||p})),
+      ...(stored?.photosEnd||[]).map(p=>({zone:'end',src:p?.src||p})),
+      ...(stored?.photos||[]).map(p=>({zone:'main',src:p?.src||p})),
+    ].filter(p=>p.src&&p.src.startsWith('data:'));
+    if (all.length) {
+      const comp = await Promise.all(all.map(async p=>({zone:p.zone,src:await compressPhoto(p.src,50)})));
+      rpMap[r.id] = comp;
     }
-    const baseUrl = `${AW.endpoint}/databases/${AW.database}/collections/${AW.collections.config}/documents`;
-    const headers = { 'X-Appwrite-Project': AW.project, 'Content-Type': 'application/json' };
+  });
+  await Promise.all(rpPromises);
+  let rpVal = JSON.stringify(rpMap);
+  if (rpVal.length < 64000) await awUpdate(AW.collections.config,'reportPhotos',{key:'reportPhotos',value:rpVal});
 
-    // PATCH: only update value field (key is set on creation and cannot change)
-    let res = await fetch(`${baseUrl}/${docId}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ data: { value: val } })
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.warn(`[push] PATCH ${docId} failed ${res.status}:`, errText.slice(0,200));
-      // Document might not exist yet — create it
-      res = await fetch(baseUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          documentId: docId,
-          data: { key: docId, value: val },
-          permissions: ['read("any")', 'update("any")', 'delete("any")']
-        })
-      });
-      if (!res.ok) {
-        const errText2 = await res.text();
-        console.error(`[push] POST ${docId} failed ${res.status}:`, errText2.slice(0,200));
-        showToast(`⚠️ Sync failed (${docId}): ${res.status}`);
-        return false;
-      }
-    }
-    return true;
-  };
-
-  try {
-    // Build store photos map — compress for cross-device sync
-    const storePhotosMap = {};
-    const storePhotoPromises = getStoreItems()
-      .filter(i => !deletedStoreItems.includes(i.id))
-      .map(async i => {
-        const photo = i.photo || localStorage.getItem('phx_si_photo_'+i.id) || '';
-        if (photo) {
-          const compressed = await compressPhoto(photo, 8);
-          storePhotosMap[i.id] = compressed;
-        }
-      });
-    await Promise.all(storePhotoPromises);
-    const storePhotosVal = JSON.stringify(storePhotosMap);
-
-    // Build report photos map — last 30 days, 40KB per photo (2 photos = 80KB + overhead fits in 64KB doc)
-    const reportPhotosMap = {};
-    const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString().slice(0,10);
-    const recentReports = getReports().filter(r => (r.date||'') >= cutoff);
-    const reportPhotoPromises = recentReports.map(async r => {
-      const stored = getPhotosForReport(r.id);
-      const allPhotos = [
-        ...(stored?.photosStart||[]).map(p=>({zone:'start',src:p?.src||p})),
-        ...(stored?.photosEnd||[]).map(p=>({zone:'end',src:p?.src||p})),
-        ...(stored?.photos||[]).map(p=>({zone:'main',src:p?.src||p})),
-      ].filter(p=>p.src&&p.src.startsWith('data:'));
-      if (allPhotos.length) {
-        const compressed = await Promise.all(allPhotos.map(async p => ({
-          zone: p.zone, src: await compressPhoto(p.src, 40)
-        })));
-        reportPhotosMap[r.id] = compressed;
-      }
-    });
-    await Promise.all(reportPhotoPromises);
-    let reportPhotosVal = JSON.stringify(reportPhotosMap);
-    // If too large, reduce to last 14 days
-    if (reportPhotosVal.length > 63000) {
-      const cutoff2 = new Date(Date.now() - 14*24*60*60*1000).toISOString().slice(0,10);
-      const trimmed = Object.fromEntries(
-        Object.entries(reportPhotosMap).filter(([id]) => {
-          const r = recentReports.find(r=>String(r.id)===String(id));
-          return r && (r.date||'') >= cutoff2;
-        })
-      );
-      reportPhotosVal = JSON.stringify(trimmed);
-    }
-
-    await Promise.all([
-      save('adminData', configVal),
-      save('liveData',  liveVal),
-      storePhotosVal.length < 64000 ? save('storePhotos', storePhotosVal) : Promise.resolve(),
-      reportPhotosVal.length < 64000 ? save('reportPhotos', reportPhotosVal) : Promise.resolve()
-    ]);
-    console.log('[pushConfig] saved. liveVal:', liveVal.length, 'chars, reports:', (JSON.parse(liveVal).reports||[]).length);
-    // Only clear pending users flag after confirmed successful push
-    const stillPending = LS.get('phx_pending_users', []);
-    if (stillPending.length) {
-      // Verify these users are in the data we just pushed
-      const pushedUsernames = Object.keys(cleanUsers);
-      const remaining = stillPending.filter(u => !pushedUsernames.includes(u));
-      LS.set('phx_pending_users', remaining);
-    }
-  } finally {
-    _pushing = false;
-  }
+  // Store photos
+  const spMap = {};
+  const spPromises = getStoreItems().map(async i => {
+    const photo = i.photo||localStorage.getItem('phx_si_photo_'+i.id)||'';
+    if (photo) { const c=await compressPhoto(photo,8); spMap[i.id]=c; }
+  });
+  await Promise.all(spPromises);
+  let spVal = JSON.stringify(spMap);
+  if (spVal.length < 64000) await awUpdate(AW.collections.config,'storePhotos',{key:'storePhotos',value:spVal});
 }
 
+// Push single attendance record to Appwrite
+async function pushAttendance(record) {
+  return saveDoc(AW.collections.attendance, record.id, record);
+}
+
+// Push single store item
+async function pushStoreItem(item) {
+  return saveDoc(AW.collections.storeItems, item.id, item);
+}
+
+// Delete store item from Appwrite
+async function deleteStoreItemFromAW(id) {
+  const docId = String(id).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,36);
+  return awDelete(AW.collections.storeItems, docId);
+}
+
+// Push store transaction
+async function pushStoreTxn(txn) {
+  return saveDoc(AW.collections.storeTxns, txn.id, txn);
+}
+
+// Push machinery record
+async function pushMachine(machine) {
+  return saveDoc(AW.collections.machinery, machine.id, machine);
+}
+
+// Delete machine
+async function deleteMachineFromAW(id) {
+  const docId = String(id).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,36);
+  return awDelete(AW.collections.machinery, docId);
+}
+
+// Push mach log/service/issue
+async function pushMachLog(log) { return saveDoc(AW.collections.machLogs, log.id, log); }
+async function pushMachService(svc) { return saveDoc(AW.collections.machService, svc.id, svc); }
+async function pushMachIssue(issue) { return saveDoc(AW.collections.machIssues, issue.id, issue); }
+
+// ── REPORT SYNC (individual Appwrite documents) ───────────────────────────────
 async function saveReportToAW(r) {
-  // Strip photos from report - they're synced via separate reportPhotos document
-  const noPhotos = Object.assign({}, r, { photos: [], photosStart: [], photosEnd: [] });
+  const noPhotos = Object.assign({}, r, { photos:[], photosStart:[], photosEnd:[] });
   const doc = {
     type:       String(r.type||''),
     project:    String(r.project||''),
     route:      String(r.route||''),
     date:       String(r.date||''),
     supervisor: String(r.supervisor||''),
-    timestamp:  String(r.timestamp||''),
+    timestamp:  String(r.timestamp||new Date().toISOString()),
     from_ch:    parseFloat(r.from)||0,
     to_ch:      parseFloat(r.to)||0,
     meters:     parseFloat(r.meters)||0,
     volume:     parseFloat(r.volume)||0,
     width:      parseFloat(r.width)||0,
     depth:      parseFloat(r.depth)||0,
+    qty:        parseFloat(r.qty)||0,
+    chainage:   parseFloat(r.chainage)||0,
+    estConc:    parseFloat(r.estConc)||0,
+    actualConc: parseFloat(r.actualConc)||0,
+    netVol:     parseFloat(r.netVol)||0,
     soil:       String(r.soil||''),
     size:       String(r.size||''),
     material:   String(r.material||''),
     encasing:   String(r.encasing||''),
     road:       String(r.road||''),
-    chainage:   parseFloat(r.chainage)||0,
     valType:    String(r.valType||''),
     chamberReq: String(r.chamberReq||''),
     chamType:   String(r.chamType||''),
@@ -1131,42 +958,56 @@ async function saveReportToAW(r) {
     slabKept:   String(r.slabKept||''),
     fitType:    String(r.fitType||''),
     thrustBlock:String(r.thrustBlock||''),
-    qty:        parseFloat(r.qty)||1,
     special:    String(r.special||''),
     strType:    String(r.strType||''),
-    remarks:    String(r.remarks||''),
-    estConc:    parseFloat(r.estConc)||0,
-    actualConc: parseFloat(r.actualConc)||0,
-    netVol:     parseFloat(r.netVol)||0,
+    remarks:    String(r.remarks||'').slice(0,500),
     encasings:  JSON.stringify(r.encasings||[]),
     valves:     JSON.stringify(r.valves||[]),
     connections:JSON.stringify(r.connections||[]),
-    data_json:  JSON.stringify(noPhotos).slice(0, 65000)
+    data_json:  JSON.stringify(noPhotos).slice(0,65000)
   };
-  const docId = 'r' + String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30);
-  let res = await aw('PATCH', `/databases/${AW.database}/collections/${AW.collections.reports}/documents/${docId}`, { data: doc });
-  if (!res) res = await aw('POST', `/databases/${AW.database}/collections/${AW.collections.reports}/documents`, {
-    documentId: docId, data: doc, permissions: ['read("any")','update("any")','delete("any")']
-  });
-  if (res) { r._awId = res.$id || docId; console.log('[saveReportToAW] saved OK, awId:', res.$id, 'docId:', docId, 'r.id:', r.id); }
-  else { console.error('[saveReportToAW] FAILED for report', r.id, r.type); }
+  const docId = 'r'+String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30);
+  let res = await _awDB.createDocument(AW.database, AW.collections.reports, docId, doc,
+    ['read("any")','update("any")','delete("any")']).catch(()=>null);
+  if (!res) res = await _awDB.updateDocument(AW.database, AW.collections.reports, docId, doc).catch(()=>null);
+  if (res) { r._awId = res.$id || docId; console.log('[saveReportToAW] saved:', r._awId); }
   return !!res;
 }
 
 async function deleteReportFromAW(r) {
-  const awId = r._awId || ('r' + String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30));
-  let res = await aw('DELETE', `/databases/${AW.database}/collections/${AW.collections.reports}/documents/${awId}`);
-  if (res !== null) return true;
-  // Scan for matching doc
-  const list = await aw('GET', `/databases/${AW.database}/collections/${AW.collections.reports}/documents?limit=100`);
-  if (list?.documents) {
-    const match = list.documents.find(d => {
-      try { return String(JSON.parse(d.data_json||'{}').id) === String(r.id); } catch(e){ return false; }
-    });
-    if (match) return (await aw('DELETE', `/databases/${AW.database}/collections/${AW.collections.reports}/documents/${match.$id}`)) !== null;
-  }
-  return false;
+  const awId = r._awId || ('r'+String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30));
+  return awDelete(AW.collections.reports, awId);
 }
+
+// ── USER HELPERS ──────────────────────────────────────────────────────────────
+function mergeUsers(remoteUsers, deletedUsers=[]) {
+  if (!remoteUsers) return;
+  const local = getUsers();
+  const merged = { ...local };
+  Object.keys(remoteUsers).forEach(u => {
+    if (deletedUsers.includes(u) || u === 'admin') return;
+    if (!merged[u]) { merged[u] = remoteUsers[u]; return; }
+    const lp = merged[u].projects||[], rp = remoteUsers[u].projects||[];
+    merged[u] = { ...remoteUsers[u], projects: [...new Set([...lp,...rp])] };
+  });
+  merged.admin = { ...(remoteUsers.admin||local.admin||{}), pass: local.admin?.pass||merged.admin?.pass||'admin' };
+  saveUsers(merged);
+}
+
+function mergeRoutes(remoteRoutes) {
+  if (!remoteRoutes) return;
+  const local = getRoutes();
+  const merged = {};
+  Object.keys(remoteRoutes).forEach(proj => {
+    merged[proj] = remoteRoutes[proj].map(remRt => {
+      const localRt = (local[proj]||[]).find(lr => lr.id === remRt.id);
+      const startCh = (remRt.startCh !== undefined && remRt.startCh !== null) ? remRt.startCh : (localRt?.startCh||0);
+      return { ...remRt, startCh };
+    });
+  });
+  saveRoutes(merged);
+}
+
 
 function setSyncStatus(s) {
   const el = document.getElementById('syncStatus');
@@ -1176,8 +1017,8 @@ function setSyncStatus(s) {
 }
 
 // Auto sync every 2 min
-setInterval(() => { if (navigator.onLine && !_syncing) doSync(); }, 15000);
-window.addEventListener('online', () => setTimeout(doSync, 2000));
+
+
 
 // ── AUTH ─────────────────────────────────────────────────────
 async function doLogin() {
@@ -1248,6 +1089,7 @@ async function loginSuccess(user, userRecord) {
 }
 
 function doLogout() {
+  stopRealtime();
   currentUser = null; currentRole = null;
   document.getElementById('userMenuModal').classList.add('hidden');
   document.getElementById('app').classList.add('hidden');
@@ -6576,7 +6418,8 @@ function saveMachine(editId) {
   };
   if (editId) { const i=machines.findIndex(m=>m.id===editId); if(i>-1) machines[i]=obj; }
   else machines.push(obj);
-  saveMachinery(machines); pushConfig();
+  saveMachinery(machines); 
+  pushMachine(obj).catch(()=>{}); pushConfig();
   showToast('✅ Machine saved'); closeFormModal(); renderCurrentTab();
 }
 
