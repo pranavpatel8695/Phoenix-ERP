@@ -635,11 +635,11 @@ async function pullConfig(force=false) {
         Object.keys(d.routes).forEach(proj => {
           merged[proj] = d.routes[proj].map(remRt => {
             const localRt = (localRoutes[proj]||[]).find(lr => lr.id === remRt.id);
-            return {
-              ...remRt,
-              // Preserve startCh from local if remote doesn't have it (or local has newer value)
-              startCh: remRt.startCh || localRt?.startCh || 0,
-            };
+            // Use remote startCh if explicitly set (even if 0), fall back to local
+            const startCh = (remRt.startCh !== undefined && remRt.startCh !== null)
+              ? remRt.startCh
+              : (localRt?.startCh || 0);
+            return { ...remRt, startCh };
           });
         });
         saveRoutes(merged);
@@ -3928,6 +3928,16 @@ function renderTrackerTab() {
       const len   = rt.length || 1;
       const startCh = parseFloat(rt.startCh) || 0;
       const endCh   = startCh + len;
+
+      // Detect if route likely needs startCh (reports start far from 0 but startCh not set)
+      if (!rt.startCh && currentRole === 'admin' && reps.length) {
+        const mins = reps.filter(r=>r.from!==undefined&&r.from!=='').map(r=>parseFloat(r.from)||0);
+        if (mins.length && Math.min(...mins) > 100) {
+          html += `<div style="background:rgba(255,159,10,0.12);border:1px solid var(--orange);border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:12px;color:var(--orange)">
+            ⚠️ Route "<strong>${rt.name}</strong>" — Starting Chainage not set. Go to <strong>Settings → Routes → ✏️ Ch</strong> to fix tracker.
+          </div>`;
+        }
+      }
       const excReps  = reps.filter(r => r.type==='excavation');
       const pipeReps = reps.filter(r => r.type==='pipe');
       const refReps  = reps.filter(r => r.type==='refill');
@@ -4043,7 +4053,8 @@ function renderTrackerTab() {
               {icon:'🔩', label:'Pipe Laying', reps:pipeReps, color:'var(--blue)',   pct:pipePct, done:pipeM, key:'pipe_'+rt.id, gaps:pipeM>0?pipeGaps:[]},
               {icon:'🪣', label:'Refilling',   reps:refReps,  color:'var(--green)',  pct:refPct,  done:refM,  key:'ref_'+rt.id,  gaps:refM>0?refGaps:[]},
             ].map(row => {
-              const gapsJson = JSON.stringify(row.gaps);
+              const gapsJson = JSON.stringify(row.gaps).replace(/'/g,'&#39;');
+              const safeKey = row.key.replace(/[^a-zA-Z0-9_]/g,'_');
               return `
               <div style="margin-bottom:12px">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
@@ -4055,10 +4066,10 @@ function renderTrackerTab() {
                 </div>
                 <div style="position:relative;height:18px;background:var(--border);border-radius:6px;cursor:crosshair"
                   data-gaps='${gapsJson}' data-len="${len}"
-                  onmouseenter="showTrackerTip(event,'${row.key}',${len})"
-                  onmousemove="showTrackerTip(event,'${row.key}',${len})"
-                  onmouseleave="hideTrackerTip('${row.key}')"
-                  ontouchstart="showTrackerTip(event,'${row.key}',${len})" ontouchend="event.preventDefault()">
+                  onmouseenter="showTrackerTip(event,'${safeKey}',${len})"
+                  onmousemove="showTrackerTip(event,'${safeKey}',${len})"
+                  onmouseleave="hideTrackerTip('${safeKey}')"
+                  ontouchstart="showTrackerTip(event,'${safeKey}',${len})" ontouchend="event.preventDefault()">
                   ${row.reps.map(r=>{
                     const f=Math.max(0,(parseFloat(r.from)||0)-startCh), t=Math.max(0,(parseFloat(r.to)||0)-startCh);
                     const left=(f/len*100).toFixed(2), width=Math.max(0.5,((t-f)/len*100)).toFixed(2);
@@ -4069,7 +4080,7 @@ function renderTrackerTab() {
                     const left=(gf/len*100).toFixed(2), width=Math.max(0.5,((gt-gf)/len*100)).toFixed(2);
                     return `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:repeating-linear-gradient(90deg,rgba(255,69,58,0.7) 0px,rgba(255,69,58,0.7) 3px,rgba(255,69,58,0.15) 3px,rgba(255,69,58,0.15) 6px);border-radius:4px"></div>`;
                   }).join('')}
-                  <div id="tip_${row.key}" style="display:none;position:absolute;bottom:24px;transform:translateX(-50%);background:#0f0f14;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none"></div>
+                  <div id="tip_${safeKey}" style="display:none;position:absolute;bottom:24px;transform:translateX(-50%);background:#0f0f14;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;z-index:200;pointer-events:none"></div>
                 </div>
               </div>`;
             }).join('')}
