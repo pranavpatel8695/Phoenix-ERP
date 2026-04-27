@@ -693,13 +693,7 @@ async function fetchReports() {
     const remote = docs.map(d => {
       try {
         const base = d.data_json ? JSON.parse(d.data_json) : {};
-        ['type','project','route','date','supervisor','timestamp'].forEach(f => { if(d[f]) base[f]=d[f]; });
         if (!base.module) base.module = (base.type||'').startsWith('civil_')?'civil':'pipeline';
-        if (d.from_ch !== undefined) base.from = d.from_ch;
-        if (d.to_ch !== undefined) base.to = d.to_ch;
-        ['meters','volume','width','depth','qty','chainage','estConc','actualConc','netVol'].forEach(f=>{ if(d[f]!==undefined) base[f]=d[f]; });
-        ['soil','size','material','encasing','road','valType','chamberReq','chamType','chamStatus','slab','slabKept','fitType','thrustBlock','special','strType','remarks'].forEach(f=>{ if(d[f]) base[f]=d[f]; });
-        ['encasings','valves','connections'].forEach(f=>{ if(d[f]) try{ base[f]=JSON.parse(d[f]); }catch(e){} });
         if (!base.id) base.id = d.$id;
         base._awId = d.$id;
         return base;
@@ -989,50 +983,18 @@ async function pushMachIssue(issue) { return saveDoc(AW.collections.machIssues, 
 // ── REPORT SYNC (individual Appwrite documents) ───────────────────────────────
 async function saveReportToAW(r) {
   const noPhotos = Object.assign({}, r, { photos:[], photosStart:[], photosEnd:[] });
-  const doc = {
-    type:       String(r.type||''),
-    project:    String(r.project||''),
-    route:      String(r.route||''),
-    date:       String(r.date||''),
-    supervisor: String(r.supervisor||''),
-    timestamp:  String(r.timestamp||new Date().toISOString()),
-    from_ch:    parseFloat(r.from)||0,
-    to_ch:      parseFloat(r.to)||0,
-    meters:     parseFloat(r.meters)||0,
-    volume:     parseFloat(r.volume)||0,
-    width:      parseFloat(r.width)||0,
-    depth:      parseFloat(r.depth)||0,
-    qty:        parseFloat(r.qty)||0,
-    chainage:   parseFloat(r.chainage)||0,
-    estConc:    parseFloat(r.estConc)||0,
-    actualConc: parseFloat(r.actualConc)||0,
-    netVol:     parseFloat(r.netVol)||0,
-    soil:       String(r.soil||''),
-    size:       String(r.size||''),
-    material:   String(r.material||''),
-    encasing:   String(r.encasing||''),
-    road:       String(r.road||''),
-    valType:    String(r.valType||''),
-    chamberReq: String(r.chamberReq||''),
-    chamType:   String(r.chamType||''),
-    chamStatus: String(r.chamStatus||''),
-    slab:       String(r.slab||''),
-    slabKept:   String(r.slabKept||''),
-    fitType:    String(r.fitType||''),
-    thrustBlock:String(r.thrustBlock||''),
-    special:    String(r.special||''),
-    strType:    String(r.strType||''),
-    remarks:    String(r.remarks||'').slice(0,500),
-    encasings:  JSON.stringify(r.encasings||[]),
-    valves:     JSON.stringify(r.valves||[]),
-    connections:JSON.stringify(r.connections||[]),
-    data_json:  JSON.stringify(noPhotos).slice(0,65000)
-  };
+  // Only send data_json — all other fields are derived from it on read
+  const doc = { data_json: JSON.stringify(noPhotos).slice(0,65000) };
   const docId = 'r'+String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30);
   let res = await _awDB.createDocument(AW.database, AW.collections.reports, docId, doc,
-    ['read("any")','update("any")','delete("any")']).catch(()=>null);
-  if (!res) res = await _awDB.updateDocument(AW.database, AW.collections.reports, docId, doc).catch(()=>null);
-  if (res) { r._awId = res.$id || docId; console.log('[saveReportToAW] saved:', r._awId); }
+    ['read("any")','create("any")','update("any")','delete("any")']).catch(e=>{
+      dbg('[saveReport] create error: '+e.message,'error'); return null;
+    });
+  if (!res) res = await _awDB.updateDocument(AW.database, AW.collections.reports, docId, doc).catch(e=>{
+    dbg('[saveReport] update error: '+e.message,'error'); return null;
+  });
+  if (res) { r._awId = res.$id || docId; dbg('[saveReport] ✅ saved: '+r._awId); }
+  else dbg('[saveReport] ❌ FAILED for '+docId,'error');
   return !!res;
 }
 
