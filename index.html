@@ -580,6 +580,27 @@ async function deleteDoc(collectionId, id) {
 }
 
 // ── INITIAL DATA FETCH ────────────────────────────────────────────────────────
+async function forceSyncAll() {
+  if (!_awDB) { showToast('⚠️ SDK not ready'); return; }
+  showToast('⏳ Pushing all data to cloud...');
+  // Push all reports
+  const reports = getReports();
+  for (const r of reports) {
+    await saveReportToAW(r).catch(e => dbg('[push] report error: '+e.message,'error'));
+  }
+  // Push attendance
+  const att = getAttendance();
+  for (const a of att) {
+    await pushAttendance(a).catch(()=>{});
+  }
+  // Push config
+  await pushConfig();
+  // Then fetch latest
+  await fetchAllData();
+  showToast('✅ All data synced! Reports: '+getReports().length);
+  renderCurrentTab();
+}
+
 async function fetchAllData() {
   if (!_awDB) { console.warn('[fetchAllData] SDK not ready'); setSyncStatus('offline'); return; }
   dbg('[fetchAllData] start');
@@ -1228,7 +1249,7 @@ function renderHome() {
 
   const syncInfo = `<div style="background:rgba(255,159,10,0.08);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--muted)">
     ⚡ Realtime | Reports: ${getReports().length} | Attendance: ${getAttendance().length} | Store: ${getStoreItems().length} | Machinery: ${getMachinery().length}
-    <br><button onclick="fetchAllData().then(()=>renderCurrentTab())" style="background:var(--orange);color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px">↻ Force Sync</button>
+    <br><button onclick="forceSyncAll()" style="background:var(--orange);color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px">↻ Force Sync</button>
   </div>`;
 
   let html = syncInfo + `
