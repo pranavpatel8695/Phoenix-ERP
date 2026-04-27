@@ -523,6 +523,15 @@ function injectPhotosIntoReports(reports) {
 
 let _rtUnsubscribe = null;
 let _rtConnected = false;
+let _renderTimer = null;
+
+function scheduleRender() {
+  // Don't re-render if user is on submit tab (filling a form)
+  if (activeTab === 'submit' && currentModule !== 'store') return;
+  // Debounce: wait 300ms before re-rendering to batch multiple events
+  clearTimeout(_renderTimer);
+  _renderTimer = setTimeout(() => { renderCurrentTab(); }, 300);
+}
 
 // ── DIRECT APPWRITE CRUD HELPERS ─────────────────────────────────────────────
 async function awGet(collectionId, docId) {
@@ -587,7 +596,7 @@ async function fetchAllData() {
       fetchCollection(AW.collections.machIssues,   saveMachIssues,  'phx_mach_issues'),
     ]);
     setSyncStatus('synced');
-    renderCurrentTab();
+    scheduleRender();
   } catch(e) {
     console.warn('fetchAllData error:', e);
     setSyncStatus('offline');
@@ -765,7 +774,7 @@ function handleRealtimeEvent(response) {
       handleGenericEvent(payload, isDelete, getMachIssues, saveMachIssues);
     }
     setSyncStatus('synced');
-    renderCurrentTab();
+    scheduleRender();
   } catch(e) {
     console.warn('[Realtime] event error:', e);
     setSyncStatus('synced');
@@ -1171,8 +1180,6 @@ function renderCurrentTab() {
         break;
       }
       _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab();
-      // Trigger doSync to fetch latest reports from Appwrite reports collection
-      fetchAllData().then(()=>{ if(activeTab==='reports'&&(currentModule==='pipeline'||currentModule==='civil')) { _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); } });
       break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
