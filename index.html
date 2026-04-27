@@ -341,7 +341,7 @@ function initSDK() {
       .setEndpoint(AW.endpoint)
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
-    console.log('[Appwrite] SDK ready');
+    dbg('[SDK] ✅ ready');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
@@ -582,7 +582,7 @@ async function deleteDoc(collectionId, id) {
 // ── INITIAL DATA FETCH ────────────────────────────────────────────────────────
 async function fetchAllData() {
   if (!_awDB) { console.warn('[fetchAllData] SDK not ready'); setSyncStatus('offline'); return; }
-  console.log('[fetchAllData] starting...');
+  dbg('[fetchAllData] start');
   setSyncStatus('syncing');
   try {
     await Promise.all([
@@ -605,9 +605,9 @@ async function fetchAllData() {
 }
 
 async function fetchConfig() {
-  console.log('[fetchConfig] fetching adminData...');
+  dbg('[fetchConfig] fetching...');
   const adminDoc = await awGet(AW.collections.config, 'adminData');
-  console.log('[fetchConfig] adminDoc:', adminDoc ? 'found' : 'NOT FOUND', 'value length:', adminDoc?.value?.length);
+  dbg('[fetchConfig] adminDoc: ' + (adminDoc?'✅ found len='+adminDoc?.value?.length:'❌ NOT FOUND'), adminDoc?'info':'error');
   if (adminDoc?.value) {
     try {
       const d = JSON.parse(adminDoc.value);
@@ -655,17 +655,20 @@ async function fetchConfig() {
 async function fetchCollection(collectionId, saveFn, cacheKey) {
   try {
     const docs = await awList(collectionId, ["limit(5000)"]);
+    dbg('[fetch] ' + collectionId + ': ' + docs.length + ' docs');
     const records = docs.map(d => {
       try { return JSON.parse(d.data); } catch(e) { return null; }
     }).filter(Boolean);
+    dbg('[fetch] ' + collectionId + ': ' + records.length + ' parsed');
     if (records.length) saveFn(records);
-  } catch(e) { console.warn('fetchCollection error:', collectionId, e); }
+  } catch(e) { dbg('[fetch] '+collectionId+' ERROR: '+e.message,'error'); }
 }
 
 async function fetchReports() {
   try {
     const deletedReports = LS.get('phx_deleted_reports', []);
     const docs = await awList(AW.collections.reports, ["limit(5000)"]);
+    dbg('[fetchReports] got ' + docs.length + ' docs from Appwrite');
     const remote = docs.map(d => {
       try {
         const base = d.data_json ? JSON.parse(d.data_json) : {};
@@ -854,7 +857,7 @@ window.addEventListener('offline', () => { setSyncStatus('offline'); stopRealtim
 // Config (users, projects, routes) - kept as JSON doc (rare changes)
 async function pushConfig() {
   if (!_awDB) { console.warn('[pushConfig] SDK not ready'); return; }
-  console.log('[pushConfig] saving...');
+  dbg('[pushConfig] saving...');
   const deletedUsers = LS.get('phx_deleted_users', []);
   const localUsers = getUsers();
   const cleanUsers = Object.fromEntries(
@@ -891,7 +894,7 @@ async function pushConfig() {
   }
 
   const res = await awUpdate(AW.collections.config, 'adminData', { key:'adminData', value: configVal });
-  console.log('[pushConfig] adminData saved:', !!res, 'size:', configVal.length);
+  dbg('[pushConfig] adminData ' + (res?'✅ saved':'❌ FAILED') + ' size:'+configVal.length, res?'info':'error');
 
   // Push report photos
   const deletedReports = LS.get('phx_deleted_reports', []);
@@ -1123,7 +1126,10 @@ async function loginSuccess(user, userRecord) {
   fetchAllData().then(() => {
     startRealtime();
     renderCurrentTab();
-    if (currentRole === 'admin') pushConfig();
+    if (currentRole === 'admin') {
+      pushConfig();
+
+    }
   });
 }
 
@@ -1148,6 +1154,7 @@ function showUserMenu() {
       </div>
     </div>
     <button class="btn btn-secondary w-full mb-2" onclick="fetchAllData().then(()=>renderCurrentTab());document.getElementById('userMenuModal').classList.add('hidden')">↻ Sync Now</button>
+    <button class="btn btn-ghost w-full mb-2" onclick="showDebugLog();document.getElementById('userMenuModal').classList.add('hidden')">🔍 Debug Log</button>
     <button class="btn btn-danger w-full" onclick="doLogout()">Sign Out</button>
   `;
   document.getElementById('userMenuModal').classList.remove('hidden');
@@ -3164,7 +3171,13 @@ function exportToPDF() {
       ${sections}
     </div>
   </div>
-  </body></html>`;
+  
+<!-- DEBUG LOG (admin only) -->
+<div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:1px solid #FF9F0A">
+  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
+  <div id="debugLogContent"></div>
+</div>
+</body></html>`;
 
   // Cross-platform export: open in new tab (works on desktop) OR show inline preview
   // Show report in full-screen overlay (works on all devices including iOS)
@@ -5273,12 +5286,10 @@ async function init() {
   initSDK(); // Initialize Appwrite SDK after all declarations are ready
   // Fresh start — clear all old data on first load of v4.0
   if (localStorage.getItem('phx_version') !== '4.0') {
-    // Clear all Phoenix ERP localStorage keys
     const keysToRemove = Object.keys(localStorage).filter(k =>
       k.startsWith('phx_') || k.startsWith('aquatrack_')
     );
     keysToRemove.forEach(k => localStorage.removeItem(k));
-    // Set fresh admin account
     localStorage.setItem('phx_users', JSON.stringify({
       admin: { role: 'admin', pass: 'admin123', name: 'Admin' }
     }));
@@ -5286,6 +5297,73 @@ async function init() {
   }
   hideLoader();
   document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+// One-time migration: push all localStorage data to new Appwrite collections
+async function migrateLocalDataToAppwrite() {
+  if (localStorage.getItem('phx_migrated_v4') === '1') return;
+  if (!_awDB) return;
+  
+  showToast('⏳ Migrating data to cloud... please wait');
+  dbg('[migrate] starting migration of local data');
+  
+  try {
+    // Push all attendance records
+    const attendance = getAttendance();
+    dbg('[migrate] attendance: ' + attendance.length + ' records');
+    for (const rec of attendance) {
+      if (rec.id) await saveDoc(AW.collections.attendance, rec.id, rec).catch(()=>{});
+    }
+
+    // Push all store items
+    const storeItems = getStoreItems();
+    dbg('[migrate] store items: ' + storeItems.length);
+    for (const item of storeItems) {
+      if (item.id) await saveDoc(AW.collections.storeItems, item.id, item).catch(()=>{});
+    }
+
+    // Push all store txns
+    const storeTxns = getStoreTxns();
+    dbg('[migrate] store txns: ' + storeTxns.length);
+    for (const txn of storeTxns) {
+      if (txn.id) await saveDoc(AW.collections.storeTxns, txn.id, txn).catch(()=>{});
+    }
+
+    // Push all machinery
+    const machinery = getMachinery();
+    dbg('[migrate] machinery: ' + machinery.length);
+    for (const m of machinery) {
+      if (m.id) await saveDoc(AW.collections.machinery, m.id, m).catch(()=>{});
+    }
+
+    // Push all mach logs
+    const machLogs = getMachLogs();
+    dbg('[migrate] mach logs: ' + machLogs.length);
+    for (const l of machLogs) {
+      if (l.id) await saveDoc(AW.collections.machLogs, l.id, l).catch(()=>{});
+    }
+
+    // Push all mach service
+    const machService = getMachService();
+    dbg('[migrate] mach service: ' + machService.length);
+    for (const s of machService) {
+      if (s.id) await saveDoc(AW.collections.machService, s.id, s).catch(()=>{});
+    }
+
+    // Push all mach issues
+    const machIssues = getMachIssues();
+    dbg('[migrate] mach issues: ' + machIssues.length);
+    for (const i of machIssues) {
+      if (i.id) await saveDoc(AW.collections.machIssues, i.id, i).catch(()=>{});
+    }
+
+    localStorage.setItem('phx_migrated_v4', '1');
+    dbg('[migrate] ✅ migration complete');
+    showToast('✅ Data migrated to cloud successfully!');
+  } catch(e) {
+    dbg('[migrate] error: ' + e.message, 'error');
+    showToast('⚠️ Migration error: ' + e.message);
+  }
 }
 
 // ── ATTENDANCE MODULE ────────────────────────────────────────
@@ -6001,7 +6079,13 @@ function exportMonthlyAttendance(targetUser) {
         <tbody>${rows||'<tr><td colspan="6" style="padding:12px;text-align:center;color:#888">No records found</td></tr>'}</tbody>
       </table>
     </div>
-  </div></body></html>`;
+  </div>
+<!-- DEBUG LOG (admin only) -->
+<div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:1px solid #FF9F0A">
+  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
+  <div id="debugLogContent"></div>
+</div>
+</body></html>`;
 
   showReportPreview(html, 'PhoenixERP_Attendance_Report.html');
 }
@@ -6232,7 +6316,13 @@ function exportMachReport(selMonth, selProj) {
         <tbody>${logRows}</tbody>
       </table>
     </div>
-  </div></body></html>`;
+  </div>
+<!-- DEBUG LOG (admin only) -->
+<div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:1px solid #FF9F0A">
+  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
+  <div id="debugLogContent"></div>
+</div>
+</body></html>`;
   showReportPreview(_machHtml, `PhoenixERP_Machinery_${monthName}.html`);
 }
 
@@ -7357,5 +7447,11 @@ setTimeout(() => {
 
 init();
 </script>
+
+<!-- DEBUG LOG (admin only) -->
+<div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:1px solid #FF9F0A">
+  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
+  <div id="debugLogContent"></div>
+</div>
 </body>
 </html>
