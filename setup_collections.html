@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Phoenix ERP v4.0 — Fresh Setup</title>
+<script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.2/dist/iife/sdk.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #0f0f14; color: #e0e0e0; padding: 30px; max-width: 720px; margin: 0 auto; }
+  h1 { color: #FF9F0A; font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 28px; }
+  .step { background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+  .step.done { border-color: #30D158; }
+  .step.error { border-color: #FF453A; }
+  .step.running { border-color: #FFD60A; }
+  .icon { font-size: 18px; width: 24px; flex-shrink: 0; }
+  .info { flex: 1; }
+  .title { font-size: 13px; font-weight: bold; }
+  .msg { font-size: 11px; color: #666; margin-top: 2px; }
+  .step.done .msg { color: #30D158; }
+  .step.error .msg { color: #FF453A; }
+  .step.running .msg { color: #FFD60A; }
+  button { background: #FF9F0A; color: #000; border: none; padding: 14px; font-size: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 20px; }
+  button:disabled { background: #333; color: #555; cursor: not-allowed; }
+  .result { margin-top: 20px; padding: 16px; border-radius: 8px; font-size: 13px; display: none; line-height: 1.6; }
+  .result.ok { background: rgba(48,209,88,0.08); border: 1px solid #30D158; color: #30D158; }
+  .result.err { background: rgba(255,69,58,0.08); border: 1px solid #FF453A; color: #FF453A; }
+  .warn { background: rgba(255,159,10,0.08); border: 1px solid #FF9F0A; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 12px; color: #FF9F0A; line-height: 1.6; }
+</style>
+</head>
+<body>
+<h1>⚡ Phoenix ERP v4.0</h1>
+<div class="sub">Fresh Setup — Realtime Edition</div>
+
+<div class="warn">
+  ⚠️ <strong>This will DELETE all existing data</strong> (reports, config, attendance, store, machinery) and create fresh collections.<br>
+  Run this only once. Delete this file after setup is complete.
+</div>
+
+<div id="steps"></div>
+<button id="btn" onclick="runSetup()">🚀 Start Fresh Setup</button>
+<div class="result" id="result"></div>
+
+<script>
+const E = 'https://phoenixsite.duckdns.org/v1';
+const P = '69bf775300049155a9d9';
+const D = '69bf7846002d6b0b65f6';
+
+const client = new Appwrite.Client().setEndpoint(E).setProject(P);
+const db = new Appwrite.Databases(client);
+
+const STEPS = [
+  { id: 'del_config',   label: 'Clear config collection',    icon: '🗑️' },
+  { id: 'del_reports',  label: 'Clear reports collection',   icon: '🗑️' },
+  { id: 'att',          label: 'Create attendance',          icon: '📋' },
+  { id: 'si',           label: 'Create store_items',         icon: '📦' },
+  { id: 'st',           label: 'Create store_txns',          icon: '💸' },
+  { id: 'mach',         label: 'Create machinery',           icon: '🚜' },
+  { id: 'ml',           label: 'Create mach_logs',           icon: '📝' },
+  { id: 'ms',           label: 'Create mach_service',        icon: '🔧' },
+  { id: 'mi',           label: 'Create mach_issues',         icon: '⚠️' },
+];
+
+const COLLS = [
+  ['attendance','Attendance'],
+  ['store_items','Store Items'],
+  ['store_txns','Store Transactions'],
+  ['machinery','Machinery'],
+  ['mach_logs','Machinery Logs'],
+  ['mach_service','Machinery Service'],
+  ['mach_issues','Machinery Issues'],
+];
+
+const stepsEl = document.getElementById('steps');
+STEPS.forEach(s => {
+  stepsEl.innerHTML += `<div class="step" id="s_${s.id}">
+    <div class="icon">${s.icon}</div>
+    <div class="info">
+      <div class="title">${s.label}</div>
+      <div class="msg" id="m_${s.id}">Waiting...</div>
+    </div>
+  </div>`;
+});
+
+function set(id, status, msg) {
+  document.getElementById('s_'+id).className = 'step '+status;
+  document.getElementById('m_'+id).textContent = msg;
+}
+
+async function deleteAllDocs(collId, stepId, label) {
+  set(stepId, 'running', 'Fetching documents...');
+  try {
+    let deleted = 0;
+    while (true) {
+      const res = await db.listDocuments(D, collId, [Appwrite.Query.limit(100)]);
+      if (!res.documents.length) break;
+      await Promise.all(res.documents.map(d => db.deleteDocument(D, collId, d.$id).catch(()=>{})));
+      deleted += res.documents.length;
+      set(stepId, 'running', `Deleted ${deleted} documents...`);
+      if (res.documents.length < 100) break;
+    }
+    set(stepId, 'done', `✅ Cleared ${deleted} documents`);
+    return true;
+  } catch(e) {
+    set(stepId, 'error', 'Error: ' + e.message);
+    return false;
+  }
+}
+
+async function createColl(collId, name, stepId) {
+  set(stepId, 'running', 'Creating collection...');
+  try {
+    await db.getCollection(D, collId);
+    set(stepId, 'running', 'Exists. Checking attribute...');
+  } catch(e) {
+    try {
+      await db.createCollection(D, collId, name,
+        ['read("any")','create("any")','update("any")','delete("any")']);
+      set(stepId, 'running', 'Created. Adding attribute...');
+    } catch(e2) {
+      if (!e2.message?.includes('already')) {
+        set(stepId, 'error', 'Failed: ' + e2.message);
+        return false;
+      }
+    }
+  }
+  try {
+    await db.createStringAttribute(D, collId, 'data', 65535, false);
+    await new Promise(r => setTimeout(r, 1200));
+    set(stepId, 'done', '✅ Ready');
+    return true;
+  } catch(e) {
+    if (e.message?.includes('already')) { set(stepId, 'done', '✅ Already ready'); return true; }
+    set(stepId, 'error', 'Attribute error: ' + e.message);
+    return false;
+  }
+}
+
+async function runSetup() {
+  const btn = document.getElementById('btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Setting up...';
+
+  // Step 1: Clear config
+  await deleteAllDocs('config', 'del_config', 'config');
+  await new Promise(r => setTimeout(r, 300));
+
+  // Step 2: Clear reports
+  await deleteAllDocs('reports', 'del_reports', 'reports');
+  await new Promise(r => setTimeout(r, 300));
+
+  // Steps 3-9: Create new collections
+  const stepIds = ['att','si','st','mach','ml','ms','mi'];
+  let allOk = true;
+  for (let i = 0; i < COLLS.length; i++) {
+    const ok = await createColl(COLLS[i][0], COLLS[i][1], stepIds[i]);
+    if (!ok) allOk = false;
+    await new Promise(r => setTimeout(r, 400));
+  }
+
+  const res = document.getElementById('result');
+  res.style.display = 'block';
+  if (allOk) {
+    res.className = 'result ok';
+    res.innerHTML = '✅ <strong>Setup complete!</strong><br><br>' +
+      '• All old data deleted<br>' +
+      '• 7 new collections created<br><br>' +
+      'Now open Phoenix ERP and login with:<br>' +
+      '<strong>Username: admin | Password: admin123</strong><br><br>' +
+      '⚠️ Delete this setup file from GitHub after use.';
+    btn.textContent = '✅ Done';
+  } else {
+    res.className = 'result err';
+    res.innerHTML = '⚠️ Some steps failed. Try clicking retry or create manually in Appwrite Console.';
+    btn.disabled = false;
+    btn.textContent = '↻ Retry';
+  }
+}
+</script>
+</body>
+</html>

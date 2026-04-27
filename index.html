@@ -221,7 +221,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       <div class="topbar-sub" id="topbarSub">Site Reporting System</div>
     </div>
     <span id="roleBadgeEl" class="role-badge"></span>
-    <span id="syncStatus" class="synced" onclick="doSync()">☁️ Synced</span>
+    <span id="syncStatus" class="synced" onclick="fetchAllData().then(()=>renderCurrentTab())">☁️ Synced</span>
     <button class="avatar-btn" id="avatarBtn" onclick="showUserMenu()">A</button>
   </div>
 
@@ -1039,7 +1039,7 @@ async function doLogin() {
 
   // Not found locally — pull from Appwrite (handles users created on other devices)
   showLoader('Signing in…');
-  try { await pullConfig(true); } catch(e) {}
+  try { await fetchConfig(); } catch(e) {}
   const freshUsers = getUsers();
   if (freshUsers[user] && freshUsers[user].pass === pass) {
     await loginSuccess(user, freshUsers[user]);
@@ -1080,9 +1080,10 @@ async function loginSuccess(user, userRecord) {
 
   switchTab('home');
 
-  // Sync in background — refresh UI when done
+  // Fetch latest data + start Realtime
   setSyncStatus('syncing');
-  doSync().then(() => {
+  fetchAllData().then(() => {
+    startRealtime();
     renderCurrentTab();
     if (currentRole === 'admin') pushConfig();
   });
@@ -1108,7 +1109,7 @@ function showUserMenu() {
         <div class="text-sm text-muted">${currentRole === 'admin' ? 'Administrator' : currentRole === 'pm' ? 'Project Manager' : 'Engineer'}</div>
       </div>
     </div>
-    <button class="btn btn-secondary w-full mb-2" onclick="doSync();document.getElementById('userMenuModal').classList.add('hidden')">↻ Sync Now</button>
+    <button class="btn btn-secondary w-full mb-2" onclick="fetchAllData().then(()=>renderCurrentTab());document.getElementById('userMenuModal').classList.add('hidden')">↻ Sync Now</button>
     <button class="btn btn-danger w-full" onclick="doLogout()">Sign Out</button>
   `;
   document.getElementById('userMenuModal').classList.remove('hidden');
@@ -1132,7 +1133,7 @@ function renderCurrentTab() {
       else if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); }
       else if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
-        pullConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
+        fetchConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
       }
       else {
         main.innerHTML=renderSubmitTab();
@@ -1143,22 +1144,19 @@ function renderCurrentTab() {
       if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;}
       if(currentModule==='store'){
         main.innerHTML=renderStoreTab();
-        pullConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
+        fetchConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
         break;
       }
       _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab();
       // Trigger doSync to fetch latest reports from Appwrite reports collection
-      if (!_syncing) doSync().then(()=>{ if(activeTab==='reports'&&(currentModule==='pipeline'||currentModule==='civil')) { _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); } });
+      fetchAllData().then(()=>{ if(activeTab==='reports'&&(currentModule==='pipeline'||currentModule==='civil')) { _rptTypeFilter='all';_rptProjFilter='';main.innerHTML=renderReportsTab(); } });
       break;
     case 'tracker':  main.innerHTML = renderTrackerTab(); break;
     case 'settings': main.innerHTML = renderSettingsTab(); break;
-    case 'attendance': main.innerHTML = renderAttendanceTab(); pullConfig().then(()=>{ if(activeTab==='attendance'&&currentModule==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
+    case 'attendance': main.innerHTML = renderAttendanceTab(); fetchConfig().then(()=>{ if(activeTab==='attendance') main.innerHTML=renderAttendanceTab(); }); break;
     case 'users':
       main.innerHTML = renderUsersTab();
-      pullConfig(true).then(() => {
-        if (activeTab === 'users') main.innerHTML = renderUsersTab();
-        return pushConfig();
-      }).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
+      fetchConfig().then(() => pushConfig()).then(() => { if (activeTab === 'users') main.innerHTML = renderUsersTab(); });
       break;
   }
   if (activeTab === 'settings') initSettings();
@@ -2843,8 +2841,7 @@ async function submitReport(type) {
       const reports = getReports();
       const idx = reports.findIndex(r => String(r.id) === String(data.id));
       if (idx >= 0 && data._awId) { reports[idx]._awId = data._awId; LS.set('phx_reports', reports); }
-      // Push to reportsData config doc so other devices get it via pullConfig/doSync
-      pushReportsData();
+
     }
   });
 }
@@ -3209,7 +3206,7 @@ function renderReportsTab() {
   let html = `
     <div class="section-header">
       <div class="section-title">All Reports</div>
-      <button class="btn btn-ghost btn-sm" onclick="setSyncStatus('syncing');doSync().then(()=>renderCurrentTab())">↻ Sync</button>
+      <button class="btn btn-ghost btn-sm" onclick="fetchAllData().then(()=>renderCurrentTab())">↻ Sync</button>
     </div>
     <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Date</div>
@@ -5237,59 +5234,19 @@ function hideLoader() {
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
-  // One-time migration: fix PM's own attendance records that incorrectly have pmStatus='pending'
-  if (!localStorage.getItem('phx_att_pm_fix_v1')) {
-    try {
-      const att = LS.get('phx_attendance', []);
-      const users = getUsers();
-      let changed = false;
-      att.forEach(a => {
-        if (a.pmStatus === 'pending') {
-          const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
-          if (pmEntry && pmEntry[0] === a.user) {
-            a.pmStatus = 'approved'; // PM can't approve own, auto-approve
-            changed = true;
-          }
-        }
-      });
-      if (changed) { LS.set('phx_attendance', att); pushConfig(); }
-    } catch(e) {}
-    localStorage.setItem('phx_att_pm_fix_v1', '1');
+  // Fresh start — clear all old data on first load of v4.0
+  if (localStorage.getItem('phx_version') !== '4.0') {
+    // Clear all Phoenix ERP localStorage keys
+    const keysToRemove = Object.keys(localStorage).filter(k =>
+      k.startsWith('phx_') || k.startsWith('aquatrack_')
+    );
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    // Set fresh admin account
+    localStorage.setItem('phx_users', JSON.stringify({
+      admin: { role: 'admin', pass: 'admin123', name: 'Admin' }
+    }));
+    localStorage.setItem('phx_version', '4.0');
   }
-  // Migrate old data keys if any
-  const oldReports = localStorage.getItem('aquatrack_reports');
-  if (oldReports && !localStorage.getItem('phx_reports')) {
-    LS.set('phx_reports', JSON.parse(oldReports));
-  }
-  const oldUsers = localStorage.getItem('aquatrack_users');
-  if (oldUsers && !localStorage.getItem('phx_users')) {
-    const u = JSON.parse(oldUsers);
-    if (!u.admin) u.admin = { role:'admin', pass:'admin', name:'Admin' };
-    LS.set('phx_users', u);
-  }
-  ['aquatrack_projects','aquatrack_routes','aquatrack_assignments','aquatrack_specials'].forEach(k => {
-    const newMap = {'aquatrack_projects':'phx_projects','aquatrack_routes':'phx_routes','aquatrack_assignments':'phx_assignments','aquatrack_specials':'phx_specials'};
-    if (localStorage.getItem(k) && !localStorage.getItem(newMap[k])) {
-      localStorage.setItem(newMap[k], localStorage.getItem(k));
-    }
-  });
-
-  // Migrate inline photos to separate photo store
-  try {
-    const allR = LS.get('phx_reports', []);
-    let migrated = false;
-    allR.forEach(r => {
-      if (!r.id) return;
-      const hasInline = r.photosStart?.length || r.photosEnd?.length || r.photos?.length;
-      if (hasInline) {
-        savePhotosForReport(r.id, r.photosStart||[], r.photosEnd||[], r.photos||[]);
-        r.photosStart = []; r.photosEnd = []; r.photos = [];
-        migrated = true;
-      }
-    });
-    if (migrated) LS.set('phx_reports', allR);
-  } catch(e) {}
-
   hideLoader();
   document.getElementById('loginScreen').classList.remove('hidden');
 }
@@ -5438,7 +5395,9 @@ function markAttendanceFor(status, date, targetUser) {
     markedBy: currentUser, markedByName: users[currentUser]?.name||currentUser,
     timestamp: new Date().toISOString()
   });
-  saveAttendance(all); pushConfig();
+  saveAttendance(all);
+  pushAttendance(all[all.length-1]).catch(()=>{});
+  pushConfig();
   showToast(`✅ ${status==='present'?'Present':'Absent'} marked for ${targetUserData?.name||targetUser} on ${date}`);
   renderCurrentTab();
 }
