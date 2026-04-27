@@ -5447,7 +5447,7 @@ function markAttendanceDate(status, date) {
     project:myProj, atype:'attendance', date, status,
     pmUser, pmName, isBackfill:true,
     pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
-  saveAttendance(all); pushConfig();
+  saveAttendance(all); pushAttendance(all[all.length-1]).catch(()=>{}); pushConfig();
   showToast('✅ Attendance marked for ' + date);
   renderCurrentTab();
 }
@@ -5468,7 +5468,7 @@ function markAttendance(status) {
     pmUser, pmName,
     pmStatus: isPM ? 'approved' : 'pending',
     adminStatus: 'pending', timestamp:new Date().toISOString() });
-  saveAttendance(all); pushConfig();
+  saveAttendance(all); pushAttendance(all[all.length-1]).catch(()=>{}); pushConfig();
   showToast('✅ Attendance marked'); renderCurrentTab();
 }
 
@@ -5489,7 +5489,7 @@ function applyLeave() {
     leaveType:'Leave', reason, pmUser, pmName,
     pmStatus: isPM ? 'approved' : 'pending',
     adminStatus:'pending', timestamp:new Date().toISOString() });
-  saveAttendance(all); pushConfig();
+  saveAttendance(all); pushAttendance(all[all.length-1]).catch(()=>{}); pushConfig();
   showToast('✅ Leave applied'); renderCurrentTab();
 }
 
@@ -5932,7 +5932,9 @@ function reviewAttendance(id, role, decision) {
   if (!rec) return;
   if (role==='pm') rec.pmStatus = decision;
   else rec.adminStatus = decision;
-  saveAttendance(all); pushConfig();
+  saveAttendance(all);
+  pushAttendance(rec).catch(()=>{});
+  pushConfig();
   showToast(decision==='approved'?'✅ Approved':'❌ Rejected');
   renderCurrentTab();
 }
@@ -6502,7 +6504,7 @@ function saveMachLog() {
     remarks: document.getElementById('lf-remarks')?.value||'',
     loggedBy: currentUser, timestamp: new Date().toISOString()
   });
-  saveMachLogs(logs); pushConfig();
+  saveMachLogs(logs); if(logs.length) pushMachLog(logs[logs.length-1]).catch(()=>{}); pushConfig();
   showToast('✅ Log saved'); closeFormModal(); renderCurrentTab();
 }
 
@@ -6555,7 +6557,7 @@ function saveService() {
     parts: document.getElementById('sf-parts')?.value||'',
     recordedBy: currentUser, timestamp: new Date().toISOString()
   });
-  saveMachService(services); pushConfig();
+  saveMachService(services); if(services.length) pushMachService(services[services.length-1]).catch(()=>{}); pushConfig();
   showToast('✅ Service record saved'); closeFormModal(); renderCurrentTab();
 }
 
@@ -6600,7 +6602,7 @@ function saveIssue() {
 function updateIssueStatus(id, status) {
   const issues = getMachIssues();
   const i = issues.find(x=>x.id===id);
-  if (i) { i.status=status; saveMachIssues(issues); pushConfig(); renderCurrentTab(); }
+  if (i) { i.status=status; saveMachIssues(issues); pushMachIssue(i).catch(()=>{}); pushConfig(); renderCurrentTab(); }
 }
 
 function resolveIssue(id) {
@@ -6608,7 +6610,7 @@ function resolveIssue(id) {
   if (!resolution) return;
   const issues = getMachIssues();
   const i = issues.find(x=>x.id===id);
-  if (i) { i.status='resolved'; i.resolution=resolution; i.resolvedDate=new Date().toISOString().slice(0,10); saveMachIssues(issues); pushConfig(); renderCurrentTab(); }
+  if (i) { i.status='resolved'; i.resolution=resolution; i.resolvedDate=new Date().toISOString().slice(0,10); saveMachIssues(issues); pushMachIssue(i).catch(()=>{}); pushConfig(); renderCurrentTab(); }
 }
 
 // ── END MACHINERY MODULE ──────────────────────────────────────
@@ -6906,6 +6908,7 @@ function doTransfer() {
   const base = {itemId, itemName:item.name, project:item.project, date, by:currentUser, byName:getUsers()[currentUser]?.name||currentUser, timestamp:new Date().toISOString(), qty, remarks};
   txns.push({...base, id:'STX_'+Date.now(), type:'transfer', toProject:toProj});
   saveStoreTxns(txns);
+  if(txns.length) pushStoreTxn(txns[txns.length-1]).catch(()=>{});
   pushConfig();
   showToast('✅ Transferred successfully');
   renderCurrentTab();
@@ -7204,6 +7207,7 @@ function saveStoreTxn(type) {
     timestamp: new Date().toISOString()
   });
   saveStoreTxns(txns);
+  if(txns.length) pushStoreTxn(txns[txns.length-1]).catch(()=>{});
   pushConfig();
   showToast('✅ '+(type==='issue'?'Issued to '+issuedTo:'Received'));
   closeFormModal(); renderCurrentTab();
@@ -7262,6 +7266,7 @@ function doReturnToCentral(itemId) {
     by:currentUser, byName:getUsers()[currentUser]?.name||currentUser,
     timestamp:new Date().toISOString() });
   saveStoreTxns(txns);
+  if(txns.length) pushStoreTxn(txns[txns.length-1]).catch(()=>{});
   pushConfig();
   showToast('✅ Returned to Central Store');
   closeFormModal(); renderCurrentTab();
@@ -7324,6 +7329,7 @@ function doSiteTransfer(itemId) {
     by:currentUser, byName:getUsers()[currentUser]?.name||currentUser,
     timestamp:new Date().toISOString() });
   saveStoreTxns(txns);
+  if(txns.length) pushStoreTxn(txns[txns.length-1]).catch(()=>{});
   pushConfig();
   showToast('✅ Transferred to '+destProj);
   closeFormModal(); renderCurrentTab();
