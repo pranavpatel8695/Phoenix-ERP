@@ -692,7 +692,8 @@ async function fetchReports() {
     dbg('[fetchReports] got ' + docs.length + ' docs from Appwrite');
     const remote = docs.map(d => {
       try {
-        const base = d.data_json ? JSON.parse(d.data_json) : {};
+        const raw = d.data_json || d.data || '{}';
+        const base = JSON.parse(raw);
         if (!base.module) base.module = (base.type||'').startsWith('civil_')?'civil':'pipeline';
         if (!base.id) base.id = d.$id;
         base._awId = d.$id;
@@ -983,19 +984,37 @@ async function pushMachIssue(issue) { return saveDoc(AW.collections.machIssues, 
 // ── REPORT SYNC (individual Appwrite documents) ───────────────────────────────
 async function saveReportToAW(r) {
   const noPhotos = Object.assign({}, r, { photos:[], photosStart:[], photosEnd:[] });
-  // Only send data_json — all other fields are derived from it on read
-  const doc = { data_json: JSON.stringify(noPhotos).slice(0,65000) };
+  const jsonStr = JSON.stringify(noPhotos).slice(0,65000);
+  // Use saveDoc which uses the simple { data: ... } format like all other collections
+  // BUT reports collection uses data_json field not data field
+  // Try both approaches
   const docId = 'r'+String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30);
-  let res = await _awDB.createDocument(AW.database, AW.collections.reports, docId, doc,
-    ['read("any")','create("any")','update("any")','delete("any")']).catch(e=>{
-      dbg('[saveReport] create error: '+e.message,'error'); return null;
-    });
-  if (!res) res = await _awDB.updateDocument(AW.database, AW.collections.reports, docId, doc).catch(e=>{
-    dbg('[saveReport] update error: '+e.message,'error'); return null;
-  });
-  if (res) { r._awId = res.$id || docId; dbg('[saveReport] ✅ saved: '+r._awId); }
-  else dbg('[saveReport] ❌ FAILED for '+docId,'error');
-  return !!res;
+  
+  // First try with data_json
+  try {
+    let res = await _awDB.createDocument(AW.database, AW.collections.reports, docId, 
+      { data_json: jsonStr },
+      ['read("any")','create("any")','update("any")','delete("any")']);
+    r._awId = res.$id; dbg('[saveReport] ✅ created: '+docId); return true;
+  } catch(e1) {
+    dbg('[saveReport] create failed: '+e1.message,'warn');
+    // Try update
+    try {
+      let res = await _awDB.updateDocument(AW.database, AW.collections.reports, docId, { data_json: jsonStr });
+      r._awId = res.$id; dbg('[saveReport] ✅ updated: '+docId); return true;
+    } catch(e2) {
+      dbg('[saveReport] update failed: '+e2.message,'warn');
+      // Last resort: try with 'data' field (like other collections)
+      try {
+        let res = await _awDB.createDocument(AW.database, AW.collections.reports, docId,
+          { data: jsonStr },
+          ['read("any")','create("any")','update("any")','delete("any")']);
+        r._awId = res.$id; dbg('[saveReport] ✅ created with data field: '+docId); return true;
+      } catch(e3) {
+        dbg('[saveReport] ❌ ALL FAILED: '+e3.message,'error'); return false;
+      }
+    }
+  }
 }
 
 async function deleteReportFromAW(r) {
