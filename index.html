@@ -1226,7 +1226,12 @@ function renderHome() {
     ? vp.map(p=>`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(10,132,255,0.12);border:1px solid rgba(10,132,255,0.25);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--blue);font-weight:600;margin:2px">📁 ${p}</span>`).join('')
     : `<span style="font-size:11px;color:var(--muted)">No projects assigned</span>`;
 
-  let html = `
+  const syncInfo = `<div style="background:rgba(255,159,10,0.08);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--muted)">
+    ⚡ Realtime | Reports: ${getReports().length} | Attendance: ${getAttendance().length} | Store: ${getStoreItems().length} | Machinery: ${getMachinery().length}
+    <br><button onclick="fetchAllData().then(()=>renderCurrentTab())" style="background:var(--orange);color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px">↻ Force Sync</button>
+  </div>`;
+
+  let html = syncInfo + `
     <div class="card mb-3" style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-color:rgba(10,132,255,0.2)">
       <div class="flex justify-between items-start mb-2">
         <div>
