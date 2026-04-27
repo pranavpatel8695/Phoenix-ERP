@@ -332,17 +332,21 @@ const AW = {
 };
 
 // ── APPWRITE SDK CLIENT ──────────────────────────────────────
-// Initialize Appwrite SDK safely
-let _awClient, _awDB, _awRealtime;
-try {
-  _awClient = new Appwrite.Client()
-    .setEndpoint(AW.endpoint)
-    .setProject(AW.project);
-  _awDB = new Appwrite.Databases(_awClient);
-  _awRealtime = new Appwrite.Realtime(_awClient);
-  console.log('[Appwrite] SDK initialized');
-} catch(e) {
-  console.error('[Appwrite] SDK init failed:', e);
+// Appwrite SDK initialized in initSDK() after page load
+let _awClient = null, _awDB = null;
+
+function initSDK() {
+  try {
+    _awClient = new Appwrite.Client()
+      .setEndpoint(AW.endpoint)
+      .setProject(AW.project);
+    _awDB = new Appwrite.Databases(_awClient);
+    console.log('[Appwrite] SDK ready');
+    return true;
+  } catch(e) {
+    console.error('[Appwrite] SDK failed:', e.message);
+    return false;
+  }
 }
 const APP_VERSION = '4.0'; // Realtime Edition
 
@@ -692,6 +696,7 @@ async function fetchReports() {
 
 // ── REALTIME SUBSCRIPTIONS ────────────────────────────────────────────────────
 function startRealtime() {
+  if (!_awClient) { console.warn('[Realtime] client not ready'); return; }
   if (_rtUnsubscribe) { try { _rtUnsubscribe(); } catch(e){} }
 
   const channels = [
@@ -706,7 +711,16 @@ function startRealtime() {
     `databases.${AW.database}.collections.${AW.collections.machIssues}.documents`,
   ];
 
-  _rtUnsubscribe = _awRealtime.subscribe(channels, handleRealtimeEvent);
+  try {
+    _rtUnsubscribe = _awClient.subscribe(channels, handleRealtimeEvent);
+    _rtConnected = true;
+    console.log('[Realtime] connected');
+  } catch(e) {
+    console.warn('[Realtime] subscribe failed:', e.message, '- falling back to polling');
+    _rtConnected = false;
+    // Fallback: poll every 15 seconds if Realtime not available
+    _rtUnsubscribe = setInterval(() => { if(navigator.onLine) fetchAllData(); }, 15000);
+  }
   _rtConnected = true;
   console.log('[Realtime] connected to', channels.length, 'channels');
 }
@@ -5243,6 +5257,7 @@ function hideLoader() {
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
+  initSDK(); // Initialize Appwrite SDK after all declarations are ready
   // Fresh start — clear all old data on first load of v4.0
   if (localStorage.getItem('phx_version') !== '4.0') {
     // Clear all Phoenix ERP localStorage keys
