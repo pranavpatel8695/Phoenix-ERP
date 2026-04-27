@@ -582,6 +582,7 @@ async function deleteDoc(collectionId, id) {
 // ── INITIAL DATA FETCH ────────────────────────────────────────────────────────
 async function fetchAllData() {
   if (!_awDB) { console.warn('[fetchAllData] SDK not ready'); setSyncStatus('offline'); return; }
+  console.log('[fetchAllData] starting...');
   setSyncStatus('syncing');
   try {
     await Promise.all([
@@ -604,7 +605,9 @@ async function fetchAllData() {
 }
 
 async function fetchConfig() {
+  console.log('[fetchConfig] fetching adminData...');
   const adminDoc = await awGet(AW.collections.config, 'adminData');
+  console.log('[fetchConfig] adminDoc:', adminDoc ? 'found' : 'NOT FOUND', 'value length:', adminDoc?.value?.length);
   if (adminDoc?.value) {
     try {
       const d = JSON.parse(adminDoc.value);
@@ -850,6 +853,8 @@ window.addEventListener('offline', () => { setSyncStatus('offline'); stopRealtim
 // ── PUSH FUNCTIONS (write to Appwrite + update cache) ─────────────────────────
 // Config (users, projects, routes) - kept as JSON doc (rare changes)
 async function pushConfig() {
+  if (!_awDB) { console.warn('[pushConfig] SDK not ready'); return; }
+  console.log('[pushConfig] saving...');
   const deletedUsers = LS.get('phx_deleted_users', []);
   const localUsers = getUsers();
   const cleanUsers = Object.fromEntries(
@@ -885,7 +890,8 @@ async function pushConfig() {
     configVal = JSON.stringify(configData);
   }
 
-  await awUpdate(AW.collections.config, 'adminData', { key:'adminData', value: configVal });
+  const res = await awUpdate(AW.collections.config, 'adminData', { key:'adminData', value: configVal });
+  console.log('[pushConfig] adminData saved:', !!res, 'size:', configVal.length);
 
   // Push report photos
   const deletedReports = LS.get('phx_deleted_reports', []);
