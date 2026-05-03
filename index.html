@@ -997,7 +997,8 @@ async function pushConfig() {
       ...(stored?.photos||[]).map(p=>({zone:'main',src:p?.src||p})),
     ].filter(p=>p.src&&p.src.startsWith('data:'));
     if (all.length) {
-      const comp = await Promise.all(all.map(async p=>({zone:p.zone,src:await compressPhoto(p.src,50)})));
+      // Compress very aggressively: 15% quality to fit within 64KB limit
+      const comp = await Promise.all(all.map(async p=>({zone:p.zone,src:await compressPhoto(p.src,15)})));
       rpMap[r.id] = comp;
       dbg('[pushConfig] report ' + r.id + ' has ' + all.length + ' photos');
     }
@@ -1005,7 +1006,13 @@ async function pushConfig() {
   await Promise.all(rpPromises);
   let rpVal = JSON.stringify(rpMap);
   dbg('[pushConfig] reportPhotos: ' + Object.keys(rpMap).length + ' reports with photos, size=' + rpVal.length);
-  if (rpVal.length < 64000) await awUpdate(AW.collections.config,'reportPhotos',{key:'reportPhotos',value:rpVal});
+  if (rpVal.length < 64000) {
+    await awUpdate(AW.collections.config,'reportPhotos',{key:'reportPhotos',value:rpVal});
+    dbg('[pushConfig] reportPhotos ✅ saved');
+  } else {
+    dbg('[pushConfig] ⚠️ reportPhotos TOO LARGE (' + rpVal.length + ' bytes) - not saved! Reduce photo count or quality.', 'warn');
+    showToast('⚠️ Photos too large to sync! Use fewer photos per report.');
+  }
 
   // Store photos
   const spMap = {};
