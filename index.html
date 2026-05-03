@@ -1128,13 +1128,32 @@ function mergeUsers(remoteUsers, deletedUsers=[]) {
   if (!remoteUsers) return;
   const local = getUsers();
   const merged = { ...local };
+  
+  // First, remove deleted users from merged
+  deletedUsers.forEach(u => {
+    if (u !== 'admin' && merged[u]) {
+      delete merged[u];
+      dbg('[mergeUsers] deleted user: ' + u);
+    }
+  });
+  
+  // Then merge remote users (skipping deleted ones)
   Object.keys(remoteUsers).forEach(u => {
     if (deletedUsers.includes(u) || u === 'admin') return;
     if (!merged[u]) { merged[u] = remoteUsers[u]; return; }
     const lp = merged[u].projects||[], rp = remoteUsers[u].projects||[];
     merged[u] = { ...remoteUsers[u], projects: [...new Set([...lp,...rp])] };
   });
+  
   merged.admin = { ...(remoteUsers.admin||local.admin||{}), pass: local.admin?.pass||merged.admin?.pass||'admin' };
+  
+  // Also update local deletedUsers list
+  if (deletedUsers.length) {
+    const localDeleted = LS.get('phx_deleted_users', []);
+    LS.set('phx_deleted_users', [...new Set([...localDeleted, ...deletedUsers])]);
+    dbg('[mergeUsers] merged deletedUsers: ' + deletedUsers.length + ' total');
+  }
+  
   saveUsers(merged);
 }
 
@@ -1330,7 +1349,7 @@ function renderHome() {
     : `<span style="font-size:11px;color:var(--muted)">No projects assigned</span>`;
 
   const syncInfo = `<div style="background:rgba(255,159,10,0.08);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--muted)">
-    ⚡ Realtime | Reports: ${getReports().length} | Attendance: ${getAttendance().length} | Store: ${getStoreItems().length} | Machinery: ${getMachinery().length}
+    ⚡ Realtime | Reports: ${getReports().length} | Attendance: ${getAttendance().length} | Store: ${getStoreItems().length} | Machinery: ${getMachinery().length} | Users: ${Object.keys(getUsers()).length}
     <br><button onclick="forceSyncAll()" style="background:var(--orange);color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px">↻ Force Sync</button>
   </div>`;
 
