@@ -706,22 +706,33 @@ async function fetchConfig() {
   }
   // Fetch report photos
   const rpDoc = await awGet(AW.collections.config, 'reportPhotos');
+  dbg('[fetchConfig] reportPhotos doc: ' + (rpDoc?.value ? '✅ found len=' + rpDoc.value.length : '❌ NOT FOUND'), rpDoc?.value ? 'info' : 'warn');
   if (rpDoc?.value) {
     try {
       const rp = JSON.parse(rpDoc.value);
+      const reportIds = Object.keys(rp);
+      dbg('[fetchConfig] reportPhotos has ' + reportIds.length + ' reports with photos');
+      let restoredCount = 0;
       Object.keys(rp).forEach(id => {
         const items = rp[id];
         if (!Array.isArray(items)) return;
         const existing = getPhotosForReport(id);
-        if (!existing?.photosStart?.length && !existing?.photosEnd?.length && !existing?.photos?.length) {
-          savePhotosForReport(id,
-            items.filter(p=>p.zone==='start').map(p=>({src:p.src})),
-            items.filter(p=>p.zone==='end').map(p=>({src:p.src})),
-            items.filter(p=>p.zone==='main').map(p=>({src:p.src}))
-          );
+        const hasExisting = existing?.photosStart?.length || existing?.photosEnd?.length || existing?.photos?.length;
+        if (!hasExisting) {
+          const startPhotos = items.filter(p=>p.zone==='start').map(p=>({src:p.src}));
+          const endPhotos = items.filter(p=>p.zone==='end').map(p=>({src:p.src}));
+          const mainPhotos = items.filter(p=>p.zone==='main').map(p=>({src:p.src}));
+          savePhotosForReport(id, startPhotos, endPhotos, mainPhotos);
+          restoredCount++;
+          dbg('[fetchConfig] restored photos for report ' + id + ': start=' + startPhotos.length + ', end=' + endPhotos.length + ', main=' + mainPhotos.length);
+        } else {
+          dbg('[fetchConfig] skipped report ' + id + ' (already has photos)');
         }
       });
-    } catch(e) {}
+      dbg('[fetchConfig] restored photos for ' + restoredCount + ' reports');
+    } catch(e) {
+      dbg('[fetchConfig] reportPhotos parse error: ' + e.message, 'error');
+    }
   }
   // Store photos
   const spDoc = await awGet(AW.collections.config, 'storePhotos');
@@ -977,6 +988,7 @@ async function pushConfig() {
   const rpMap = {};
   const cutoff = new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
   const recentR = getReports().filter(r=>(r.date||'')>=cutoff&&!deletedReports.includes(String(r.id)));
+  dbg('[pushConfig] processing photos for ' + recentR.length + ' recent reports');
   const rpPromises = recentR.map(async r => {
     const stored = getPhotosForReport(r.id);
     const all = [
@@ -987,10 +999,12 @@ async function pushConfig() {
     if (all.length) {
       const comp = await Promise.all(all.map(async p=>({zone:p.zone,src:await compressPhoto(p.src,50)})));
       rpMap[r.id] = comp;
+      dbg('[pushConfig] report ' + r.id + ' has ' + all.length + ' photos');
     }
   });
   await Promise.all(rpPromises);
   let rpVal = JSON.stringify(rpMap);
+  dbg('[pushConfig] reportPhotos: ' + Object.keys(rpMap).length + ' reports with photos, size=' + rpVal.length);
   if (rpVal.length < 64000) await awUpdate(AW.collections.config,'reportPhotos',{key:'reportPhotos',value:rpVal});
 
   // Store photos
