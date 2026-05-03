@@ -348,7 +348,52 @@ function initSDK() {
     return false;
   }
 }
-const APP_VERSION = '4.0'; // Realtime Edition
+const APP_VERSION = '4.0.1'; // Debug Fix Edition
+
+// ── DEBUG LOG ────────────────────────────────────────────────
+let _debugLog = [];
+function dbg(msg, type='info') {
+  const timestamp = new Date().toLocaleTimeString();
+  const entry = { time: timestamp, msg, type };
+  _debugLog.push(entry);
+  if (_debugLog.length > 100) _debugLog.shift(); // Keep last 100 entries
+  
+  // Also console log
+  const prefix = `[${timestamp}]`;
+  if (type === 'error') console.error(prefix, msg);
+  else if (type === 'warn') console.warn(prefix, msg);
+  else console.log(prefix, msg);
+  
+  // Auto-show debug panel on errors (only for admin)
+  if (type === 'error' && currentRole === 'admin') {
+    const panel = document.getElementById('debugLog');
+    if (panel) panel.style.display = 'block';
+  }
+  
+  // Update debug panel if visible
+  const panel = document.getElementById('debugLogContent');
+  if (panel && document.getElementById('debugLog')?.style.display !== 'none') {
+    updateDebugPanel();
+  }
+}
+
+function showDebugLog() {
+  const panel = document.getElementById('debugLog');
+  if (panel) {
+    panel.style.display = 'block';
+    updateDebugPanel();
+  }
+}
+
+function updateDebugPanel() {
+  const content = document.getElementById('debugLogContent');
+  if (!content) return;
+  
+  content.innerHTML = _debugLog.slice().reverse().map(e => {
+    const color = e.type === 'error' ? '#FF453A' : e.type === 'warn' ? '#FF9F0A' : '#30D158';
+    return `<div style="margin-bottom:3px;color:${color}">[${e.time}] ${e.msg}</div>`;
+  }).join('');
+}
 
 // ── STATE ───────────────────────────────────────────────────
 let currentUser = null;
@@ -549,16 +594,31 @@ async function awList(collectionId, queries=[]) {
 
 async function awCreate(collectionId, docId, data) {
   try {
-    return await _awDB.createDocument(AW.database, collectionId, docId, data,
+    const result = await _awDB.createDocument(AW.database, collectionId, docId, data,
       ['read("any")', 'update("any")', 'delete("any")']);
-  } catch(e) { console.warn('awCreate error:', e); return null; }
+    dbg(`[awCreate] ✅ ${collectionId}/${docId}`);
+    return result;
+  } catch(e) {
+    dbg(`[awCreate] ❌ ${collectionId}/${docId}: ${e.message}`, 'error');
+    console.error('awCreate error:', e);
+    return null;
+  }
 }
 
 async function awUpdate(collectionId, docId, data) {
-  try { return await _awDB.updateDocument(AW.database, collectionId, docId, data); }
+  try {
+    const result = await _awDB.updateDocument(AW.database, collectionId, docId, data);
+    dbg(`[awUpdate] ✅ ${collectionId}/${docId}`);
+    return result;
+  }
   catch(e) {
-    if (e.code === 404) return await awCreate(collectionId, docId, data);
-    console.warn('awUpdate error:', e); return null;
+    if (e.code === 404) {
+      dbg(`[awUpdate] 404 → creating ${collectionId}/${docId}`);
+      return await awCreate(collectionId, docId, data);
+    }
+    dbg(`[awUpdate] ❌ ${collectionId}/${docId}: ${e.message}`, 'error');
+    console.error('awUpdate error:', e);
+    return null;
   }
 }
 
@@ -983,37 +1043,32 @@ async function pushMachIssue(issue) { return saveDoc(AW.collections.machIssues, 
 
 // ── REPORT SYNC (individual Appwrite documents) ───────────────────────────────
 async function saveReportToAW(r) {
-  const noPhotos = Object.assign({}, r, { photos:[], photosStart:[], photosEnd:[] });
-  const jsonStr = JSON.stringify(noPhotos).slice(0,65000);
-  // Use saveDoc which uses the simple { data: ... } format like all other collections
-  // BUT reports collection uses data_json field not data field
-  // Try both approaches
-  const docId = 'r'+String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30);
+  if (!r || !r.id) {
+    dbg('[saveReport] ❌ Invalid report: missing ID', 'error');
+    return false;
+  }
   
-  // First try with data_json
+  // Remove photos from the sync data (they're stored separately in reportPhotos)
+  const noPhotos = Object.assign({}, r, { photos:[], photosStart:[], photosEnd:[] });
+  
+  // Use standard document ID pattern
+  const docId = String(r.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  // Reports collection uses data_json field (not data like other collections)
   try {
-    let res = await _awDB.createDocument(AW.database, AW.collections.reports, docId, 
-      { data_json: jsonStr },
-      ['read("any")','create("any")','update("any")','delete("any")']);
-    r._awId = res.$id; dbg('[saveReport] ✅ created: '+docId); return true;
-  } catch(e1) {
-    dbg('[saveReport] create failed: '+e1.message,'warn');
-    // Try update
-    try {
-      let res = await _awDB.updateDocument(AW.database, AW.collections.reports, docId, { data_json: jsonStr });
-      r._awId = res.$id; dbg('[saveReport] ✅ updated: '+docId); return true;
-    } catch(e2) {
-      dbg('[saveReport] update failed: '+e2.message,'warn');
-      // Last resort: try with 'data' field (like other collections)
-      try {
-        let res = await _awDB.createDocument(AW.database, AW.collections.reports, docId,
-          { data: jsonStr },
-          ['read("any")','create("any")','update("any")','delete("any")']);
-        r._awId = res.$id; dbg('[saveReport] ✅ created with data field: '+docId); return true;
-      } catch(e3) {
-        dbg('[saveReport] ❌ ALL FAILED: '+e3.message,'error'); return false;
-      }
+    const result = await awUpdate(AW.collections.reports, docId, { data_json: JSON.stringify(noPhotos) });
+    if (result) {
+      r._awId = result.$id;
+      dbg('[saveReport] ✅ saved: ' + docId);
+      return true;
+    } else {
+      dbg('[saveReport] ❌ failed for: ' + docId, 'error');
+      return false;
     }
+  } catch(e) {
+    dbg('[saveReport] ❌ exception: ' + e.message, 'error');
+    console.error('[saveReport] Full error:', e);
+    return false;
   }
 }
 
