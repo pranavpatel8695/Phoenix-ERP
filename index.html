@@ -3302,12 +3302,22 @@ function buildTypeFilterBtns(module) {
 
 function renderReportsTab() {
   const vp = getVisibleProjects();
-  let reports = getReports().filter(r => vp.includes(r.project));
+  const allReports = getReports();
+  
+  // Debug: show unique projects in reports
+  const reportProjects = [...new Set(allReports.map(r => r.project || 'undefined'))];
+  dbg(`[renderReportsTab] Total reports: ${allReports.length}, Visible projects: ${vp.join(', ') || 'none'}`);
+  dbg(`[renderReportsTab] Report projects: ${reportProjects.join(', ')}`);
+  
+  let reports = allReports.filter(r => vp.includes(r.project));
+  dbg(`[renderReportsTab] After project filter: ${reports.length} reports`);
 
   // Filter by module
   if (currentModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
   else if (currentModule === 'civil') reports = reports.filter(r => r.module === 'civil');
   else reports = reports.filter(r => r.module === 'civil');
+  
+  dbg(`[renderReportsTab] After module filter (${currentModule}): ${reports.length} reports`);
 
   reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
@@ -7508,8 +7518,14 @@ init();
 </script>
 
 <!-- DEBUG LOG (admin only) -->
-<div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:1px solid #FF9F0A">
-  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
+<div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.95);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:2px solid #FF9F0A;box-shadow:0 -4px 20px rgba(0,0,0,0.5)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-right:4px">
+    <div style="color:#FF9F0A;font-weight:bold;font-size:11px">📋 Debug Log</div>
+    <div style="display:flex;gap:6px">
+      <button onclick="_debugLog=[];updateDebugPanel()" style="background:rgba(255,159,10,0.2);border:1px solid rgba(255,159,10,0.4);border-radius:6px;color:#fff;font-size:10px;font-weight:bold;padding:4px 10px;cursor:pointer">Clear</button>
+      <button onclick="document.getElementById('debugLog').style.display='none'" style="background:rgba(255,69,58,0.2);border:1px solid rgba(255,69,58,0.4);border-radius:6px;color:#fff;font-size:16px;font-weight:bold;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0">✕</button>
+    </div>
+  </div>
   <div id="debugLogContent"></div>
 </div>
 </body>
