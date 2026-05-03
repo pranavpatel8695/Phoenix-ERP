@@ -429,6 +429,18 @@ const saveUsers = v => {
       // Restore missing users
       unexpectedMissing.forEach(u => { v[u] = current[u]; });
     }
+    
+    // CRITICAL FIX: Remove users from deletedUsers array if they're being saved
+    // This prevents re-created users from being auto-deleted
+    const newUsers = Object.keys(v).filter(u => u !== 'admin');
+    const updatedDeleted = deleted.filter(u => !newUsers.includes(u));
+    if (updatedDeleted.length !== deleted.length) {
+      LS.set('phx_deleted_users', updatedDeleted);
+      const cleared = deleted.filter(u => newUsers.includes(u));
+      if (cleared.length) {
+        dbg('[saveUsers] cleared from deletedUsers: ' + cleared.join(', '));
+      }
+    }
   } catch(e) {}
   LS.set('phx_users', v);
 };
@@ -981,6 +993,14 @@ async function pushConfig() {
     }));
   });
 
+  // Filter deletedUsers to only include users that don't currently exist
+  // This prevents re-created users from being auto-deleted on other devices
+  const currentUsernames = Object.keys(localUsers);
+  const cleanDeletedUsers = deletedUsers.filter(u => !currentUsernames.includes(u));
+  if (cleanDeletedUsers.length !== deletedUsers.length) {
+    dbg('[pushConfig] filtered deletedUsers: ' + deletedUsers.length + ' → ' + cleanDeletedUsers.length);
+  }
+
   const configData = {
     projects:      getProjects(),
     routes:        slimRoutes,
@@ -988,7 +1008,7 @@ async function pushConfig() {
     specials:      getSpecials(),
     valveSpecials: getValveSpecials(),
     users:         cleanUsers,
-    deletedUsers,
+    deletedUsers:  cleanDeletedUsers,
     deletedReports: LS.get('phx_deleted_reports', []),
     updatedAt:     Date.now()
   };
