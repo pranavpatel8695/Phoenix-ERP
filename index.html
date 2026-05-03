@@ -657,21 +657,39 @@ async function deleteDoc(collectionId, id) {
 async function forceSyncAll() {
   if (!_awDB) { showToast('⚠️ SDK not ready'); return; }
   showToast('⏳ Pushing all data to cloud...');
+  
   // Push all reports
   const reports = getReports();
   for (const r of reports) {
     await saveReportToAW(r).catch(e => dbg('[push] report error: '+e.message,'error'));
   }
+  
   // Push attendance
   const att = getAttendance();
   for (const a of att) {
     await pushAttendance(a).catch(()=>{});
   }
+  
+  // Push store items
+  const storeItems = getStoreItems();
+  dbg('[forceSyncAll] pushing ' + storeItems.length + ' store items');
+  for (const item of storeItems) {
+    await pushStoreItem(item).catch(e => dbg('[push] store item error: '+e.message,'error'));
+  }
+  
+  // Push store transactions
+  const storeTxns = getStoreTxns();
+  dbg('[forceSyncAll] pushing ' + storeTxns.length + ' store transactions');
+  for (const txn of storeTxns) {
+    await pushStoreTxn(txn).catch(e => dbg('[push] store txn error: '+e.message,'error'));
+  }
+  
   // Push config
   await pushConfig();
+  
   // Then fetch latest
   await fetchAllData();
-  showToast('✅ All data synced! Reports: '+getReports().length);
+  showToast('✅ All data synced! Reports: '+getReports().length+' | Store: '+getStoreItems().length);
   renderCurrentTab();
 }
 
@@ -7153,6 +7171,10 @@ function doTransfer() {
     items.push({...item, id:'SI_'+Date.now(), project:toProj, qty});
   }
   saveStoreItems(items);
+  
+  // Push updated items to Appwrite
+  pushStoreItem(item).catch(e => dbg('[transfer] push source failed: '+e.message,'warn'));
+  pushStoreItem(destItem || items[items.length-1]).catch(e => dbg('[transfer] push dest failed: '+e.message,'warn'));
 
   // Log transaction
   const txns = getStoreTxns();
@@ -7321,7 +7343,9 @@ function saveStoreItem(editId, txnType) {
     };
     // Save photo separately so it survives sync (not stripped in push)
     if (photoSrc) { try { localStorage.setItem('phx_si_photo_'+items[idx].id, photoSrc); } catch(e) {} }
-    saveStoreItems(items); pushConfig();
+    saveStoreItems(items);
+    pushStoreItem(items[idx]).catch(e => dbg('[saveStoreItem] push failed: '+e.message,'warn'));
+    pushConfig();
     showToast('✅ Updated'); closeFormModal(); renderCurrentTab();
     return;
   }
@@ -7353,17 +7377,20 @@ function saveStoreItem(editId, txnType) {
   if (newPhotoSrc) { try { localStorage.setItem('phx_si_photo_'+obj.id, newPhotoSrc); } catch(e) {} }
   if (existingIdx>-1) { items[existingIdx]=obj; } else items.push(obj);
   saveStoreItems(items);
+  pushStoreItem(obj).catch(e => dbg('[saveStoreItem] push failed: '+e.message,'warn'));
 
   // Log transaction for any addition (purchase = site, addition = central)
   if (qty>0 && (txnType==='purchase' || !editId)) {
     const txns = getStoreTxns();
     const txnType2 = txnType==='purchase' ? 'purchase' : (proj==='central' ? 'addition' : 'purchase');
-    txns.push({ id:'STX_'+Date.now(), type:txnType2, itemId:obj.id, itemName:name,
+    const newTxn = { id:'STX_'+Date.now(), type:txnType2, itemId:obj.id, itemName:name,
       project:proj, date:localToday(), qty,
       remarks: document.getElementById('si-desc')?.value||'',
       by:currentUser, byName:getUsers()[currentUser]?.name||currentUser,
-      timestamp:new Date().toISOString() });
+      timestamp:new Date().toISOString() };
+    txns.push(newTxn);
     saveStoreTxns(txns);
+    pushStoreTxn(newTxn).catch(e => dbg('[saveStoreTxn] push failed: '+e.message,'warn'));
   }
   pushConfig();
   showToast(txnType==='purchase'?'✅ Purchase saved': editId?'✅ Updated':'✅ Item added');
@@ -7376,6 +7403,7 @@ function deleteStoreItem(id) {
   const deletedItems = LS.get('phx_deleted_store_items', []);
   if (!deletedItems.includes(id)) { deletedItems.push(id); LS.set('phx_deleted_store_items', deletedItems); }
   saveStoreItems(getStoreItems().filter(i=>i.id!==id));
+  deleteStoreItemFromAW(id).catch(e => dbg('[deleteStoreItem] delete failed: '+e.message,'warn'));
   pushConfig();
   showToast('🗑️ Deleted'); closeFormModal(); renderCurrentTab();
 }
@@ -7508,7 +7536,16 @@ function doReturnToCentral(itemId) {
   if (central) { central.qty = (parseFloat(central.qty)||0) + qty; }
   else { items.push({...src, id:'SI_'+Date.now(), project:'central', qty}); }
   // Remove site item if qty now zero
-  saveStoreItems(items.filter(i=>!(i.id===src.id && (parseFloat(i.qty)||0)<=0)));
+  const updatedItems = items.filter(i=>!(i.id===src.id && (parseFloat(i.qty)||0)<=0));
+  saveStoreItems(updatedItems);
+  
+  // Push updated items to Appwrite
+  if (src.qty > 0) {
+    pushStoreItem(src).catch(e => dbg('[return] push source failed: '+e.message,'warn'));
+  } else {
+    deleteStoreItemFromAW(src.id).catch(e => dbg('[return] delete source failed: '+e.message,'warn'));
+  }
+  pushStoreItem(central || items[items.length-1]).catch(e => dbg('[return] push central failed: '+e.message,'warn'));
 
   // Log transaction
   const txns = getStoreTxns();
@@ -7572,7 +7609,16 @@ function doSiteTransfer(itemId) {
   const dest2 = items.find(i=>i.name===src.name && i.project===destProj);
   if (dest2) { dest2.qty = (parseFloat(dest2.qty)||0) + qty; }
   else { items.push({...src, id:'SI_'+Date.now(), project:destProj, qty}); }
-  saveStoreItems(items.filter(i=>!(i.id===src.id && (parseFloat(i.qty)||0)<=0)));
+  const updatedItems = items.filter(i=>!(i.id===src.id && (parseFloat(i.qty)||0)<=0));
+  saveStoreItems(updatedItems);
+  
+  // Push updated items to Appwrite
+  if (src.qty > 0) {
+    pushStoreItem(src).catch(e => dbg('[siteTransfer] push source failed: '+e.message,'warn'));
+  } else {
+    deleteStoreItemFromAW(src.id).catch(e => dbg('[siteTransfer] delete source failed: '+e.message,'warn'));
+  }
+  pushStoreItem(dest2 || items[items.length-1]).catch(e => dbg('[siteTransfer] push dest failed: '+e.message,'warn'));
 
   const txns = getStoreTxns();
   txns.push({ id:'STX_'+Date.now(), type:'transfer', itemId, itemName:src.name,
