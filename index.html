@@ -401,6 +401,8 @@ let currentRole = null; // 'admin' | 'pm' | 'supervisor'
 let currentModule = 'pipeline'; // 'pipeline' | 'civil' | 'attendance'
 let activeTab = 'home';
 let _syncing = false;
+let _pushing = false;  // Lock to prevent concurrent pushConfig calls
+let _lastPushTime = 0; // Timestamp of last push (for debouncing)
 let _editId = null;
 
 // ── LOCAL STORAGE HELPERS ───────────────────────────────────
@@ -944,14 +946,32 @@ window.addEventListener('offline', () => { setSyncStatus('offline'); stopRealtim
 // Config (users, projects, routes) - kept as JSON doc (rare changes)
 async function pushConfig() {
   if (!_awDB) { console.warn('[pushConfig] SDK not ready'); return; }
+  
+  // Prevent concurrent pushes
+  if (_pushing) {
+    dbg('[pushConfig] ⏭️ skipped (already pushing)');
+    return;
+  }
+  
+  // Debounce: only push once per 5 seconds
+  const now = Date.now();
+  if (now - _lastPushTime < 5000) {
+    dbg('[pushConfig] ⏭️ skipped (debounced, last push ' + Math.round((now - _lastPushTime)/1000) + 's ago)');
+    return;
+  }
+  
+  _pushing = true;
+  _lastPushTime = now;
   dbg('[pushConfig] saving...');
-  const deletedUsers = LS.get('phx_deleted_users', []);
-  const localUsers = getUsers();
-  const cleanUsers = Object.fromEntries(
-    Object.entries(localUsers)
-      .filter(([u]) => !deletedUsers.includes(u))
-      .map(([u,v]) => [u, { role:v.role, pass:v.pass, name:v.name, projects:v.projects||[] }])
-  );
+  
+  try {
+    const deletedUsers = LS.get('phx_deleted_users', []);
+    const localUsers = getUsers();
+    const cleanUsers = Object.fromEntries(
+      Object.entries(localUsers)
+        .filter(([u]) => !deletedUsers.includes(u))
+        .map(([u,v]) => [u, { role:v.role, pass:v.pass, name:v.name, projects:v.projects||[] }])
+    );
 
   const fullRoutes = getRoutes();
   const slimRoutes = {};
@@ -1023,6 +1043,11 @@ async function pushConfig() {
   await Promise.all(spPromises);
   let spVal = JSON.stringify(spMap);
   if (spVal.length < 64000) await awUpdate(AW.collections.config,'storePhotos',{key:'storePhotos',value:spVal});
+  
+  } finally {
+    _pushing = false;
+    dbg('[pushConfig] done');
+  }
 }
 
 // Push single attendance record to Appwrite
