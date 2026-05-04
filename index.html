@@ -4634,33 +4634,10 @@ function showSettingsTab(tab, el) {
   if (tab === 'export')   c.innerHTML = renderSettingsExport();
 }
 
-function clearAllDeletedArrays() {
-  showConfirm(
-    'Clear Deleted Arrays',
-    'This will remove all items from the deleted cache. Previously deleted items can be added again.',
-    () => {
-      LS.set('phx_deleted_specials', []);
-      LS.set('phx_deleted_valve_specials', []);
-      LS.set('phx_deleted_users', []);
-      LS.set('phx_deleted_reports', []);
-      dbg('[clearAllDeletedArrays] cleared all deleted arrays');
-      pushConfig().then(() => {
-        showToast('✅ Deleted cache cleared!');
-        document.getElementById('settingsContent').innerHTML = renderSettingsExport();
-      });
-    }
-  );
-}
-
 function renderSettingsExport() {
   const today    = new Date().toISOString().slice(0,10);
   const monthAgo = new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
   const vp = getVisibleProjects();
-  
-  // Get deleted arrays for debugging
-  const deletedSpecials = LS.get('phx_deleted_specials', []);
-  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
-  const deletedUsers = LS.get('phx_deleted_users', []);
   
   return `
     <div class="settings-section">
@@ -4686,42 +4663,6 @@ function renderSettingsExport() {
       </div>
       <button class="btn btn-primary w-full mt-2" onclick="exportToPDF()">📥 Export PDF Report</button>
     </div>
-    
-    ${currentRole === 'admin' ? `
-    <div class="settings-section mt-4">
-      <div class="settings-section-title">🔧 Debug: Deleted Items Cache</div>
-      <div class="text-xs text-muted mb-2">These items are permanently blocked from being saved. Clear if stuck.</div>
-      
-      <div class="card mb-2" style="background:var(--surface2);padding:10px">
-        <div class="font-bold text-xs mb-1">Deleted Fittings (${deletedSpecials.length})</div>
-        ${deletedSpecials.length > 0 ? 
-          `<div class="text-xs" style="max-height:100px;overflow-y:auto;font-family:monospace;color:var(--orange)">${deletedSpecials.join('<br>')}</div>` :
-          `<div class="text-xs text-muted">None</div>`
-        }
-      </div>
-      
-      <div class="card mb-2" style="background:var(--surface2);padding:10px">
-        <div class="font-bold text-xs mb-1">Deleted Valves (${deletedValveSpecials.length})</div>
-        ${deletedValveSpecials.length > 0 ?
-          `<div class="text-xs" style="max-height:100px;overflow-y:auto;font-family:monospace;color:var(--orange)">${deletedValveSpecials.join('<br>')}</div>` :
-          `<div class="text-xs text-muted">None</div>`
-        }
-      </div>
-      
-      <div class="card mb-3" style="background:var(--surface2);padding:10px">
-        <div class="font-bold text-xs mb-1">Deleted Users (${deletedUsers.length})</div>
-        ${deletedUsers.length > 0 ?
-          `<div class="text-xs" style="max-height:100px;overflow-y:auto;font-family:monospace;color:var(--orange)">${deletedUsers.join('<br>')}</div>` :
-          `<div class="text-xs text-muted">None</div>`
-        }
-      </div>
-      
-      ${(deletedSpecials.length + deletedValveSpecials.length + deletedUsers.length) > 0 ? 
-        `<button class="btn btn-danger w-full" onclick="clearAllDeletedArrays()">🗑️ Clear All Deleted Arrays</button>` :
-        `<div class="text-xs text-muted text-center">✅ No stuck items</div>`
-      }
-    </div>
-    ` : ''}
   `;
 }
 
