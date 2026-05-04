@@ -475,10 +475,15 @@ const saveStoreItems = v => {
   // Guard: never restore items that are in phx_deleted_store_items
   try {
     const deletedItems = LS.get('phx_deleted_store_items', []);
+    const beforeCount = v.length;
     if (deletedItems.length) {
       v = v.filter(i => !deletedItems.includes(i.id));
+      if (v.length !== beforeCount) {
+        dbg('[saveStoreItems] filtered out ' + (beforeCount - v.length) + ' deleted items');
+      }
     }
   } catch(e) {}
+  dbg('[saveStoreItems] saving ' + v.length + ' items to localStorage');
   LS.set('phx_store_items', v);
 };
 const getStoreTxns      = () => LS.get('phx_store_txns', []);
@@ -908,18 +913,34 @@ function handleRealtimeEvent(response) {
 
 function handleGenericEvent(payload, isDelete, getFn, saveFn) {
   try {
+    dbg('[Realtime] handleGenericEvent: ' + (payload.$collectionId || 'unknown') + ', isDelete=' + isDelete);
     const record = JSON.parse(payload.data || '{}');
-    if (!record.id) return;
+    if (!record.id) {
+      dbg('[Realtime] ❌ No ID in record: ' + JSON.stringify(payload).slice(0, 100), 'warn');
+      return;
+    }
+    dbg('[Realtime] processing record ID: ' + record.id);
     const items = getFn();
     if (isDelete) {
-      saveFn(items.filter(x => String(x.id) !== String(record.id)));
+      const filtered = items.filter(x => String(x.id) !== String(record.id));
+      saveFn(filtered);
+      dbg('[Realtime] deleted record ' + record.id + ', remaining: ' + filtered.length);
     } else {
       const idx = items.findIndex(x => String(x.id) === String(record.id));
-      if (idx >= 0) items[idx] = record;
-      else items.push(record);
+      if (idx >= 0) {
+        items[idx] = record;
+        dbg('[Realtime] updated record ' + record.id + ' at index ' + idx);
+      } else {
+        items.push(record);
+        dbg('[Realtime] added new record ' + record.id + ', total: ' + items.length);
+      }
       saveFn(items);
     }
-  } catch(e) { console.warn('[Realtime] handleGenericEvent error:', e); }
+    scheduleRender();
+  } catch(e) {
+    dbg('[Realtime] handleGenericEvent error: ' + e.message, 'error');
+    console.warn('[Realtime] handleGenericEvent error:', e, payload);
+  }
 }
 
 function handleReportEvent(payload, isCreate, isUpdate, isDelete) {
@@ -6969,8 +6990,10 @@ function renderStoreTab() {
 
 function renderStoreInventory() {
   const allItems = getStoreItems();
+  dbg('[renderStoreInventory] Total items in localStorage: ' + allItems.length);
   const centralItems = allItems.filter(i=>i.project==='central');
   const siteItems    = allItems.filter(i=>i.project!=='central');
+  dbg('[renderStoreInventory] Central: ' + centralItems.length + ', Sites: ' + siteItems.length);
 
   if (!centralItems.length && !siteItems.length) {
     return '<div class="empty-state"><div class="icon">📦</div><p>No items yet.</p></div>';
