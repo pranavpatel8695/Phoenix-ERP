@@ -471,14 +471,27 @@ const saveSpecials   = v => {
     const deletedSpecials = LS.get('phx_deleted_specials', []);
     if (deletedSpecials.length && typeof v === 'object') {
       const cleaned = {};
+      let filteredCount = 0;
       Object.keys(v).forEach(proj => {
         if (Array.isArray(v[proj])) {
+          const beforeCount = v[proj].length;
           cleaned[proj] = v[proj].filter(item => {
             const itemKey = `${proj}::${item.name}`.toLowerCase();
-            return !deletedSpecials.includes(itemKey);
+            const isDeleted = deletedSpecials.includes(itemKey);
+            if (isDeleted) {
+              dbg('[saveSpecials] BLOCKED: ' + item.name + ' (in deleted array)', 'warn');
+              filteredCount++;
+            }
+            return !isDeleted;
           });
+          if (beforeCount !== cleaned[proj].length) {
+            dbg('[saveSpecials] filtered ' + (beforeCount - cleaned[proj].length) + ' items from ' + proj, 'warn');
+          }
         }
       });
+      if (filteredCount > 0) {
+        dbg('[saveSpecials] TOTAL BLOCKED: ' + filteredCount + ' items', 'error');
+      }
       v = cleaned;
     }
   } catch(e) {}
@@ -491,18 +504,32 @@ const saveValveSpecials = v  => {
     const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
     if (deletedValveSpecials.length && typeof v === 'object') {
       const cleaned = {};
+      let filteredCount = 0;
       Object.keys(v).forEach(proj => {
         if (Array.isArray(v[proj])) {
+          const beforeCount = v[proj].length;
           cleaned[proj] = v[proj].filter(item => {
             const itemKey = `${proj}::${item.name}`.toLowerCase();
-            return !deletedValveSpecials.includes(itemKey);
+            const isDeleted = deletedValveSpecials.includes(itemKey);
+            if (isDeleted) {
+              dbg('[saveValveSpecials] BLOCKED: ' + item.name + ' (in deleted array)', 'warn');
+              filteredCount++;
+            }
+            return !isDeleted;
           });
+          if (beforeCount !== cleaned[proj].length) {
+            dbg('[saveValveSpecials] filtered ' + (beforeCount - cleaned[proj].length) + ' items from ' + proj, 'warn');
+          }
         }
       });
+      if (filteredCount > 0) {
+        dbg('[saveValveSpecials] TOTAL BLOCKED: ' + filteredCount + ' items', 'error');
+      }
       v = cleaned;
     }
   } catch(e) {}
   LS.set('phx_valve_specials', v);
+};
 };
 const getAttendance     = () => LS.get('phx_attendance', []);
 const saveAttendance    = v  => LS.set('phx_attendance', v);
@@ -4607,10 +4634,34 @@ function showSettingsTab(tab, el) {
   if (tab === 'export')   c.innerHTML = renderSettingsExport();
 }
 
+function clearAllDeletedArrays() {
+  showConfirm(
+    'Clear Deleted Arrays',
+    'This will remove all items from the deleted cache. Previously deleted items can be added again.',
+    () => {
+      LS.set('phx_deleted_specials', []);
+      LS.set('phx_deleted_valve_specials', []);
+      LS.set('phx_deleted_users', []);
+      LS.set('phx_deleted_reports', []);
+      dbg('[clearAllDeletedArrays] cleared all deleted arrays');
+      pushConfig().then(() => {
+        showToast('✅ Deleted cache cleared!');
+        document.getElementById('settingsContent').innerHTML = renderSettingsExport();
+      });
+    }
+  );
+}
+
 function renderSettingsExport() {
   const today    = new Date().toISOString().slice(0,10);
   const monthAgo = new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
   const vp = getVisibleProjects();
+  
+  // Get deleted arrays for debugging
+  const deletedSpecials = LS.get('phx_deleted_specials', []);
+  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+  const deletedUsers = LS.get('phx_deleted_users', []);
+  
   return `
     <div class="settings-section">
       <div class="settings-section-title">📄 Export Reports</div>
@@ -4634,7 +4685,45 @@ function renderSettingsExport() {
         <div class="field-group"><label>To Date</label><input type="date" id="exp-to" value="${today}"></div>
       </div>
       <button class="btn btn-primary w-full mt-2" onclick="exportToPDF()">📥 Export PDF Report</button>
-    </div>`;
+    </div>
+    
+    ${currentRole === 'admin' ? `
+    <div class="settings-section mt-4">
+      <div class="settings-section-title">🔧 Debug: Deleted Items Cache</div>
+      <div class="text-xs text-muted mb-2">These items are permanently blocked from being saved. Clear if stuck.</div>
+      
+      <div class="card mb-2" style="background:var(--surface2);padding:10px">
+        <div class="font-bold text-xs mb-1">Deleted Fittings (${deletedSpecials.length})</div>
+        ${deletedSpecials.length > 0 ? 
+          `<div class="text-xs" style="max-height:100px;overflow-y:auto;font-family:monospace;color:var(--orange)">${deletedSpecials.join('<br>')}</div>` :
+          `<div class="text-xs text-muted">None</div>`
+        }
+      </div>
+      
+      <div class="card mb-2" style="background:var(--surface2);padding:10px">
+        <div class="font-bold text-xs mb-1">Deleted Valves (${deletedValveSpecials.length})</div>
+        ${deletedValveSpecials.length > 0 ?
+          `<div class="text-xs" style="max-height:100px;overflow-y:auto;font-family:monospace;color:var(--orange)">${deletedValveSpecials.join('<br>')}</div>` :
+          `<div class="text-xs text-muted">None</div>`
+        }
+      </div>
+      
+      <div class="card mb-3" style="background:var(--surface2);padding:10px">
+        <div class="font-bold text-xs mb-1">Deleted Users (${deletedUsers.length})</div>
+        ${deletedUsers.length > 0 ?
+          `<div class="text-xs" style="max-height:100px;overflow-y:auto;font-family:monospace;color:var(--orange)">${deletedUsers.join('<br>')}</div>` :
+          `<div class="text-xs text-muted">None</div>`
+        }
+      </div>
+      
+      ${(deletedSpecials.length + deletedValveSpecials.length + deletedUsers.length) > 0 ? 
+        `<button class="btn btn-danger w-full" onclick="clearAllDeletedArrays()">🗑️ Clear All Deleted Arrays</button>` :
+        `<div class="text-xs text-muted text-center">✅ No stuck items</div>`
+      }
+    </div>
+    ` : ''}
+  `;
+}
 }
 
 function renderSettingsProjects() {
@@ -5061,19 +5150,26 @@ function deleteSpecial(idx) {
   const specials = getSpecials();
   const deletedItem = specials[proj][idx];
   
-  // Track deleted item
-  const deletedSpecials = LS.get('phx_deleted_specials', []);
-  const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
-  if (!deletedSpecials.includes(itemKey)) {
-    deletedSpecials.push(itemKey);
-    LS.set('phx_deleted_specials', deletedSpecials);
-  }
-  
-  specials[proj].splice(idx, 1);
-  saveSpecials(specials);
-  pushConfig();
-  renderSpecialsList();
-  dbg('[deleteSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
+  showConfirm(
+    'Delete Fitting',
+    `Delete "${deletedItem.name}"? This will sync across all devices.`,
+    () => {
+      // Track deleted item
+      const deletedSpecials = LS.get('phx_deleted_specials', []);
+      const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
+      if (!deletedSpecials.includes(itemKey)) {
+        deletedSpecials.push(itemKey);
+        LS.set('phx_deleted_specials', deletedSpecials);
+      }
+      
+      specials[proj].splice(idx, 1);
+      saveSpecials(specials);
+      pushConfig();
+      renderSpecialsList();
+      dbg('[deleteSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
+      showToast('🗑️ Fitting deleted');
+    }
+  );
 }
 
 // ── VALVE SETTINGS (same pattern as Specials) ─────────────────
@@ -5180,19 +5276,26 @@ function deleteValveSpecial(idx) {
   const valves = getValveSpecials();
   const deletedItem = valves[proj][idx];
   
-  // Track deleted item (using name, not type+size)
-  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
-  const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
-  if (!deletedValveSpecials.includes(itemKey)) {
-    deletedValveSpecials.push(itemKey);
-    LS.set('phx_deleted_valve_specials', deletedValveSpecials);
-  }
-  
-  valves[proj].splice(idx, 1);
-  saveValveSpecials(valves);
-  pushConfig();
-  renderValvesList();
-  dbg('[deleteValveSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
+  showConfirm(
+    'Delete Valve',
+    `Delete "${deletedItem.name}"? This will sync across all devices.`,
+    () => {
+      // Track deleted item (using name, not type+size)
+      const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+      const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
+      if (!deletedValveSpecials.includes(itemKey)) {
+        deletedValveSpecials.push(itemKey);
+        LS.set('phx_deleted_valve_specials', deletedValveSpecials);
+      }
+      
+      valves[proj].splice(idx, 1);
+      saveValveSpecials(valves);
+      pushConfig();
+      renderValvesList();
+      dbg('[deleteValveSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
+      showToast('🗑️ Valve deleted');
+    }
+  );
 }
 
 
@@ -6598,11 +6701,20 @@ function renderSettingsMachinery() {
 }
 
 function deleteMachine(id) {
-  if (!confirm('Delete this machine? All logs and service records will remain.')) return;
-  saveMachinery(getMachinery().filter(m=>m.id!==id));
-  deleteMachineFromAW(id).catch(e => dbg('[deleteMachine] AW delete failed: '+e.message,'warn'));
-  pushConfig();
-  document.getElementById('settingsContent').innerHTML = renderSettingsMachinery();
+  const machine = getMachinery().find(m => m.id === id);
+  const machineName = machine ? machine.name : 'this machine';
+  
+  showConfirm(
+    'Delete Machine',
+    `Delete "${machineName}"? All logs and service records will remain. This will sync across all devices.`,
+    () => {
+      saveMachinery(getMachinery().filter(m=>m.id!==id));
+      deleteMachineFromAW(id).catch(e => dbg('[deleteMachine] AW delete failed: '+e.message,'warn'));
+      pushConfig();
+      document.getElementById('settingsContent').innerHTML = renderSettingsMachinery();
+      showToast('🗑️ Machine deleted');
+    }
+  );
 }
 
 // ── MONTHLY REPORT ──
