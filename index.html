@@ -731,7 +731,21 @@ async function forceSyncAll() {
   // Then fetch latest
   await fetchAllData();
   showToast('✅ All data synced! Reports: '+getReports().length+' | Store: '+getStoreItems().length);
-  renderCurrentTab();
+  
+  // Smart refresh: if on settings, stay on current sub-tab
+  if (activeTab === 'settings') {
+    const c = document.getElementById('settingsContent');
+    if (c && _activeSettingsTab) {
+      if (_activeSettingsTab === 'projects') c.innerHTML = renderSettingsProjects();
+      else if (_activeSettingsTab === 'specials') c.innerHTML = renderSettingsSpecials();
+      else if (_activeSettingsTab === 'valves') c.innerHTML = renderSettingsValves();
+      else if (_activeSettingsTab === 'machinery') c.innerHTML = renderSettingsMachinery();
+      else if (_activeSettingsTab === 'export') c.innerHTML = renderSettingsExport();
+      dbg('[forceSyncAll] refreshed settings sub-page: ' + _activeSettingsTab);
+    }
+  } else {
+    renderCurrentTab();
+  }
 }
 
 async function fetchAllData() {
