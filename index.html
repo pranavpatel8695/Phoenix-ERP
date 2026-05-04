@@ -930,24 +930,22 @@ function handleRealtimeEvent(response) {
     if (collId === AW.collections.config) {
       // Re-fetch config on any config change
       fetchConfig().then(() => { 
-        setSyncStatus('synced'); 
-        renderCurrentTab();
+        setSyncStatus('synced');
         
-        // If on settings tab, also re-render the current settings sub-page
+        // If on settings tab, just refresh the current sub-page content
         if (activeTab === 'settings') {
-          const activeSettingsTab = document.querySelector('#settingsTabs .tab-item.active');
-          if (activeSettingsTab) {
-            const tabText = activeSettingsTab.textContent.toLowerCase();
-            const c = document.getElementById('settingsContent');
-            if (c) {
-              if (tabText.includes('project')) c.innerHTML = renderSettingsProjects();
-              else if (tabText.includes('fitting')) c.innerHTML = renderSettingsSpecials();
-              else if (tabText.includes('valve')) c.innerHTML = renderSettingsValves();
-              else if (tabText.includes('machine')) c.innerHTML = renderSettingsMachinery();
-              else if (tabText.includes('export')) c.innerHTML = renderSettingsExport();
-              dbg('[Realtime] refreshed settings sub-page: ' + tabText);
-            }
+          const c = document.getElementById('settingsContent');
+          if (c && _activeSettingsTab) {
+            if (_activeSettingsTab === 'projects') c.innerHTML = renderSettingsProjects();
+            else if (_activeSettingsTab === 'specials') c.innerHTML = renderSettingsSpecials();
+            else if (_activeSettingsTab === 'valves') c.innerHTML = renderSettingsValves();
+            else if (_activeSettingsTab === 'machinery') c.innerHTML = renderSettingsMachinery();
+            else if (_activeSettingsTab === 'export') c.innerHTML = renderSettingsExport();
+            dbg('[Realtime] refreshed settings sub-page: ' + _activeSettingsTab);
           }
+        } else {
+          // For other tabs, re-render normally
+          renderCurrentTab();
         }
       });
       return;
@@ -4553,6 +4551,9 @@ function renderSettingsTab() {
   let content = '';
 
   if (currentRole === 'admin') {
+    // Set default tab if not already set
+    if (!_activeSettingsTab) _activeSettingsTab = 'projects';
+    
     tabs = `
       <div class="tab-bar" id="settingsTabs">
         <div class="tab-item active" onclick="showSettingsTab('projects',this)">Projects</div>
@@ -4564,6 +4565,8 @@ function renderSettingsTab() {
     content = renderSettingsProjects();
   } else {
     // PM sees specials + export
+    if (!_activeSettingsTab) _activeSettingsTab = 'specials';
+    
     tabs = `
       <div class="tab-bar" id="settingsTabs">
         <div class="tab-item active" onclick="showSettingsTab('specials',this)">Fittings</div>
@@ -4578,6 +4581,7 @@ function renderSettingsTab() {
 }
 
 function showSettingsTab(tab, el) {
+  _activeSettingsTab = tab;  // Remember which tab is active
   document.querySelectorAll('#settingsTabs .tab-item').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   const c = document.getElementById('settingsContent');
@@ -5180,6 +5184,7 @@ function deleteValveSpecial(idx) {
 
 // ── USER MANAGEMENT TAB ──────────────────────────────────────
 let _activeUserRole = LS.get('phx_active_user_role', 'pm'); // remember which role tab is active
+let _activeSettingsTab = ''; // remember which settings sub-tab is active
 
 function renderUsersTab() {
   if (currentRole !== 'admin') {
