@@ -735,6 +735,17 @@ async function fetchConfig() {
       if (d.specials) mergeSpecials(d.specials);
       if (d.valveSpecials) mergeValveSpecials(d.valveSpecials);
       if (d.users) mergeUsers(d.users, d.deletedUsers||[]);
+      
+      // Merge deleted items arrays
+      if (d.deletedSpecials?.length) {
+        const localDelSpec = LS.get('phx_deleted_specials', []);
+        LS.set('phx_deleted_specials', [...new Set([...localDelSpec, ...d.deletedSpecials])]);
+      }
+      if (d.deletedValveSpecials?.length) {
+        const localDelValve = LS.get('phx_deleted_valve_specials', []);
+        LS.set('phx_deleted_valve_specials', [...new Set([...localDelValve, ...d.deletedValveSpecials])]);
+      }
+      
       if (d.deletedReports?.length) {
         const ex = LS.get('phx_deleted_reports',[]);
         LS.set('phx_deleted_reports',[...new Set([...ex,...d.deletedReports.map(String)])]);
@@ -1048,6 +1059,8 @@ async function pushConfig() {
     valveSpecials: getValveSpecials(),
     users:         cleanUsers,
     deletedUsers:  cleanDeletedUsers,
+    deletedSpecials: LS.get('phx_deleted_specials', []),
+    deletedValveSpecials: LS.get('phx_deleted_valve_specials', []),
     deletedReports: LS.get('phx_deleted_reports', []),
     updatedAt:     Date.now()
   };
@@ -1220,28 +1233,40 @@ function mergeSpecials(remoteSpecials) {
   if (!remoteSpecials || typeof remoteSpecials !== 'object') return;
   const local = getSpecials();
   const merged = { ...local };
+  const deletedSpecials = LS.get('phx_deleted_specials', []);
   
   // Merge each project's specials
   Object.keys(remoteSpecials).forEach(proj => {
     if (!Array.isArray(remoteSpecials[proj])) return;
     
     if (!merged[proj]) {
-      // New project - just add remote specials
-      merged[proj] = remoteSpecials[proj];
+      // New project - add remote specials (excluding deleted ones)
+      merged[proj] = remoteSpecials[proj].filter(item => {
+        const itemKey = `${proj}::${item.name}`.toLowerCase();
+        return !deletedSpecials.includes(itemKey);
+      });
     } else {
-      // Existing project - merge arrays, avoiding duplicates
+      // Existing project - merge arrays, avoiding duplicates and deleted items
       const localItems = merged[proj] || [];
       const remoteItems = remoteSpecials[proj] || [];
       
       // Create a map of existing items by name
       const itemMap = new Map();
+      
+      // Add local items (already filtered by saveSpecials guard)
       localItems.forEach(item => {
-        itemMap.set(item.name.toLowerCase(), item);
+        const itemKey = `${proj}::${item.name}`.toLowerCase();
+        if (!deletedSpecials.includes(itemKey)) {
+          itemMap.set(item.name.toLowerCase(), item);
+        }
       });
       
-      // Add/update with remote items
+      // Add/update with remote items (excluding deleted)
       remoteItems.forEach(item => {
-        itemMap.set(item.name.toLowerCase(), item);
+        const itemKey = `${proj}::${item.name}`.toLowerCase();
+        if (!deletedSpecials.includes(itemKey)) {
+          itemMap.set(item.name.toLowerCase(), item);
+        }
       });
       
       merged[proj] = Array.from(itemMap.values());
@@ -1249,37 +1274,47 @@ function mergeSpecials(remoteSpecials) {
   });
   
   saveSpecials(merged);
-  dbg('[mergeSpecials] merged ' + Object.keys(remoteSpecials).length + ' projects');
+  dbg('[mergeSpecials] merged ' + Object.keys(remoteSpecials).length + ' projects, excluded ' + deletedSpecials.length + ' deleted items');
 }
 
 function mergeValveSpecials(remoteValves) {
   if (!remoteValves || typeof remoteValves !== 'object') return;
   const local = getValveSpecials();
   const merged = { ...local };
+  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
   
   // Merge each project's valves
   Object.keys(remoteValves).forEach(proj => {
     if (!Array.isArray(remoteValves[proj])) return;
     
     if (!merged[proj]) {
-      // New project - just add remote valves
-      merged[proj] = remoteValves[proj];
+      // New project - add remote valves (excluding deleted ones)
+      merged[proj] = remoteValves[proj].filter(item => {
+        const itemKey = `${proj}::${item.name}`.toLowerCase();
+        return !deletedValveSpecials.includes(itemKey);
+      });
     } else {
-      // Existing project - merge arrays, avoiding duplicates
+      // Existing project - merge arrays, avoiding duplicates and deleted items
       const localItems = merged[proj] || [];
       const remoteItems = remoteValves[proj] || [];
       
-      // Create a map of existing items by type-size combo
+      // Create a map of existing items by name
       const itemMap = new Map();
+      
+      // Add local items (already filtered by saveValveSpecials guard)
       localItems.forEach(item => {
-        const key = `${item.type}_${item.size}`.toLowerCase();
-        itemMap.set(key, item);
+        const itemKey = `${proj}::${item.name}`.toLowerCase();
+        if (!deletedValveSpecials.includes(itemKey)) {
+          itemMap.set(item.name.toLowerCase(), item);
+        }
       });
       
-      // Add/update with remote items
+      // Add/update with remote items (excluding deleted)
       remoteItems.forEach(item => {
-        const key = `${item.type}_${item.size}`.toLowerCase();
-        itemMap.set(key, item);
+        const itemKey = `${proj}::${item.name}`.toLowerCase();
+        if (!deletedValveSpecials.includes(itemKey)) {
+          itemMap.set(item.name.toLowerCase(), item);
+        }
       });
       
       merged[proj] = Array.from(itemMap.values());
@@ -1287,7 +1322,7 @@ function mergeValveSpecials(remoteValves) {
   });
   
   saveValveSpecials(merged);
-  dbg('[mergeValveSpecials] merged ' + Object.keys(remoteValves).length + ' projects');
+  dbg('[mergeValveSpecials] merged ' + Object.keys(remoteValves).length + ' projects, excluded ' + deletedValveSpecials.length + ' deleted items');
 }
 
 function mergeRoutes(remoteRoutes) {
@@ -4904,6 +4939,16 @@ function addSpecial() {
   const total= parseInt(document.getElementById('sp-total').value) || 0;
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter special name'); return; }
+  
+  // Clear from deleted array if re-adding
+  const itemKey = `${proj}::${name}`.toLowerCase();
+  const deletedSpecials = LS.get('phx_deleted_specials', []);
+  const newDeleted = deletedSpecials.filter(k => k !== itemKey);
+  if (newDeleted.length !== deletedSpecials.length) {
+    LS.set('phx_deleted_specials', newDeleted);
+    dbg('[addSpecial] cleared from deleted: ' + name);
+  }
+  
   const specials = getSpecials();
   if (!specials[proj]) specials[proj] = [];
   specials[proj].push({ name, total });
@@ -4918,10 +4963,21 @@ function addSpecial() {
 function deleteSpecial(idx) {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   const specials = getSpecials();
+  const deletedItem = specials[proj][idx];
+  
+  // Track deleted item
+  const deletedSpecials = LS.get('phx_deleted_specials', []);
+  const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
+  if (!deletedSpecials.includes(itemKey)) {
+    deletedSpecials.push(itemKey);
+    LS.set('phx_deleted_specials', deletedSpecials);
+  }
+  
   specials[proj].splice(idx, 1);
   saveSpecials(specials);
   pushConfig();
   renderSpecialsList();
+  dbg('[deleteSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
 }
 
 // ── VALVE SETTINGS (same pattern as Specials) ─────────────────
@@ -4978,6 +5034,16 @@ function addValveSpecial() {
   const total = parseInt(document.getElementById('vsp-total').value) || 0;
   const proj  = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter valve name'); return; }
+  
+  // Clear from deleted array if re-adding
+  const itemKey = `${proj}::${name}`.toLowerCase();
+  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+  const newDeleted = deletedValveSpecials.filter(k => k !== itemKey);
+  if (newDeleted.length !== deletedValveSpecials.length) {
+    LS.set('phx_deleted_valve_specials', newDeleted);
+    dbg('[addValveSpecial] cleared from deleted: ' + name);
+  }
+  
   const valves = getValveSpecials();
   if (!valves[proj]) valves[proj] = [];
   valves[proj].push({ name, total });
@@ -5016,10 +5082,21 @@ function editValveSpecialTotal(idx, currentTotal) {
 function deleteValveSpecial(idx) {
   const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   const valves = getValveSpecials();
+  const deletedItem = valves[proj][idx];
+  
+  // Track deleted item (using name, not type+size)
+  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+  const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
+  if (!deletedValveSpecials.includes(itemKey)) {
+    deletedValveSpecials.push(itemKey);
+    LS.set('phx_deleted_valve_specials', deletedValveSpecials);
+  }
+  
   valves[proj].splice(idx, 1);
   saveValveSpecials(valves);
   pushConfig();
   renderValvesList();
+  dbg('[deleteValveSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
 }
 
 
