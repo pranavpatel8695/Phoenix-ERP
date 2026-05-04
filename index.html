@@ -1460,7 +1460,17 @@ function renderHome() {
       <div class="module-card${currentModule==='store'?' selected':''}" onclick="currentModule='store';renderCurrentTab()" style="${currentModule==='store'?'border-color:var(--green);background:rgba(48,209,88,0.05)':''}">
         <div class="icon">🏪</div>
         <div class="name">Store</div>
-        <div class="count">${getStoreItems().filter(i=>i.project!=='central').length} site items</div>
+        <div class="count">${(() => {
+          const items = getStoreItems();
+          if (currentRole === 'admin') {
+            // Admin sees total items (central + all sites)
+            return items.length + ' items';
+          } else {
+            // Site users see only their site items
+            const siteItems = items.filter(i => i.project !== 'central');
+            return siteItems.length + ' site items';
+          }
+        })()}</div>
       </div>
 
     </div>`;
