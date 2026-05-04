@@ -465,9 +465,45 @@ const saveRoutes     = v => LS.set('phx_routes', v);
 const getAssignments = () => LS.get('phx_assignments', {});
 const saveAssignments= v => LS.set('phx_assignments', v);
 const getSpecials    = () => LS.get('phx_specials', {});
-const saveSpecials   = v => LS.set('phx_specials', v);
+const saveSpecials   = v => {
+  // Guard: never save items that are in phx_deleted_specials
+  try {
+    const deletedSpecials = LS.get('phx_deleted_specials', []);
+    if (deletedSpecials.length && typeof v === 'object') {
+      const cleaned = {};
+      Object.keys(v).forEach(proj => {
+        if (Array.isArray(v[proj])) {
+          cleaned[proj] = v[proj].filter(item => {
+            const itemKey = `${proj}::${item.name}`.toLowerCase();
+            return !deletedSpecials.includes(itemKey);
+          });
+        }
+      });
+      v = cleaned;
+    }
+  } catch(e) {}
+  LS.set('phx_specials', v);
+};
 const getValveSpecials  = () => LS.get('phx_valve_specials', {});
-const saveValveSpecials = v  => LS.set('phx_valve_specials', v);
+const saveValveSpecials = v  => {
+  // Guard: never save items that are in phx_deleted_valve_specials
+  try {
+    const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+    if (deletedValveSpecials.length && typeof v === 'object') {
+      const cleaned = {};
+      Object.keys(v).forEach(proj => {
+        if (Array.isArray(v[proj])) {
+          cleaned[proj] = v[proj].filter(item => {
+            const itemKey = `${proj}::${item.name}`.toLowerCase();
+            return !deletedValveSpecials.includes(itemKey);
+          });
+        }
+      });
+      v = cleaned;
+    }
+  } catch(e) {}
+  LS.set('phx_valve_specials', v);
+};
 const getAttendance     = () => LS.get('phx_attendance', []);
 const saveAttendance    = v  => LS.set('phx_attendance', v);
 const getStoreItems     = () => LS.get('phx_store_items', []);
@@ -893,7 +929,27 @@ function handleRealtimeEvent(response) {
   try {
     if (collId === AW.collections.config) {
       // Re-fetch config on any config change
-      fetchConfig().then(() => { setSyncStatus('synced'); renderCurrentTab(); });
+      fetchConfig().then(() => { 
+        setSyncStatus('synced'); 
+        renderCurrentTab();
+        
+        // If on settings tab, also re-render the current settings sub-page
+        if (activeTab === 'settings') {
+          const activeSettingsTab = document.querySelector('#settingsTabs .tab-item.active');
+          if (activeSettingsTab) {
+            const tabText = activeSettingsTab.textContent.toLowerCase();
+            const c = document.getElementById('settingsContent');
+            if (c) {
+              if (tabText.includes('project')) c.innerHTML = renderSettingsProjects();
+              else if (tabText.includes('fitting')) c.innerHTML = renderSettingsSpecials();
+              else if (tabText.includes('valve')) c.innerHTML = renderSettingsValves();
+              else if (tabText.includes('machine')) c.innerHTML = renderSettingsMachinery();
+              else if (tabText.includes('export')) c.innerHTML = renderSettingsExport();
+              dbg('[Realtime] refreshed settings sub-page: ' + tabText);
+            }
+          }
+        }
+      });
       return;
     }
 
@@ -1051,16 +1107,38 @@ async function pushConfig() {
     dbg('[pushConfig] filtered deletedUsers: ' + deletedUsers.length + ' → ' + cleanDeletedUsers.length);
   }
 
+  // Filter deleted items from specials and valveSpecials before pushing
+  const deletedSpecials = LS.get('phx_deleted_specials', []);
+  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+  
+  const cleanSpecials = {};
+  const rawSpecials = getSpecials();
+  Object.keys(rawSpecials).forEach(proj => {
+    cleanSpecials[proj] = (rawSpecials[proj] || []).filter(item => {
+      const itemKey = `${proj}::${item.name}`.toLowerCase();
+      return !deletedSpecials.includes(itemKey);
+    });
+  });
+  
+  const cleanValveSpecials = {};
+  const rawValveSpecials = getValveSpecials();
+  Object.keys(rawValveSpecials).forEach(proj => {
+    cleanValveSpecials[proj] = (rawValveSpecials[proj] || []).filter(item => {
+      const itemKey = `${proj}::${item.name}`.toLowerCase();
+      return !deletedValveSpecials.includes(itemKey);
+    });
+  });
+
   const configData = {
     projects:      getProjects(),
     routes:        slimRoutes,
     assignments:   getAssignments(),
-    specials:      getSpecials(),
-    valveSpecials: getValveSpecials(),
+    specials:      cleanSpecials,
+    valveSpecials: cleanValveSpecials,
     users:         cleanUsers,
     deletedUsers:  cleanDeletedUsers,
-    deletedSpecials: LS.get('phx_deleted_specials', []),
-    deletedValveSpecials: LS.get('phx_deleted_valve_specials', []),
+    deletedSpecials: deletedSpecials,
+    deletedValveSpecials: deletedValveSpecials,
     deletedReports: LS.get('phx_deleted_reports', []),
     updatedAt:     Date.now()
   };
