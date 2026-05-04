@@ -732,8 +732,8 @@ async function fetchConfig() {
       if (d.projects?.length) saveProjects(d.projects);
       if (d.routes && Object.keys(d.routes).length) mergeRoutes(d.routes);
       if (d.assignments) saveAssignments(d.assignments);
-      if (d.specials) saveSpecials(d.specials);
-      if (d.valveSpecials) saveValveSpecials(d.valveSpecials);
+      if (d.specials) mergeSpecials(d.specials);
+      if (d.valveSpecials) mergeValveSpecials(d.valveSpecials);
       if (d.users) mergeUsers(d.users, d.deletedUsers||[]);
       if (d.deletedReports?.length) {
         const ex = LS.get('phx_deleted_reports',[]);
@@ -1214,6 +1214,80 @@ function mergeUsers(remoteUsers, deletedUsers=[]) {
   }
   
   saveUsers(merged);
+}
+
+function mergeSpecials(remoteSpecials) {
+  if (!remoteSpecials || typeof remoteSpecials !== 'object') return;
+  const local = getSpecials();
+  const merged = { ...local };
+  
+  // Merge each project's specials
+  Object.keys(remoteSpecials).forEach(proj => {
+    if (!Array.isArray(remoteSpecials[proj])) return;
+    
+    if (!merged[proj]) {
+      // New project - just add remote specials
+      merged[proj] = remoteSpecials[proj];
+    } else {
+      // Existing project - merge arrays, avoiding duplicates
+      const localItems = merged[proj] || [];
+      const remoteItems = remoteSpecials[proj] || [];
+      
+      // Create a map of existing items by name
+      const itemMap = new Map();
+      localItems.forEach(item => {
+        itemMap.set(item.name.toLowerCase(), item);
+      });
+      
+      // Add/update with remote items
+      remoteItems.forEach(item => {
+        itemMap.set(item.name.toLowerCase(), item);
+      });
+      
+      merged[proj] = Array.from(itemMap.values());
+    }
+  });
+  
+  saveSpecials(merged);
+  dbg('[mergeSpecials] merged ' + Object.keys(remoteSpecials).length + ' projects');
+}
+
+function mergeValveSpecials(remoteValves) {
+  if (!remoteValves || typeof remoteValves !== 'object') return;
+  const local = getValveSpecials();
+  const merged = { ...local };
+  
+  // Merge each project's valves
+  Object.keys(remoteValves).forEach(proj => {
+    if (!Array.isArray(remoteValves[proj])) return;
+    
+    if (!merged[proj]) {
+      // New project - just add remote valves
+      merged[proj] = remoteValves[proj];
+    } else {
+      // Existing project - merge arrays, avoiding duplicates
+      const localItems = merged[proj] || [];
+      const remoteItems = remoteValves[proj] || [];
+      
+      // Create a map of existing items by type-size combo
+      const itemMap = new Map();
+      localItems.forEach(item => {
+        const key = `${item.type}_${item.size}`.toLowerCase();
+        itemMap.set(key, item);
+      });
+      
+      // Add/update with remote items
+      remoteItems.forEach(item => {
+        const key = `${item.type}_${item.size}`.toLowerCase();
+        itemMap.set(key, item);
+      });
+      
+      merged[proj] = Array.from(itemMap.values());
+    }
+  });
+  
+  saveValveSpecials(merged);
+  dbg('[mergeValveSpecials] merged ' + Object.keys(remoteValves).length + ' projects');
 }
 
 function mergeRoutes(remoteRoutes) {
@@ -6352,6 +6426,7 @@ function renderSettingsMachinery() {
 function deleteMachine(id) {
   if (!confirm('Delete this machine? All logs and service records will remain.')) return;
   saveMachinery(getMachinery().filter(m=>m.id!==id));
+  deleteMachineFromAW(id).catch(e => dbg('[deleteMachine] AW delete failed: '+e.message,'warn'));
   pushConfig();
   document.getElementById('settingsContent').innerHTML = renderSettingsMachinery();
 }
