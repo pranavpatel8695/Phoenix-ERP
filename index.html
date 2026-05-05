@@ -2185,39 +2185,61 @@ function buildTypeFields(type, p={}) {
 
   // ── 4. VALVE ───────────────────────────────────────────────
   if (type === 'valve') {
+    const valProj = p.project || getVisibleProjects()[0] || '';
+    const valveItems = (getValveSpecials()[valProj] || []);
+    
+    // Convert old format to new if needed
+    let existingValves = p.valves || [];
+    if (!existingValves.length && p.valType) {
+      existingValves = [{type: p.valType, qty: p.qty || 1}];
+    }
+    if (!existingValves.length) existingValves = [{type: '', qty: 1}];
+    
     html += `
       <div style="background:rgba(255,69,58,0.06);border:1px solid rgba(255,69,58,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location</div>
         <div class="field-group"><label>Chainage (m) <span class="req">*</span></label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
-        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near Dabhoda Village crossroad"></div>
+        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near pump house"></div>
       </div>
+      
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔧 Valve Details</div>
-        ${(() => {
-          const vProj = p.project || getVisibleProjects()[0] || '';
-          const valveItems = (getValveSpecials()[vProj] || []);
-          const selectedVal = p.valType || '';
-          if (valveItems.length) {
-            return `<div class="field-group"><label>Valve Type & Size <span class="req">*</span></label>
-              <select id="f-valType">
-                <option value="">— Select Valve —</option>
-                ${valveItems.map(s=>`<option value="${s.name}"${selectedVal===s.name?' selected':''}>${s.name}</option>`).join('')}
-              </select>
-            </div>`;
-          } else {
-            return `<div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:8px;padding:10px;font-size:12px;color:var(--orange);margin-bottom:10px">
-              ⚠️ No valves defined for this project. Add them in Settings → Valves.
-            </div>
-            <div class="field-group"><label>Valve Type & Size <span class="req">*</span></label>
-              <input type="text" id="f-valType" value="${p.valType||''}" placeholder="e.g. Sluice Valve 600mm">
-            </div>`;
-          }
-        })()}
-        <input type="hidden" id="f-size" value="${p.size||''}">
-        <div class="field-group"><label>Quantity (Nos) <span class="req">*</span></label>
-          <input type="number" id="f-val-qty" value="${p.qty||1}" min="1" placeholder="e.g. 1">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+          <span>🔧 Valves at this Chainage</span>
+          <button type="button" class="btn btn-sm" onclick="addValveRow()" style="padding:4px 12px;font-size:11px;background:var(--green);color:#000">+ Add</button>
         </div>
-        <div class="field-group"><label>Chamber Required?</label>
+        
+        <div id="valve-rows-container">
+          ${existingValves.map((v, idx) => {
+            const hasSpecials = valveItems.length > 0;
+            return `
+            <div class="valve-row" data-index="${idx}" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-size:11px;font-weight:600;color:var(--muted)">Valve ${idx + 1}</div>
+                ${existingValves.length > 1 ? `<button type="button" onclick="removeValveRow(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:0;width:24px;height:24px">×</button>` : ''}
+              </div>
+              ${hasSpecials ? `
+                <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+                  <select class="valve-type" data-index="${idx}">
+                    <option value="">— Select Valve —</option>
+                    ${valveItems.map(s=>`<option value="${s.name}"${v.type===s.name?' selected':''}>${s.name}</option>`).join('')}
+                  </select>
+                </div>` : `
+                <div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:6px;padding:6px;font-size:10px;color:var(--orange);margin-bottom:8px">
+                  ⚠️ No valves in Settings
+                </div>
+                <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+                  <input type="text" class="valve-type" data-index="${idx}" value="${v.type||''}" placeholder="e.g. Sluice Valve 600mm">
+                </div>`}
+              <div class="field-group"><label>Quantity (Nos) <span class="req">*</span></label>
+                <input type="number" class="valve-qty" data-index="${idx}" value="${v.qty||1}" min="1">
+              </div>
+            </div>
+          `;
+          }).join('')}
+        </div>
+        
+        <div class="field-group" style="margin-top:12px">
+          <label>Chamber Required?</label>
           <div class="radio-group">
             <div class="radio-opt${(p.chamberReq||'No')==='No'?' selected':''}" onclick="selectRadio('f-chamberReq','No',this)">No</div>
             <div class="radio-opt${p.chamberReq==='Yes'?' selected':''}" onclick="selectRadio('f-chamberReq','Yes',this)">Yes</div>
@@ -2294,44 +2316,66 @@ function buildTypeFields(type, p={}) {
 
   // ── 6. FITTING ─────────────────────────────────────────────
   if (type === 'fitting') {
+    const fitProj = p.project || getVisibleProjects()[0] || '';
+    const specItems = (getSpecials()[fitProj] || []);
+    
+    // Convert old format to new if needed
+    let existingFittings = p.fittings || [];
+    if (!existingFittings.length && p.fitType) {
+      existingFittings = [{type: p.fitType, qty: p.qty || 1}];
+    }
+    if (!existingFittings.length) existingFittings = [{type: '', qty: 1}];
+    
     html += `
       <div style="background:rgba(90,200,250,0.06);border:1px solid rgba(90,200,250,0.2);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location</div>
         <div class="field-group"><label>Chainage (m) <span class="req">*</span></label><input type="number" id="f-chainage" value="${p.chainage||''}" placeholder="e.g. 1200"></div>
-        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near road crossing Ch:450m"></div>
+        <div class="field-group"><label>Location Description</label><input type="text" id="f-location" value="${p.location||''}" placeholder="e.g. Near road crossing"></div>
       </div>
+      
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔗 Fitting Details</div>
-        ${(() => {
-          const fProj = p.project || getVisibleProjects()[0] || '';
-          const specItems = (getSpecials()[fProj] || []);
-          const selectedSpec = p.fitType || '';
-          if (specItems.length) {
-            return `<div class="field-group"><label>Fitting Type & Size <span class="req">*</span></label>
-              <select id="f-fitType">
-                <option value="">— Select Fitting —</option>
-                ${specItems.map(s=>`<option value="${s.name}"${selectedSpec===s.name?' selected':''}>${s.name}</option>`).join('')}
-              </select>
-            </div>`;
-          } else {
-            return `<div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:8px;padding:10px;font-size:12px;color:var(--orange);margin-bottom:10px">
-              ⚠️ No fittings defined for this project. Add them in Settings → Fittings.
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+          <span>🔗 Fittings at this Chainage</span>
+          <button type="button" class="btn btn-sm" onclick="addFittingRow()" style="padding:4px 12px;font-size:11px;background:var(--cyan);color:#000">+ Add</button>
+        </div>
+        
+        <div id="fitting-rows-container">
+          ${existingFittings.map((f, idx) => {
+            const hasSpecials = specItems.length > 0;
+            return `
+            <div class="fitting-row" data-index="${idx}" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-size:11px;font-weight:600;color:var(--muted)">Fitting ${idx + 1}</div>
+                ${existingFittings.length > 1 ? `<button type="button" onclick="removeFittingRow(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:0;width:24px;height:24px">×</button>` : ''}
+              </div>
+              ${hasSpecials ? `
+                <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+                  <select class="fitting-type" data-index="${idx}">
+                    <option value="">— Select Fitting —</option>
+                    ${specItems.map(s=>`<option value="${s.name}"${f.type===s.name?' selected':''}>${s.name}</option>`).join('')}
+                  </select>
+                </div>` : `
+                <div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:6px;padding:6px;font-size:10px;color:var(--orange);margin-bottom:8px">
+                  ⚠️ No fittings in Settings
+                </div>
+                <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+                  <input type="text" class="fitting-type" data-index="${idx}" value="${f.type||''}" placeholder="e.g. Tee (Equal) 600mm">
+                </div>`}
+              <div class="field-group"><label>Quantity <span class="req">*</span></label>
+                <input type="number" class="fitting-qty" data-index="${idx}" value="${f.qty||1}" min="1">
+              </div>
             </div>
-            <div class="field-group"><label>Fitting Type & Size <span class="req">*</span></label>
-              <input type="text" id="f-fitType" value="${p.fitType||''}" placeholder="e.g. Tee (Equal) 600mm">
-            </div>`;
-          }
-        })()}
-        <input type="hidden" id="f-size" value="${p.size||''}">
-        <div class="form-row">
-          <div class="field-group"><label>Qty <span class="req">*</span></label><input type="number" id="f-qty" value="${p.qty||1}" min="1"></div>
-          <div class="field-group"><label>Thrust Block Required?</label>
-            <div class="radio-group">
-              <div class="radio-opt${(p.thrustBlock||'No')==='No'?' selected':''}" onclick="selectRadio('f-thrustBlock','No',this)">No</div>
-              <div class="radio-opt${p.thrustBlock==='Yes'?' selected':''}" onclick="selectRadio('f-thrustBlock','Yes',this)">Yes</div>
-            </div>
-            <input type="hidden" id="f-thrustBlock" value="${p.thrustBlock||'No'}">
+          `;
+          }).join('')}
+        </div>
+        
+        <div class="field-group" style="margin-top:12px">
+          <label>Thrust Block Required?</label>
+          <div class="radio-group">
+            <div class="radio-opt${(p.thrustBlock||'No')==='No'?' selected':''}" onclick="selectRadio('f-thrustBlock','No',this)">No</div>
+            <div class="radio-opt${p.thrustBlock==='Yes'?' selected':''}" onclick="selectRadio('f-thrustBlock','Yes',this)">Yes</div>
           </div>
+          <input type="hidden" id="f-thrustBlock" value="${p.thrustBlock||'No'}">
         </div>
       </div>`;
   }
@@ -3031,6 +3075,103 @@ function closeDependencyError() {
   }
 }
 
+// ── VALVE & FITTING ROW MANAGEMENT ────────────────────────────
+function addValveRow() {
+  const container = document.getElementById('valve-rows-container');
+  const index = container.children.length;
+  const project = document.getElementById('f-project')?.value || getVisibleProjects()[0] || '';
+  const valveItems = (getValveSpecials()[project] || []);
+  const hasSpecials = valveItems.length > 0;
+  
+  const html = `
+    <div class="valve-row" data-index="${index}" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted)">Valve ${index + 1}</div>
+        <button type="button" onclick="removeValveRow(${index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:0;width:24px;height:24px">×</button>
+      </div>
+      ${hasSpecials ? `
+        <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+          <select class="valve-type" data-index="${index}">
+            <option value="">— Select Valve —</option>
+            ${valveItems.map(s=>`<option value="${s.name}">${s.name}</option>`).join('')}
+          </select>
+        </div>` : `
+        <div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:6px;padding:6px;font-size:10px;color:var(--orange);margin-bottom:8px">
+          ⚠️ No valves in Settings
+        </div>
+        <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+          <input type="text" class="valve-type" data-index="${index}" placeholder="e.g. Sluice Valve 600mm">
+        </div>`}
+      <div class="field-group"><label>Quantity (Nos) <span class="req">*</span></label>
+        <input type="number" class="valve-qty" data-index="${index}" value="1" min="1">
+      </div>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function removeValveRow(index) {
+  const row = document.querySelector(`.valve-row[data-index="${index}"]`);
+  if (row) row.remove();
+  // Reindex remaining rows
+  document.querySelectorAll('.valve-row').forEach((r, i) => {
+    r.dataset.index = i;
+    r.querySelector('div:first-child > div:first-child').textContent = `Valve ${i + 1}`;
+    r.querySelector('.valve-type').dataset.index = i;
+    r.querySelector('.valve-qty').dataset.index = i;
+    const removeBtn = r.querySelector('button[onclick^="removeValveRow"]');
+    if (removeBtn) removeBtn.setAttribute('onclick', `removeValveRow(${i})`);
+  });
+}
+
+function addFittingRow() {
+  const container = document.getElementById('fitting-rows-container');
+  const index = container.children.length;
+  const project = document.getElementById('f-project')?.value || getVisibleProjects()[0] || '';
+  const specItems = (getSpecials()[project] || []);
+  const hasSpecials = specItems.length > 0;
+  
+  const html = `
+    <div class="fitting-row" data-index="${index}" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted)">Fitting ${index + 1}</div>
+        <button type="button" onclick="removeFittingRow(${index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:0;width:24px;height:24px">×</button>
+      </div>
+      ${hasSpecials ? `
+        <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+          <select class="fitting-type" data-index="${index}">
+            <option value="">— Select Fitting —</option>
+            ${specItems.map(s=>`<option value="${s.name}">${s.name}</option>`).join('')}
+          </select>
+        </div>` : `
+        <div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:6px;padding:6px;font-size:10px;color:var(--orange);margin-bottom:8px">
+          ⚠️ No fittings in Settings
+        </div>
+        <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+          <input type="text" class="fitting-type" data-index="${index}" placeholder="e.g. Tee (Equal) 600mm">
+        </div>`}
+      <div class="field-group"><label>Quantity <span class="req">*</span></label>
+        <input type="number" class="fitting-qty" data-index="${index}" value="1" min="1">
+      </div>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function removeFittingRow(index) {
+  const row = document.querySelector(`.fitting-row[data-index="${index}"]`);
+  if (row) row.remove();
+  // Reindex remaining rows
+  document.querySelectorAll('.fitting-row').forEach((r, i) => {
+    r.dataset.index = i;
+    r.querySelector('div:first-child > div:first-child').textContent = `Fitting ${i + 1}`;
+    r.querySelector('.fitting-type').dataset.index = i;
+    r.querySelector('.fitting-qty').dataset.index = i;
+    const removeBtn = r.querySelector('button[onclick^="removeFittingRow"]');
+    if (removeBtn) removeBtn.setAttribute('onclick', `removeFittingRow(${i})`);
+  });
+}
+
 // ── SUBMIT REPORT ─────────────────────────────────────────────
 async function submitReport(type) {
   const project = document.getElementById('f-project')?.value;
@@ -3077,8 +3218,19 @@ async function submitReport(type) {
   if (type === 'valve') {
     if (!req(g('f-chainage'), 'Enter Chainage')) return;
     if (!req(g('f-location'), 'Enter Location')) return;
-    if (!req(g('f-valType'), 'Select Valve Type & Size')) return;
-    if (!req(g('f-val-qty') || '1', 'Enter Quantity')) return;
+    
+    // Collect valve data from rows
+    const valves = [];
+    document.querySelectorAll('.valve-row').forEach(row => {
+      const vType = row.querySelector('.valve-type').value.trim();
+      const vQty = parseInt(row.querySelector('.valve-qty').value) || 1;
+      if (vType) valves.push({type: vType, qty: vQty});
+    });
+    if (!valves.length) {
+      showToast('❌ Add at least one valve');
+      return;
+    }
+    _tempValves = valves;  // Store for data assignment
   }
   if (type === 'chamber') {
     if (!req(g('f-chainage'), 'Enter Chainage')) return;
@@ -3091,8 +3243,19 @@ async function submitReport(type) {
   if (type === 'fitting') {
     if (!req(g('f-chainage'), 'Enter Chainage')) return;
     if (!req(g('f-location'), 'Enter Location')) return;
-    if (!req(g('f-fitType'), 'Select Fitting Type & Size')) return;
-    if (!req(g('f-qty') || '1', 'Enter Quantity')) return;
+    
+    // Collect fitting data from rows
+    const fittings = [];
+    document.querySelectorAll('.fitting-row').forEach(row => {
+      const fType = row.querySelector('.fitting-type').value.trim();
+      const fQty = parseInt(row.querySelector('.fitting-qty').value) || 1;
+      if (fType) fittings.push({type: fType, qty: fQty});
+    });
+    if (!fittings.length) {
+      showToast('❌ Add at least one fitting');
+      return;
+    }
+    _tempFittings = fittings;  // Store for data assignment
   }
   if (type === 'structure') {
     if (!req(g('f-location'), 'Select Location')) return;
@@ -3238,10 +3401,15 @@ async function submitReport(type) {
   if (type==='valve') {
     data.chainage      = gf('f-chainage');
     data.location      = g('f-location');
-    data.valType       = g('f-valType');
-    data.size          = g('f-size');
-    data.qty           = gf('f-val-qty') || 1;
     data.chamberReq    = g('f-chamberReq');
+    
+    // Store valves array (new format)
+    data.valves = _tempValves;
+    
+    // Create legacy fields for backwards compatibility and display
+    data.valType = _tempValves.map(v => v.type).join(', ');
+    data.qty = _tempValves.reduce((sum, v) => sum + v.qty, 0);
+    data.size = '';  // Not used in new format
   }
   if (type==='chamber') {
     data.chainage   = gf('f-chainage');
@@ -3257,10 +3425,15 @@ async function submitReport(type) {
   if (type==='fitting') {
     data.chainage    = gf('f-chainage');
     data.location    = g('f-location');
-    data.fitType     = g('f-fitType');
-    data.size        = g('f-size');
-    data.qty         = gf('f-qty') || 1;
     data.thrustBlock = g('f-thrustBlock');
+    
+    // Store fittings array (new format)
+    data.fittings = _tempFittings;
+    
+    // Create legacy fields for backwards compatibility and display
+    data.fitType = _tempFittings.map(f => f.type).join(', ');
+    data.qty = _tempFittings.reduce((sum, f) => sum + f.qty, 0);
+    data.size = '';  // Not used in new format
   }
   if (type==='structure') {
     data.strType      = g('f-strType');
@@ -3818,8 +3991,25 @@ function reportItemHTML(r, showActions=true) {
   if (r.type === 'valve') {
     details += row('Chainage', r.chainage ? `Ch:${r.chainage}m` : '');
     details += row('Location', r.location);
-    details += row('Valve Type & Size', r.valType);
-    details += row('Quantity', r.qty ? `${r.qty} nos` : '1 nos');
+    
+    // Display multiple valves if applicable
+    if (r.valves && r.valves.length > 1) {
+      details += `<div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <span class="label">Valves at this Location</span>
+        <div style="width:100%;padding-left:10px">`;
+      r.valves.forEach((v, i) => {
+        details += `<div style="font-size:12px;color:var(--text);margin-bottom:4px">
+          ${i + 1}. ${v.type} <span style="color:var(--muted)">× ${v.qty}</span>
+        </div>`;
+      });
+      details += `<div style="font-size:12px;font-weight:600;color:var(--text);margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+        Total: ${r.qty} valves
+      </div></div></div>`;
+    } else {
+      details += row('Valve Type & Size', r.valType);
+      details += row('Quantity', r.qty ? `${r.qty} nos` : '1 nos');
+    }
+    
     details += row('Chamber Required', r.chamberReq);
   }
   if (r.type === 'chamber') {
@@ -3833,9 +4023,25 @@ function reportItemHTML(r, showActions=true) {
   if (r.type === 'fitting') {
     details += row('Chainage', r.chainage ? `Ch:${r.chainage}m` : '');
     details += row('Location', r.location);
-    details += row('Fitting Type', r.fitType);
-    details += row('Size', r.size);
-    details += row('Qty', r.qty);
+    
+    // Display multiple fittings if applicable
+    if (r.fittings && r.fittings.length > 1) {
+      details += `<div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <span class="label">Fittings at this Location</span>
+        <div style="width:100%;padding-left:10px">`;
+      r.fittings.forEach((f, i) => {
+        details += `<div style="font-size:12px;color:var(--text);margin-bottom:4px">
+          ${i + 1}. ${f.type} <span style="color:var(--muted)">× ${f.qty}</span>
+        </div>`;
+      });
+      details += `<div style="font-size:12px;font-weight:600;color:var(--text);margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+        Total: ${r.qty} fittings
+      </div></div></div>`;
+    } else {
+      details += row('Fitting Type', r.fitType);
+      details += row('Quantity', r.qty);
+    }
+    
     details += row('Thrust Block', r.thrustBlock);
   }
   if (r.type === 'structure') {
