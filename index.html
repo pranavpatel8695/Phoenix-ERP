@@ -1549,6 +1549,25 @@ function doLogout() {
   document.getElementById('loginPass').value = '';
 }
 
+function clearDeletedCache() {
+  showConfirm(
+    'Clear Deleted Cache',
+    'Clear all stuck deleted items? This will allow you to re-add previously deleted items.',
+    () => {
+      LS.set('phx_deleted_specials', []);
+      LS.set('phx_deleted_valve_specials', []);
+      LS.set('phx_deleted_users', []);
+      LS.set('phx_deleted_reports', []);
+      dbg('[clearDeletedCache] cleared all deleted arrays');
+      
+      pushConfig().then(() => {
+        showToast('✅ Deleted cache cleared! Changes will sync to all devices.');
+        document.getElementById('userMenuModal').classList.add('hidden');
+      });
+    }
+  );
+}
+
 function showUserMenu() {
   const el = document.getElementById('userMenuContent');
   el.innerHTML = `
@@ -1561,6 +1580,7 @@ function showUserMenu() {
     </div>
     <button class="btn btn-secondary w-full mb-2" onclick="fetchAllData().then(()=>renderCurrentTab());document.getElementById('userMenuModal').classList.add('hidden')">↻ Sync Now</button>
     <button class="btn btn-ghost w-full mb-2" onclick="showDebugLog();document.getElementById('userMenuModal').classList.add('hidden')">🔍 Debug Log</button>
+    ${currentRole === 'admin' ? '<button class="btn btn-ghost w-full mb-2" onclick="clearDeletedCache()">🗑️ Clear Deleted Cache</button>' : ''}
     <button class="btn btn-danger w-full" onclick="doLogout()">Sign Out</button>
   `;
   document.getElementById('userMenuModal').classList.remove('hidden');
