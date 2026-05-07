@@ -6263,9 +6263,15 @@ function renderAttendanceEngineer() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
   const monthEnd   = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
   const monthRecs  = all.filter(a => a.atype==='attendance' && a.date >= monthStart && a.date <= monthEnd);
-  const present = monthRecs.filter(a=>a.status==='present').length;
-  const absent  = monthRecs.filter(a=>a.status==='absent').length;
-  const half    = monthRecs.filter(a=>a.status==='half').length;
+  
+  // Deduplicate by date - count unique dates only (in case of duplicate records)
+  const presentDates = new Set(monthRecs.filter(a=>a.status==='present').map(a=>a.date));
+  const absentDates = new Set(monthRecs.filter(a=>a.status==='absent').map(a=>a.date));
+  const halfDates = new Set(monthRecs.filter(a=>a.status==='half').map(a=>a.date));
+  
+  const present = presentDates.size;
+  const absent = absentDates.size;
+  const half = halfDates.size;
   
   // Count actual leave DAYS (not just records)
   const leaveRecs = all.filter(a => a.atype==='leave' && a.leaveFrom >= monthStart && a.leaveFrom <= monthEnd);
@@ -6437,9 +6443,14 @@ function monthlyAttendanceSummary(user, records) {
   const monthRecs = records.filter(a => a.user===user && a.date?.startsWith(selMonth) && a.atype==='attendance');
   const leaveRecs = records.filter(a => a.user===user && a.atype==='leave' && a.leaveFrom?.startsWith(selMonth));
 
-  const present = monthRecs.filter(a=>a.status==='present').length;
-  const absent  = monthRecs.filter(a=>a.status==='absent').length;
-  const half    = monthRecs.filter(a=>a.status==='half').length;
+  // Deduplicate by date - count unique dates only (in case of duplicate records)
+  const presentDates = new Set(monthRecs.filter(a=>a.status==='present').map(a=>a.date));
+  const absentDates = new Set(monthRecs.filter(a=>a.status==='absent').map(a=>a.date));
+  const halfDates = new Set(monthRecs.filter(a=>a.status==='half').map(a=>a.date));
+  
+  const present = presentDates.size;
+  const absent = absentDates.size;
+  const half = halfDates.size;
   
   // Count actual leave DAYS (not just records)
   let leaves = 0;
@@ -6921,8 +6932,12 @@ function exportMonthlyAttendance(targetUser) {
   const tdS = 'padding:6px 10px;font-size:11px;border:1px solid #e8e8e8';
 
   let rows = Object.values(users).map(u => {
-    const present = u.att.filter(a=>a.status==='present').length;
-    const absent  = u.att.filter(a=>a.status==='absent').length;
+    // Deduplicate by date - count unique dates only (in case of duplicate records)
+    const presentDates = new Set(u.att.filter(a=>a.status==='present').map(a=>a.date));
+    const absentDates = new Set(u.att.filter(a=>a.status==='absent').map(a=>a.date));
+    
+    const present = presentDates.size;
+    const absent = absentDates.size;
     
     // Count actual leave DAYS that fall within current month
     let leaves = 0;
