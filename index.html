@@ -6698,9 +6698,24 @@ function renderAttendanceAdmin() {
   );
   const done = active.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
 
+  // Generate last 12 months for export selector
+  const exportMonths = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const yearMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const label = d.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+    exportMonths.push({ value: yearMonth, label });
+  }
+
   let html = `<div class="flex justify-between items-center mb-3">
     <div class="section-title">🕐 My Attendance</div>
-    <button class="btn btn-ghost btn-sm" onclick="exportMonthlyAttendance('')">📄 All Staff</button>
+    <div class="flex gap-2 items-center">
+      <select id="export-month-sel" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
+        ${exportMonths.map(m => `<option value="${m.value}">${m.label}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="exportMonthlyAttendance('', document.getElementById('export-month-sel').value)">📄 All Staff</button>
+    </div>
   </div>`;
 
   // Admin's own today card
@@ -6941,11 +6956,23 @@ function reviewAttendance(id, role, decision) {
   renderCurrentTab();
 }
 
-function exportMonthlyAttendance(targetUser) {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-  const monthEnd   = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
-  const monthName  = now.toLocaleString('en-IN',{month:'long',year:'numeric'});
+function exportMonthlyAttendance(targetUser, selectedMonth) {
+  // Use selected month or default to current month
+  let monthStart, monthEnd, monthName;
+  
+  if (selectedMonth) {
+    // Selected month format: "2026-05"
+    const [year, month] = selectedMonth.split('-').map(Number);
+    monthStart = new Date(year, month - 1, 1).toISOString().slice(0, 10);
+    monthEnd = new Date(year, month, 0).toISOString().slice(0, 10);
+    monthName = new Date(year, month - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  } else {
+    // Current month
+    const now = new Date();
+    monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    monthName = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  }
 
   let all = getAttendance();
   const deleted = LS.get('phx_deleted_users', []);
