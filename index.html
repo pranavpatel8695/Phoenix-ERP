@@ -1568,6 +1568,110 @@ function clearDeletedCache() {
   );
 }
 
+async function cleanupOldAttendance() {
+  // Show month selection dialog
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+  
+  showConfirm(
+    'Cleanup Attendance - Select Month',
+    `
+    <div style="margin:16px 0">
+      <div class="field-group">
+        <label>Select Month to Delete</label>
+        <select id="cleanup-month-select" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
+          <option value="">— Select Month —</option>
+          <option value="2026-01">January 2026</option>
+          <option value="2026-02">February 2026</option>
+          <option value="2026-03">March 2026</option>
+          <option value="2026-04">April 2026</option>
+          <option value="2026-05">May 2026</option>
+          <option value="2026-06">June 2026</option>
+          <option value="2026-07">July 2026</option>
+          <option value="2026-08">August 2026</option>
+          <option value="2026-09">September 2026</option>
+          <option value="2026-10">October 2026</option>
+          <option value="2026-11">November 2026</option>
+          <option value="2026-12">December 2026</option>
+          <option value="2025-01">January 2025</option>
+          <option value="2025-02">February 2025</option>
+          <option value="2025-03">March 2025</option>
+          <option value="2025-04">April 2025</option>
+          <option value="2025-05">May 2025</option>
+          <option value="2025-06">June 2025</option>
+          <option value="2025-07">July 2025</option>
+          <option value="2025-08">August 2025</option>
+          <option value="2025-09">September 2025</option>
+          <option value="2025-10">October 2025</option>
+          <option value="2025-11">November 2025</option>
+          <option value="2025-12">December 2025</option>
+        </select>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px">
+        ⚠️ All attendance records from the selected month will be permanently deleted.
+      </div>
+    </div>
+    `,
+    async () => {
+      const selectedMonth = document.getElementById('cleanup-month-select')?.value;
+      if (!selectedMonth) {
+        showToast('❌ Please select a month');
+        return;
+      }
+      
+      // Filter records for selected month
+      const allAttendance = getAttendance();
+      const recordsToDelete = allAttendance.filter(a => a.date && a.date.startsWith(selectedMonth));
+      const recordsToKeep = allAttendance.filter(a => !a.date || !a.date.startsWith(selectedMonth));
+      
+      if (recordsToDelete.length === 0) {
+        showToast(`ℹ️ No attendance records found for ${selectedMonth}`);
+        return;
+      }
+      
+      // Get month name for display
+      const monthNames = {
+        '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+        '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+        '09': 'September', '10': 'October', '11': 'November', '12': 'December'
+      };
+      const [year, month] = selectedMonth.split('-');
+      const monthName = monthNames[month] || month;
+      
+      // Second confirmation with count
+      showConfirm(
+        'Confirm Deletion',
+        `Delete ${recordsToDelete.length} attendance records from ${monthName} ${year}? This cannot be undone and will sync across all devices.`,
+        async () => {
+          try {
+            // Delete from Appwrite
+            const deletePromises = recordsToDelete.map(record => 
+              sdk.database.deleteDocument(AW.dbId, AW.collections.attendance, record.id)
+                .catch(e => dbg('[cleanupOldAttendance] Failed to delete from AW: ' + record.id, 'warn'))
+            );
+            
+            await Promise.all(deletePromises);
+            
+            // Update localStorage
+            saveAttendance(recordsToKeep);
+            
+            dbg(`[cleanupOldAttendance] Deleted ${recordsToDelete.length} records from ${monthName} ${year}`);
+            showToast(`✅ Deleted ${recordsToDelete.length} attendance records from ${monthName} ${year}!`);
+            
+            // Refresh if on attendance tab
+            if (currentTab === 'attendance') {
+              renderCurrentTab();
+            }
+          } catch (error) {
+            dbg('[cleanupOldAttendance] Error: ' + error.message, 'error');
+            showToast('❌ Error deleting records. Check debug log.');
+          }
+        }
+      );
+    }
+  );
+}
+
 function showUserMenu() {
   const el = document.getElementById('userMenuContent');
   el.innerHTML = `
@@ -1581,6 +1685,7 @@ function showUserMenu() {
     <button class="btn btn-secondary w-full mb-2" onclick="fetchAllData().then(()=>renderCurrentTab());document.getElementById('userMenuModal').classList.add('hidden')">↻ Sync Now</button>
     <button class="btn btn-ghost w-full mb-2" onclick="showDebugLog();document.getElementById('userMenuModal').classList.add('hidden')">🔍 Debug Log</button>
     ${currentRole === 'admin' ? '<button class="btn btn-ghost w-full mb-2" onclick="clearDeletedCache()">🗑️ Clear Deleted Cache</button>' : ''}
+    ${currentRole === 'admin' ? '<button class="btn btn-ghost w-full mb-2" onclick="cleanupOldAttendance();document.getElementById(\'userMenuModal\').classList.add(\'hidden\')">🧹 Cleanup Old Attendance</button>' : ''}
     <button class="btn btn-danger w-full" onclick="doLogout()">Sign Out</button>
   `;
   document.getElementById('userMenuModal').classList.remove('hidden');
@@ -5977,7 +6082,13 @@ function initSettings() {
 // ── UTILITY ───────────────────────────────────────────────────
 function showConfirm(title, msg, onYes) {
   document.getElementById('confirmTitle').textContent = title;
-  document.getElementById('confirmMsg').textContent = msg;
+  const msgEl = document.getElementById('confirmMsg');
+  // Support HTML if msg contains HTML tags
+  if (msg.includes('<')) {
+    msgEl.innerHTML = msg;
+  } else {
+    msgEl.textContent = msg;
+  }
   document.getElementById('confirmYesBtn').onclick = () => {
     document.getElementById('confirmModal').classList.add('hidden');
     onYes();
