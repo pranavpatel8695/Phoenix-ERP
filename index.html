@@ -6266,7 +6266,17 @@ function renderAttendanceEngineer() {
   const present = monthRecs.filter(a=>a.status==='present').length;
   const absent  = monthRecs.filter(a=>a.status==='absent').length;
   const half    = monthRecs.filter(a=>a.status==='half').length;
-  const monthLeaves = all.filter(a => a.atype==='leave' && a.leaveFrom >= monthStart && a.leaveFrom <= monthEnd).length;
+  
+  // Count actual leave DAYS (not just records)
+  const leaveRecs = all.filter(a => a.atype==='leave' && a.leaveFrom >= monthStart && a.leaveFrom <= monthEnd);
+  let monthLeaves = 0;
+  leaveRecs.forEach(leave => {
+    const fromDate = new Date(leave.leaveFrom);
+    const toDate = new Date(leave.leaveTo || leave.leaveFrom);
+    const days = Math.floor((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
+    monthLeaves += days;
+  });
+  
   const monthName = now.toLocaleString('en-IN',{month:'long',year:'numeric'});
 
   html += `<div class="card mb-3">
@@ -6896,10 +6906,18 @@ function exportMonthlyAttendance(targetUser) {
   let rows = Object.values(users).map(u => {
     const present = u.att.filter(a=>a.status==='present').length;
     const absent  = u.att.filter(a=>a.status==='absent').length;
-    const half    = 0;
-    const leaves  = u.leaves.length;
-    const eff     = present;  // Effective days = Present days (no half days)
-    return `<tr><td style="${tdS}">${u.name}</td><td style="${tdS};color:#30D158;font-weight:700">${present}</td><td style="${tdS};color:#FF453A;font-weight:700">${absent}</td><td style="${tdS};color:#FF9F0A;font-weight:700">${half}</td><td style="${tdS};color:#0A84FF;font-weight:700">${leaves}</td><td style="${tdS};font-weight:700">${eff}</td></tr>`;
+    
+    // Count actual leave DAYS (not just records)
+    let leaves = 0;
+    u.leaves.forEach(leave => {
+      const fromDate = new Date(leave.leaveFrom);
+      const toDate = new Date(leave.leaveTo || leave.leaveFrom);
+      const days = Math.floor((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
+      leaves += days;
+    });
+    
+    const eff = present;  // Effective days = Present days (no half days)
+    return `<tr><td style="${tdS}">${u.name}</td><td style="${tdS};color:#30D158;font-weight:700">${present}</td><td style="${tdS};color:#FF453A;font-weight:700">${absent}</td><td style="${tdS};color:#0A84FF;font-weight:700">${leaves}</td><td style="${tdS};font-weight:700">${eff}</td></tr>`;
   }).join('');
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Attendance Report ${monthName}</title>
@@ -6918,11 +6936,10 @@ function exportMonthlyAttendance(targetUser) {
           <th style="${thS}">Employee</th>
           <th style="${thS}">Present</th>
           <th style="${thS}">Absent</th>
-          
           <th style="${thS}">Leaves</th>
           <th style="${thS}">Effective Days</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="6" style="padding:12px;text-align:center;color:#888">No records found</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="5" style="padding:12px;text-align:center;color:#888">No records found</td></tr>'}</tbody>
       </table>
     </div>
   </div>
