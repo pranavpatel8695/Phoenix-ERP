@@ -6277,7 +6277,7 @@ function renderAttendanceEngineer() {
       <div class="stat-card"><div class="val text-blue">${monthLeaves}</div><div class="lbl">Leaves</div></div>
     </div>
     <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
-      Effective days: <strong style="color:var(--text)">${(present + half*0.5).toFixed(1)}</strong> of ${monthRecs.length} marked
+      Effective days: <strong style="color:var(--text)">${present}</strong> of ${monthRecs.length} marked
     </div>
     <button class="btn btn-ghost btn-sm w-full mt-2" onclick="exportMonthlyAttendance()">📄 Export Month Report</button>
   </div>`;
@@ -6436,7 +6436,18 @@ function monthlyAttendanceSummary(user, records) {
   const firstDay = new Date(yr, mo-1, 1).getDay();
   const dayMap = {};
   monthRecs.forEach(a=>{ dayMap[a.date]=a.status; });
-  leaveRecs.forEach(a=>{ dayMap[a.leaveFrom]='leave'; });
+  
+  // Mark all days in leave range
+  leaveRecs.forEach(a => {
+    const fromDate = new Date(a.leaveFrom);
+    const toDate = new Date(a.leaveTo || a.leaveFrom);
+    
+    // Loop through all dates from leaveFrom to leaveTo
+    for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().slice(0, 10);
+      dayMap[dateStr] = 'leave';
+    }
+  });
 
   let cal = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px">';
   ['S','M','T','W','T','F','S'].forEach(d=>{ cal+=`<div style="text-align:center;font-size:9px;font-weight:700;color:var(--muted);padding:2px">${d}</div>`; });
@@ -6887,7 +6898,7 @@ function exportMonthlyAttendance(targetUser) {
     const absent  = u.att.filter(a=>a.status==='absent').length;
     const half    = 0;
     const leaves  = u.leaves.length;
-    const eff     = (present + half*0.5).toFixed(1);
+    const eff     = present;  // Effective days = Present days (no half days)
     return `<tr><td style="${tdS}">${u.name}</td><td style="${tdS};color:#30D158;font-weight:700">${present}</td><td style="${tdS};color:#FF453A;font-weight:700">${absent}</td><td style="${tdS};color:#FF9F0A;font-weight:700">${half}</td><td style="${tdS};color:#0A84FF;font-weight:700">${leaves}</td><td style="${tdS};font-weight:700">${eff}</td></tr>`;
   }).join('');
 
