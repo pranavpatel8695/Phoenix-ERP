@@ -876,7 +876,39 @@ async function fetchCollection(collectionId, saveFn, cacheKey) {
       try { return JSON.parse(d.data); } catch(e) { return null; }
     }).filter(Boolean);
     dbg('[fetch] ' + collectionId + ': ' + records.length + ' parsed');
-    if (records.length) saveFn(records);
+    
+    // Special handling for attendance - merge instead of replace
+    if (collectionId === AW.collections.attendance) {
+      const local = getAttendance();
+      const localMap = {};
+      local.forEach(a => { localMap[String(a.id)] = a; });
+      
+      // Merge: prefer remote data BUT keep local approval statuses if more recently changed
+      const merged = records.map(remote => {
+        const localRec = localMap[String(remote.id)];
+        if (!localRec) return remote; // New record, use remote
+        
+        // Keep local approval statuses if they exist and remote doesn't have them
+        // or if local has approved/rejected and remote still has pending
+        if (localRec.pmStatus && (localRec.pmStatus !== 'pending' || !remote.pmStatus)) {
+          remote.pmStatus = localRec.pmStatus;
+        }
+        if (localRec.adminStatus && (localRec.adminStatus !== 'pending' || !remote.adminStatus)) {
+          remote.adminStatus = localRec.adminStatus;
+        }
+        
+        return remote;
+      });
+      
+      // Add local-only records (not yet synced to Appwrite)
+      const remoteIds = new Set(records.map(r => String(r.id)));
+      local.filter(a => !remoteIds.has(String(a.id))).forEach(a => merged.push(a));
+      
+      saveFn(merged);
+    } else {
+      // For other collections, use simple replacement
+      if (records.length) saveFn(records);
+    }
   } catch(e) { dbg('[fetch] '+collectionId+' ERROR: '+e.message,'error'); }
 }
 
@@ -1033,6 +1065,17 @@ function handleGenericEvent(payload, isDelete, getFn, saveFn) {
     } else {
       const idx = items.findIndex(x => String(x.id) === String(record.id));
       if (idx >= 0) {
+        // For attendance, merge approval statuses instead of replacing
+        if (payload.$collectionId === AW.collections.attendance) {
+          const existing = items[idx];
+          // Keep local approval statuses if they're approved/rejected
+          if (existing.pmStatus && existing.pmStatus !== 'pending') {
+            record.pmStatus = existing.pmStatus;
+          }
+          if (existing.adminStatus && existing.adminStatus !== 'pending') {
+            record.adminStatus = existing.adminStatus;
+          }
+        }
         items[idx] = record;
         dbg('[Realtime] updated record ' + record.id + ' at index ' + idx);
       } else {
