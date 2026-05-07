@@ -6487,6 +6487,10 @@ function monthlyAttendanceSummary(user, records) {
   const [yr, mo] = selMonth.split('-').map(Number);
   const daysInMonth = new Date(yr, mo, 0).getDate();
   
+  // Debug: Log all leave records for this user
+  const userLeaves = records.filter(a => a.user === user && a.atype === 'leave');
+  dbg(`[Calendar] All leaves for ${user}:`, userLeaves.map(l => `${l.leaveFrom} to ${l.leaveTo || l.leaveFrom} (PM: ${l.pmStatus}, Admin: ${l.adminStatus})`).join(', ') || 'none');
+  
   // Check if selected month is current month
   const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   const isCurrentMonth = selMonth === currentMonth;
@@ -6501,10 +6505,14 @@ function monthlyAttendanceSummary(user, records) {
   
   const leaveRecs = records.filter(a => {
     if (a.user !== user || a.atype !== 'leave' || !a.leaveFrom?.startsWith(selMonth)) return false;
-    // For current month, exclude future leaves
-    if (isCurrentMonth && a.leaveFrom > today) return false;
+    // Show all leaves including future ones (they're planned/approved leaves)
     return true;
   });
+  
+  // Debug: Log leave records for this user
+  if (leaveRecs.length > 0) {
+    dbg(`[Calendar] User ${user} has ${leaveRecs.length} leaves in ${selMonth}:`, leaveRecs.map(l => `${l.leaveFrom} to ${l.leaveTo || l.leaveFrom}`).join(', '));
+  }
 
   // Deduplicate by date - count unique dates only (in case of duplicate records)
   const presentDates = new Set(monthRecs.filter(a=>a.status==='present').map(a=>a.date));
