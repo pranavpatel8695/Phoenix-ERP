@@ -6303,7 +6303,7 @@ function renderAttendanceEngineer() {
 
   // Monthly report
   const now = new Date();
-  const today = now.toISOString().slice(0,10);
+  // Use the 'today' variable already declared above (line 6257)
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
   const monthEnd   = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
   
