@@ -6303,9 +6303,12 @@ function renderAttendanceEngineer() {
 
   // Monthly report
   const now = new Date();
+  const today = now.toISOString().slice(0,10);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
   const monthEnd   = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
-  const monthRecs  = all.filter(a => a.atype==='attendance' && a.date >= monthStart && a.date <= monthEnd);
+  
+  // Only count up to today (don't count future dates)
+  const monthRecs  = all.filter(a => a.atype==='attendance' && a.date >= monthStart && a.date <= today);
   
   // Deduplicate by date - count unique dates only (in case of duplicate records)
   const presentDates = new Set(monthRecs.filter(a=>a.status==='present').map(a=>a.date));
@@ -6316,8 +6319,8 @@ function renderAttendanceEngineer() {
   const absent = absentDates.size;
   const half = halfDates.size;
   
-  // Count actual leave DAYS (not just records)
-  const leaveRecs = all.filter(a => a.atype==='leave' && a.leaveFrom >= monthStart && a.leaveFrom <= monthEnd);
+  // Count actual leave DAYS (not just records) up to today
+  const leaveRecs = all.filter(a => a.atype==='leave' && a.leaveFrom >= monthStart && a.leaveFrom <= today);
   let monthLeaves = 0;
   leaveRecs.forEach(leave => {
     const fromDate = new Date(leave.leaveFrom);
@@ -6479,12 +6482,29 @@ function localYearMonth() {
 
 function monthlyAttendanceSummary(user, records) {
   const now = new Date();
+  const today = now.toISOString().slice(0, 10);
   const selMonth = document.getElementById('att-month-sel')?.value || localYearMonth();
   const [yr, mo] = selMonth.split('-').map(Number);
   const daysInMonth = new Date(yr, mo, 0).getDate();
+  
+  // Check if selected month is current month
+  const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  const isCurrentMonth = selMonth === currentMonth;
 
-  const monthRecs = records.filter(a => a.user===user && a.date?.startsWith(selMonth) && a.atype==='attendance');
-  const leaveRecs = records.filter(a => a.user===user && a.atype==='leave' && a.leaveFrom?.startsWith(selMonth));
+  // Filter records - for current month, don't include future dates
+  const monthRecs = records.filter(a => {
+    if (a.user !== user || !a.date?.startsWith(selMonth) || a.atype !== 'attendance') return false;
+    // For current month, exclude future dates
+    if (isCurrentMonth && a.date > today) return false;
+    return true;
+  });
+  
+  const leaveRecs = records.filter(a => {
+    if (a.user !== user || a.atype !== 'leave' || !a.leaveFrom?.startsWith(selMonth)) return false;
+    // For current month, exclude future leaves
+    if (isCurrentMonth && a.leaveFrom > today) return false;
+    return true;
+  });
 
   // Deduplicate by date - count unique dates only (in case of duplicate records)
   const presentDates = new Set(monthRecs.filter(a=>a.status==='present').map(a=>a.date));
@@ -6973,6 +6993,12 @@ function exportMonthlyAttendance(targetUser, selectedMonth) {
     monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
     monthName = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
   }
+  
+  // For current month, don't count future dates
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0');
+  const isCurrentMonth = selectedMonth ? selectedMonth === currentMonth : true;
+  const maxDate = isCurrentMonth ? today : monthEnd;
 
   let all = getAttendance();
   const deleted = LS.get('phx_deleted_users', []);
@@ -6985,14 +7011,15 @@ function exportMonthlyAttendance(targetUser, selectedMonth) {
   const users = {};
   all.forEach(a => {
     if (!users[a.user]) users[a.user] = {name:a.userName||a.user, att:[], leaves:[]};
-    if (a.atype==='attendance' && a.date>=monthStart && a.date<=monthEnd) users[a.user].att.push(a);
+    // Only include dates up to today for current month, full month for past months
+    if (a.atype==='attendance' && a.date>=monthStart && a.date<=maxDate) users[a.user].att.push(a);
     
     // Include leaves that overlap with current month (not just those that start in it)
     if (a.atype==='leave') {
       const leaveStart = a.leaveFrom;
       const leaveEnd = a.leaveTo || a.leaveFrom;
-      // Check if leave overlaps with current month
-      if (leaveEnd >= monthStart && leaveStart <= monthEnd) {
+      // Check if leave overlaps with current month (up to maxDate)
+      if (leaveEnd >= monthStart && leaveStart <= maxDate) {
         users[a.user].leaves.push(a);
       }
     }
