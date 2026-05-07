@@ -6897,7 +6897,16 @@ function exportMonthlyAttendance(targetUser) {
   all.forEach(a => {
     if (!users[a.user]) users[a.user] = {name:a.userName||a.user, att:[], leaves:[]};
     if (a.atype==='attendance' && a.date>=monthStart && a.date<=monthEnd) users[a.user].att.push(a);
-    if (a.atype==='leave' && a.leaveFrom>=monthStart) users[a.user].leaves.push(a);
+    
+    // Include leaves that overlap with current month (not just those that start in it)
+    if (a.atype==='leave') {
+      const leaveStart = a.leaveFrom;
+      const leaveEnd = a.leaveTo || a.leaveFrom;
+      // Check if leave overlaps with current month
+      if (leaveEnd >= monthStart && leaveStart <= monthEnd) {
+        users[a.user].leaves.push(a);
+      }
+    }
   });
 
   const thS = 'padding:7px 10px;background:#1e1e28;color:#fff;font-size:11px;border:1px solid #333;text-align:left';
@@ -6907,12 +6916,19 @@ function exportMonthlyAttendance(targetUser) {
     const present = u.att.filter(a=>a.status==='present').length;
     const absent  = u.att.filter(a=>a.status==='absent').length;
     
-    // Count actual leave DAYS (not just records)
+    // Count actual leave DAYS that fall within current month
     let leaves = 0;
     u.leaves.forEach(leave => {
-      const fromDate = new Date(leave.leaveFrom);
-      const toDate = new Date(leave.leaveTo || leave.leaveFrom);
-      const days = Math.floor((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
+      const leaveStart = new Date(leave.leaveFrom);
+      const leaveEnd = new Date(leave.leaveTo || leave.leaveFrom);
+      const monthStartDate = new Date(monthStart);
+      const monthEndDate = new Date(monthEnd);
+      
+      // Only count days that fall within the current month
+      const countStart = leaveStart > monthStartDate ? leaveStart : monthStartDate;
+      const countEnd = leaveEnd < monthEndDate ? leaveEnd : monthEndDate;
+      
+      const days = Math.floor((countEnd - countStart) / (1000 * 60 * 60 * 24)) + 1;
       leaves += days;
     });
     
