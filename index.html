@@ -6440,7 +6440,15 @@ function monthlyAttendanceSummary(user, records) {
   const present = monthRecs.filter(a=>a.status==='present').length;
   const absent  = monthRecs.filter(a=>a.status==='absent').length;
   const half    = monthRecs.filter(a=>a.status==='half').length;
-  const leaves  = leaveRecs.length;
+  
+  // Count actual leave DAYS (not just records)
+  let leaves = 0;
+  leaveRecs.forEach(leave => {
+    const fromDate = new Date(leave.leaveFrom);
+    const toDate = new Date(leave.leaveTo || leave.leaveFrom);
+    const days = Math.floor((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
+    leaves += days;
+  });
 
   // Build calendar
   const firstDay = new Date(yr, mo-1, 1).getDay();
