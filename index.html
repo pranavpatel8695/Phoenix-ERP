@@ -1645,10 +1645,11 @@ async function cleanupOldAttendance() {
         async () => {
           try {
             // Delete from Appwrite
-            const deletePromises = recordsToDelete.map(record => 
-              sdk.database.deleteDocument(AW.dbId, AW.collections.attendance, record.id)
-                .catch(e => dbg('[cleanupOldAttendance] Failed to delete from AW: ' + record.id, 'warn'))
-            );
+            const deletePromises = recordsToDelete.map(record => {
+              const awId = record._awId || record.id;
+              return awDelete(AW.collections.attendance, awId)
+                .catch(e => dbg('[cleanupOldAttendance] Failed to delete from AW: ' + awId, 'warn'));
+            });
             
             await Promise.all(deletePromises);
             
