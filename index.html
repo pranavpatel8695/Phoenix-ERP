@@ -6304,8 +6304,12 @@ function renderAttendanceEngineer() {
   // Monthly report
   const now = new Date();
   // Use the 'today' variable already declared above (line 6257)
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-  const monthEnd   = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+  // Use string construction to avoid timezone issues
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   
   // Only count up to today (don't count future dates)
   const monthRecs  = all.filter(a => a.atype==='attendance' && a.date >= monthStart && a.date <= today);
@@ -6991,14 +6995,20 @@ function exportMonthlyAttendance(targetUser, selectedMonth) {
   if (selectedMonth) {
     // Selected month format: "2026-05"
     const [year, month] = selectedMonth.split('-').map(Number);
-    monthStart = new Date(year, month - 1, 1).toISOString().slice(0, 10);
-    monthEnd = new Date(year, month, 0).toISOString().slice(0, 10);
+    // Use string construction to avoid timezone issues
+    monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    // Get last day of month
+    const lastDay = new Date(year, month, 0).getDate();
+    monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     monthName = new Date(year, month - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
   } else {
-    // Current month
+    // Current month - use string construction
     const now = new Date();
-    monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     monthName = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
   }
   
@@ -7205,7 +7215,9 @@ function renderMachReport() {
   const selProj  = document.getElementById('mach-proj-sel')?.value  || '';
   const [yr, mo] = selMonth.split('-').map(Number);
   const monthStart = `${selMonth}-01`;
-  const monthEnd   = new Date(yr, mo, 0).toISOString().slice(0,10);
+  // Use string construction to avoid timezone issues
+  const lastDay = new Date(yr, mo, 0).getDate();
+  const monthEnd = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   const monthName  = new Date(yr, mo-1, 1).toLocaleString('en-IN',{month:'long',year:'numeric'});
 
   const months = Array.from({length:6},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()-i,1);return d.toISOString().slice(0,7);});
@@ -7297,7 +7309,9 @@ function exportMachReport(selMonth, selProj) {
   const vp = getVisibleProjects();
   const allMach = getMachinery().filter(m=>!m.project||vp.includes(m.project));
   const [yr,mo] = selMonth.split('-').map(Number);
-  const monthStart=`${selMonth}-01`, monthEnd=new Date(yr,mo,0).toISOString().slice(0,10);
+  // Use string construction to avoid timezone issues
+  const lastDay = new Date(yr, mo, 0).getDate();
+  const monthStart=`${selMonth}-01`, monthEnd=`${yr}-${String(mo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   const monthName=new Date(yr,mo-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
   const filteredMach = selProj ? allMach.filter(m=>m.project===selProj) : allMach;
   const machIds = new Set(filteredMach.map(m=>m.id));
