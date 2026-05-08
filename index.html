@@ -7011,11 +7011,27 @@ function exportMonthlyAttendance(targetUser, selectedMonth) {
   const maxDate = isCurrentMonth ? today : monthEnd;
   
   // Debug logging
-  dbg(`[Export] selectedMonth: ${selectedMonth}, currentMonth: ${currentMonth}, isCurrentMonth: ${isCurrentMonth}, maxDate: ${maxDate}, today: ${today}`);
+  console.log('=== EXPORT DEBUG ===');
+  console.log('selectedMonth:', selectedMonth);
+  console.log('currentMonth:', currentMonth);
+  console.log('isCurrentMonth:', isCurrentMonth);
+  console.log('today:', today);
+  console.log('monthStart:', monthStart);
+  console.log('monthEnd:', monthEnd);
+  console.log('maxDate:', maxDate);
+  dbg(`[Export] selectedMonth: ${selectedMonth}, currentMonth: ${currentMonth}, isCurrentMonth: ${isCurrentMonth}, maxDate: ${maxDate}, today: ${today}, monthStart: ${monthStart}, monthEnd: ${monthEnd}`);
 
   let all = getAttendance();
   const deleted = LS.get('phx_deleted_users', []);
   all = all.filter(a=>!deleted.includes(a.user));
+  
+  // Debug: Check for May 8 records
+  const may8Records = all.filter(a => a.atype === 'attendance' && a.date === '2026-05-08');
+  if (may8Records.length > 0) {
+    console.log('⚠️ Found May 8 records (FUTURE DATE):', may8Records.length);
+    dbg(`⚠️ Found ${may8Records.length} attendance records for May 8 (future): ${may8Records.map(r => r.user).join(', ')}`);
+  }
+  
   if (targetUser) all = all.filter(a=>a.user===targetUser);
   else if (isEngineer(currentRole)) all = all.filter(a=>a.user===currentUser);
   // admin with no targetUser = export all staff
@@ -7048,6 +7064,13 @@ function exportMonthlyAttendance(targetUser, selectedMonth) {
     
     const present = presentDates.size;
     const absent = absentDates.size;
+    
+    // Debug: Log users with 8 Present to see which dates
+    if (present === 8) {
+      const dates = Array.from(presentDates).sort();
+      console.log(`⚠️ ${u.name} has 8 Present! Dates:`, dates);
+      dbg(`⚠️ ${u.name} has ${present} Present on: ${dates.join(', ')}`);
+    }
     
     // Count actual leave DAYS that fall within current month
     let leaves = 0;
