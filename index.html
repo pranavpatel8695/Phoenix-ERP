@@ -6323,8 +6323,18 @@ function renderAttendanceEngineer() {
   const absent = absentDates.size;
   const half = halfDates.size;
   
-  // Count actual leave DAYS (not just records) up to today
-  const leaveRecs = all.filter(a => a.atype==='leave' && a.leaveFrom >= monthStart && a.leaveFrom <= today);
+  // Count actual leave DAYS (not just records) up to today - only APPROVED leaves
+  const leaveRecs = all.filter(a => {
+    if (a.atype !== 'leave' || a.leaveFrom < monthStart || a.leaveFrom > today) return false;
+    
+    // Only count APPROVED leaves
+    const hasPMApproval = a.pmStatus === 'approved';
+    const hasAdminApproval = a.adminStatus === 'approved';
+    const needsPM = a.pmStatus !== undefined && a.pmStatus !== null;
+    const isFullyApproved = needsPM ? (hasPMApproval && hasAdminApproval) : hasAdminApproval;
+    
+    return isFullyApproved;
+  });
   let monthLeaves = 0;
   leaveRecs.forEach(leave => {
     const fromDate = new Date(leave.leaveFrom);
@@ -6509,13 +6519,23 @@ function monthlyAttendanceSummary(user, records) {
   
   const leaveRecs = records.filter(a => {
     if (a.user !== user || a.atype !== 'leave' || !a.leaveFrom?.startsWith(selMonth)) return false;
-    // Show all leaves including future ones (they're planned/approved leaves)
-    return true;
+    
+    // Only show APPROVED leaves in calendar (blue color)
+    // Fully approved = both PM and Admin approved (if PM exists) OR Admin approved (if no PM)
+    const hasPMApproval = a.pmStatus === 'approved';
+    const hasAdminApproval = a.adminStatus === 'approved';
+    const needsPM = a.pmStatus !== undefined && a.pmStatus !== null; // Has PM in workflow
+    
+    // If has PM in workflow: need both PM and Admin approval
+    // If no PM in workflow: need only Admin approval
+    const isFullyApproved = needsPM ? (hasPMApproval && hasAdminApproval) : hasAdminApproval;
+    
+    return isFullyApproved;
   });
   
   // Debug: Log leave records for this user
   if (leaveRecs.length > 0) {
-    dbg(`[Calendar] User ${user} has ${leaveRecs.length} leaves in ${selMonth}:`, leaveRecs.map(l => `${l.leaveFrom} to ${l.leaveTo || l.leaveFrom}`).join(', '));
+    dbg(`[Calendar] User ${user} has ${leaveRecs.length} APPROVED leaves in ${selMonth}:`, leaveRecs.map(l => `${l.leaveFrom} to ${l.leaveTo || l.leaveFrom} (PM: ${l.pmStatus}, Admin: ${l.adminStatus})`).join(', '));
   }
 
   // Deduplicate by date - count unique dates only (in case of duplicate records)
@@ -7054,11 +7074,19 @@ function exportMonthlyAttendance(targetUser, selectedMonth) {
     if (a.atype==='attendance' && a.date>=monthStart && a.date<=maxDate) users[a.user].att.push(a);
     
     // Include leaves that overlap with current month (not just those that start in it)
+    // Only include APPROVED leaves
     if (a.atype==='leave') {
       const leaveStart = a.leaveFrom;
       const leaveEnd = a.leaveTo || a.leaveFrom;
-      // Check if leave overlaps with current month (up to maxDate)
-      if (leaveEnd >= monthStart && leaveStart <= maxDate) {
+      
+      // Check approval status
+      const hasPMApproval = a.pmStatus === 'approved';
+      const hasAdminApproval = a.adminStatus === 'approved';
+      const needsPM = a.pmStatus !== undefined && a.pmStatus !== null;
+      const isFullyApproved = needsPM ? (hasPMApproval && hasAdminApproval) : hasAdminApproval;
+      
+      // Check if leave overlaps with current month (up to maxDate) AND is approved
+      if (isFullyApproved && leaveEnd >= monthStart && leaveStart <= maxDate) {
         users[a.user].leaves.push(a);
       }
     }
