@@ -319,7 +319,7 @@ const AW = {
   project:  '69bf775300049155a9d9',
   database: '69bf7846002d6b0b65f6',
   collections: {
-    config:      'config',
+    config:      'config',           // Old unified config (kept for backward compatibility)
     reports:     'reports',
     attendance:  'attendance',
     storeItems:  'store_items',
@@ -328,6 +328,12 @@ const AW = {
     machLogs:    'mach_logs',
     machService: 'mach_service',
     machIssues:  'mach_issues',
+    // NEW SEPARATED COLLECTIONS
+    projects:    'projects_config',
+    routes:      'routes_config',
+    fittings:    'fittings_config',
+    valves:      'valves_config',
+    assignments: 'assignments_config'
   }
 };
 
@@ -781,6 +787,7 @@ async function fetchAllData() {
   try {
     await Promise.all([
       fetchConfig(),
+      fetchSeparatedCollections(),  // NEW: Fetch from separated collections
       fetchReports(),
       fetchCollection(AW.collections.attendance,  saveAttendance,  'phx_attendance'),
       fetchCollection(AW.collections.storeItems,   saveStoreItems,  'phx_store_items'),
@@ -865,6 +872,95 @@ async function fetchConfig() {
       const sp = JSON.parse(spDoc.value);
       Object.keys(sp).forEach(id => { if(sp[id]) { try { localStorage.setItem('phx_si_photo_'+id, sp[id]); } catch(e){} } });
     } catch(e) {}
+  }
+}
+
+// ── FETCH SEPARATED COLLECTIONS ──
+async function fetchSeparatedCollections() {
+  // Check if migration is completed
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  
+  if (!migrationCompleted) {
+    dbg('[fetchSeparated] Migration not completed yet, using old config', 'warn');
+    return;
+  }
+  
+  dbg('[fetchSeparated] Fetching from separated collections...');
+  
+  try {
+    // Fetch Projects
+    const projectDocs = await awList(AW.collections.projects, ["limit(500)"]);
+    if (projectDocs && projectDocs.length) {
+      const projects = projectDocs.map(d => d.name).filter(Boolean);
+      saveProjects(projects);
+      dbg('[fetchSeparated] projects: ' + projects.length);
+    }
+    
+    // Fetch Routes
+    const routeDocs = await awList(AW.collections.routes, ["limit(5000)"]);
+    if (routeDocs && routeDocs.length) {
+      const routesByProject = {};
+      routeDocs.forEach(r => {
+        if (!routesByProject[r.project]) routesByProject[r.project] = [];
+        routesByProject[r.project].push({
+          id: r.id || r.$id,
+          name: r.name,
+          length: r.length,
+          startCh: r.startCh || 0,
+          pipe: r.pipe,
+          pipes: r.pipes
+        });
+      });
+      saveRoutes(routesByProject);
+      dbg('[fetchSeparated] routes: ' + routeDocs.length);
+    }
+    
+    // Fetch Fittings
+    const fittingDocs = await awList(AW.collections.fittings, ["limit(5000)"]);
+    if (fittingDocs && fittingDocs.length) {
+      const fittingsByProject = {};
+      fittingDocs.forEach(f => {
+        if (!fittingsByProject[f.project]) fittingsByProject[f.project] = [];
+        fittingsByProject[f.project].push({
+          name: f.name,
+          total: f.total || 0
+        });
+      });
+      saveSpecials(fittingsByProject);
+      dbg('[fetchSeparated] fittings: ' + fittingDocs.length);
+    }
+    
+    // Fetch Valves
+    const valveDocs = await awList(AW.collections.valves, ["limit(5000)"]);
+    if (valveDocs && valveDocs.length) {
+      const valvesByProject = {};
+      valveDocs.forEach(v => {
+        if (!valvesByProject[v.project]) valvesByProject[v.project] = [];
+        valvesByProject[v.project].push({
+          name: v.name,
+          total: v.total || 0
+        });
+      });
+      saveValveSpecials(valvesByProject);
+      dbg('[fetchSeparated] valves: ' + valveDocs.length);
+    }
+    
+    // Fetch Assignments
+    const assignDocs = await awList(AW.collections.assignments, ["limit(500)"]);
+    if (assignDocs && assignDocs.length) {
+      const assignments = {};
+      assignDocs.forEach(a => {
+        assignments[a.project] = a.users || [];
+      });
+      saveAssignments(assignments);
+      dbg('[fetchSeparated] assignments: ' + assignDocs.length);
+    }
+    
+    dbg('[fetchSeparated] ✅ All separated collections fetched');
+    
+  } catch (error) {
+    dbg('[fetchSeparated] ❌ Error: ' + error.message, 'error');
+    console.error('[fetchSeparated] Full error:', error);
   }
 }
 
@@ -1141,6 +1237,167 @@ window.addEventListener('online', () => {
 });
 window.addEventListener('offline', () => { setSyncStatus('offline'); stopRealtime(); });
 
+// ── MIGRATION FUNCTIONS ──────────────────────────────────────────────────────
+// Backup current data
+function backupCurrentData() {
+  const backup = {
+    timestamp: new Date().toISOString(),
+    version: 'v4.0.8-pre-separation',
+    data: {
+      projects: LS.get('phx_projects', []),
+      routes: LS.get('phx_routes', {}),
+      specials: LS.get('phx_specials', {}),
+      valveSpecials: LS.get('phx_valve_specials', {}),
+      assignments: LS.get('phx_assignments', {}),
+      users: LS.get('phx_users', {}),
+      deletedSpecials: LS.get('phx_deleted_specials', []),
+      deletedValveSpecials: LS.get('phx_deleted_valve_specials', []),
+      deletedUsers: LS.get('phx_deleted_users', [])
+    }
+  };
+  
+  console.log('📦 BACKUP CREATED:', backup);
+  console.log('💾 COPY AND SAVE THIS BACKUP!');
+  console.log(JSON.stringify(backup, null, 2));
+  
+  return backup;
+}
+
+// Restore from backup
+function restoreFromBackup(backup) {
+  if (!backup || !backup.data) {
+    console.error('❌ Invalid backup data');
+    return false;
+  }
+  
+  LS.set('phx_projects', backup.data.projects);
+  LS.set('phx_routes', backup.data.routes);
+  LS.set('phx_specials', backup.data.specials);
+  LS.set('phx_valve_specials', backup.data.valveSpecials);
+  LS.set('phx_assignments', backup.data.assignments);
+  LS.set('phx_users', backup.data.users);
+  LS.set('phx_deleted_specials', backup.data.deletedSpecials);
+  LS.set('phx_deleted_valve_specials', backup.data.deletedValveSpecials);
+  LS.set('phx_deleted_users', backup.data.deletedUsers);
+  
+  console.log('✅ BACKUP RESTORED!');
+  return true;
+}
+
+// Migrate to separated collections
+async function migrateToSeparateCollections() {
+  console.log('🚀 Starting migration to separate collections...');
+  
+  const projects = getProjects();
+  const routes = getRoutes();
+  const specials = getSpecials();
+  const valveSpecials = getValveSpecials();
+  const assignments = getAssignments();
+  
+  console.log('📊 Data summary:');
+  console.log('  - Projects:', projects.length);
+  console.log('  - Routes:', Object.values(routes).flat().length);
+  console.log('  - Fittings:', Object.values(specials).flat().length);
+  console.log('  - Valves:', Object.values(valveSpecials).flat().length);
+  console.log('  - Assignments:', Object.keys(assignments).length);
+  
+  let migrated = {
+    projects: 0,
+    routes: 0,
+    fittings: 0,
+    valves: 0,
+    assignments: 0
+  };
+  
+  try {
+    // Migrate Projects
+    console.log('📁 Migrating projects...');
+    for (const project of projects) {
+      const docId = project.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+      await saveDoc(AW.collections.projects, docId, { name: project });
+      migrated.projects++;
+      console.log('  ✓ Project: ' + project);
+    }
+    
+    // Migrate Routes
+    console.log('🛣️ Migrating routes...');
+    for (const [project, projectRoutes] of Object.entries(routes)) {
+      for (const route of projectRoutes) {
+        const docId = route.id || ('ROUTE_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+        await saveDoc(AW.collections.routes, docId, {
+          ...route,
+          project: project
+        });
+        migrated.routes++;
+        console.log('  ✓ Route: ' + route.name + ' (' + project + ')');
+      }
+    }
+    
+    // Migrate Fittings
+    console.log('🔗 Migrating fittings...');
+    for (const [project, fittings] of Object.entries(specials)) {
+      for (const fitting of fittings) {
+        const docId = 'FIT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        await saveDoc(AW.collections.fittings, docId, {
+          project: project,
+          name: fitting.name,
+          total: fitting.total || 0
+        });
+        migrated.fittings++;
+        console.log('  ✓ Fitting: ' + fitting.name + ' (' + project + ')');
+      }
+    }
+    
+    // Migrate Valves
+    console.log('⚙️ Migrating valves...');
+    for (const [project, valves] of Object.entries(valveSpecials)) {
+      for (const valve of valves) {
+        const docId = 'VLV_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        await saveDoc(AW.collections.valves, docId, {
+          project: project,
+          name: valve.name,
+          total: valve.total || 0
+        });
+        migrated.valves++;
+        console.log('  ✓ Valve: ' + valve.name + ' (' + project + ')');
+      }
+    }
+    
+    // Migrate Assignments
+    console.log('👥 Migrating assignments...');
+    for (const [project, users] of Object.entries(assignments)) {
+      const docId = project.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+      await saveDoc(AW.collections.assignments, docId, {
+        project: project,
+        users: users
+      });
+      migrated.assignments++;
+      console.log('  ✓ Assignment: ' + project);
+    }
+    
+    console.log('✅ MIGRATION COMPLETE!');
+    console.log('📊 Migrated:');
+    console.log('  - Projects:', migrated.projects);
+    console.log('  - Routes:', migrated.routes);
+    console.log('  - Fittings:', migrated.fittings);
+    console.log('  - Valves:', migrated.valves);
+    console.log('  - Assignments:', migrated.assignments);
+    
+    // Mark migration as complete
+    LS.set('phx_migration_completed', true);
+    LS.set('phx_migration_date', new Date().toISOString());
+    
+    console.log('🎉 Migration flag set! Reload page to start using separated collections.');
+    
+    return migrated;
+    
+  } catch (error) {
+    console.error('❌ MIGRATION FAILED:', error);
+    console.log('🔄 Please restore from backup and try again');
+    return null;
+  }
+}
+
 // ── PUSH FUNCTIONS (write to Appwrite + update cache) ─────────────────────────
 // Config (users, projects, routes) - kept as JSON doc (rare changes)
 async function pushConfig() {
@@ -1279,6 +1536,121 @@ async function pushConfig() {
     _pushing = false;
     dbg('[pushConfig] done');
   }
+}
+
+// ── PUSH TO SEPARATED COLLECTIONS ──
+async function pushSeparatedCollections() {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  
+  if (!migrationCompleted) {
+    dbg('[pushSeparated] Migration not completed, skipping separated push');
+    return;
+  }
+  
+  dbg('[pushSeparated] Pushing to separated collections...');
+  
+  try {
+    // Push is now done individually when each item changes
+    // This function is here for backward compatibility
+    dbg('[pushSeparated] Using individual push functions (pushProject, pushFitting, etc.)');
+  } catch (error) {
+    dbg('[pushSeparated] ❌ Error: ' + error.message, 'error');
+  }
+}
+
+// Push individual project
+async function pushProject(projectName) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = projectName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  return saveDoc(AW.collections.projects, docId, { name: projectName });
+}
+
+// Delete project from separated collection
+async function deleteProjectFromAW(projectName) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = projectName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  return awDelete(AW.collections.projects, docId);
+}
+
+// Push individual route
+async function pushRoute(route, projectName) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = route.id || ('ROUTE_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+  return saveDoc(AW.collections.routes, docId, {
+    ...route,
+    project: projectName
+  });
+}
+
+// Delete route from separated collection
+async function deleteRouteFromAW(routeId) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = String(routeId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  return awDelete(AW.collections.routes, docId);
+}
+
+// Push individual fitting
+async function pushFitting(fitting, projectName, fittingId) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = fittingId || ('FIT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+  return saveDoc(AW.collections.fittings, docId, {
+    project: projectName,
+    name: fitting.name,
+    total: fitting.total || 0
+  });
+}
+
+// Delete fitting from separated collection
+async function deleteFittingFromAW(fittingId) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = String(fittingId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  return awDelete(AW.collections.fittings, docId);
+}
+
+// Push individual valve
+async function pushValve(valve, projectName, valveId) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = valveId || ('VLV_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+  return saveDoc(AW.collections.valves, docId, {
+    project: projectName,
+    name: valve.name,
+    total: valve.total || 0
+  });
+}
+
+// Delete valve from separated collection
+async function deleteValveFromAW(valveId) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = String(valveId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  return awDelete(AW.collections.valves, docId);
+}
+
+// Push assignments for a project
+async function pushAssignment(projectName, users) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = projectName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  return saveDoc(AW.collections.assignments, docId, {
+    project: projectName,
+    users: users || []
+  });
 }
 
 // Push single attendance record to Appwrite
