@@ -1564,7 +1564,32 @@ async function pushProject(projectName) {
   if (!migrationCompleted) return;
   
   const docId = projectName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
-  return saveDoc(AW.collections.projects, docId, { name: projectName });
+  const data = { name: projectName };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.projects,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushProject] ✅ ${docId}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.projects,
+        docId,
+        data
+      );
+      dbg(`[pushProject] ✅ updated ${docId}`);
+      return result;
+    }
+    dbg(`[pushProject] ❌ ${docId}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Delete project from separated collection
@@ -1582,10 +1607,35 @@ async function pushRoute(route, projectName) {
   if (!migrationCompleted) return;
   
   const docId = route.id || ('ROUTE_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
-  return saveDoc(AW.collections.routes, docId, {
+  const data = {
     ...route,
     project: projectName
-  });
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.routes,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushRoute] ✅ ${docId}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.routes,
+        docId,
+        data
+      );
+      dbg(`[pushRoute] ✅ updated ${docId}`);
+      return result;
+    }
+    dbg(`[pushRoute] ❌ ${docId}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Delete route from separated collection
@@ -1765,10 +1815,35 @@ async function pushAssignment(projectName, users) {
   if (!migrationCompleted) return;
   
   const docId = projectName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
-  return saveDoc(AW.collections.assignments, docId, {
+  const data = {
     project: projectName,
     users: users || []
-  });
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.assignments,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushAssignment] ✅ ${docId}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.assignments,
+        docId,
+        data
+      );
+      dbg(`[pushAssignment] ✅ updated ${docId}`);
+      return result;
+    }
+    dbg(`[pushAssignment] ❌ ${docId}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Push single attendance record to Appwrite
@@ -5568,6 +5643,12 @@ function addProject() {
   if (projects.includes(name)) { showToast('Project already exists'); return; }
   projects.push(name);
   saveProjects(projects);
+  
+  // Push to Appwrite
+  pushProject(name).catch(err => {
+    dbg('[addProject] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
   showToast('✅ Project added');
@@ -5628,6 +5709,11 @@ function deleteProject(name) {
     const asgn = getAssignments();
     delete asgn[name];
     saveAssignments(asgn);
+    
+    // Delete from Appwrite
+    deleteProjectFromAW(name).catch(err => {
+      dbg('[deleteProject] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
+    });
 
     pushConfig();
     document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
@@ -5727,8 +5813,15 @@ function addRoute(proj) {
 
   const routes = getRoutes();
   if (!routes[proj]) routes[proj] = [];
-  routes[proj].push({ id: 'R' + Date.now(), name, length: len, startCh, pipe, pipes });
+  const newRoute = { id: 'R' + Date.now(), name, length: len, startCh, pipe, pipes };
+  routes[proj].push(newRoute);
   saveRoutes(routes);
+  
+  // Push to Appwrite
+  pushRoute(newRoute, proj).catch(err => {
+    dbg('[addRoute] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   manageRoutes(proj);
   showToast('✅ Route added');
@@ -5749,6 +5842,14 @@ function deleteRoute(proj, idx) {
       () => {
         routes[proj].splice(idx, 1);
         saveRoutes(routes);
+        
+        // Delete from Appwrite
+        if (rt.id) {
+          deleteRouteFromAW(rt.id).catch(err => {
+            dbg('[deleteRoute] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
+          });
+        }
+        
         pushConfig();
         manageRoutes(proj);
         showToast('🗑️ Route deleted');
@@ -5761,6 +5862,14 @@ function deleteRoute(proj, idx) {
   showConfirm('Delete Route', `Delete route "${rt.name}"?`, () => {
     routes[proj].splice(idx, 1);
     saveRoutes(routes);
+    
+    // Delete from Appwrite
+    if (rt.id) {
+      deleteRouteFromAW(rt.id).catch(err => {
+        dbg('[deleteRoute] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
+      });
+    }
+    
     pushConfig();
     manageRoutes(proj);
     showToast('🗑️ Route deleted');
@@ -6408,6 +6517,13 @@ function addProjectToUser(username) {
   if (users[username].projects.includes(proj)) { showToast('Already assigned'); return; }
   users[username].projects.push(proj);
   saveUsers(users);
+  
+  // Update assignments in Appwrite
+  const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
+  pushAssignment(proj, projectUsers).catch(err => {
+    dbg('[addProjectToUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   showToast('✅ ' + proj + ' assigned to @' + username);
   document.getElementById('main').innerHTML = renderUsersTab();
@@ -6418,6 +6534,13 @@ function removeProjectFromUser(username, proj) {
   if (!users[username]) return;
   users[username].projects = (users[username].projects || []).filter(function(p){return p !== proj;});
   saveUsers(users);
+  
+  // Update assignments in Appwrite
+  const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
+  pushAssignment(proj, projectUsers).catch(err => {
+    dbg('[removeProjectFromUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   showToast('🗑️ Removed ' + proj + ' from @' + username);
   document.getElementById('main').innerHTML = renderUsersTab();
