@@ -1603,11 +1603,38 @@ async function pushFitting(fitting, projectName, fittingId) {
   if (!migrationCompleted) return;
   
   const docId = fittingId || ('FIT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
-  return saveDoc(AW.collections.fittings, docId, {
+  // Direct Appwrite call - fittings_config has separate fields, not a JSON blob
+  const data = {
     project: projectName,
     name: fitting.name,
     total: fitting.total || 0
-  });
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.fittings,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushFitting] ✅ ${docId}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      // Document exists, update it
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.fittings,
+        docId,
+        data
+      );
+      dbg(`[pushFitting] ✅ updated ${docId}`);
+      return result;
+    }
+    dbg(`[pushFitting] ❌ ${docId}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Delete fitting from separated collection
@@ -1625,11 +1652,38 @@ async function pushValve(valve, projectName, valveId) {
   if (!migrationCompleted) return;
   
   const docId = valveId || ('VLV_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
-  return saveDoc(AW.collections.valves, docId, {
+  // Direct Appwrite call - valves_config has separate fields, not a JSON blob
+  const data = {
     project: projectName,
     name: valve.name,
     total: valve.total || 0
-  });
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.valves,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushValve] ✅ ${docId}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      // Document exists, update it
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.valves,
+        docId,
+        data
+      );
+      dbg(`[pushValve] ✅ updated ${docId}`);
+      return result;
+    }
+    dbg(`[pushValve] ❌ ${docId}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Delete valve from separated collection
@@ -5793,7 +5847,22 @@ function addSpecialQty(idx) {
   if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
   const specials = getSpecials();
   specials[proj][idx].total = (specials[proj][idx].total || 0) + qty;
+  
+  // Generate ID if missing
+  if (!specials[proj][idx].id) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    specials[proj][idx].id = `FIT_${timestamp}_${random}`;
+  }
+  
+  const item = specials[proj][idx];
   saveSpecials(specials);
+  
+  // Push updated total to Appwrite
+  pushFitting(item, proj, item.id).catch(err => {
+    dbg('[addSpecialQty] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   renderSpecialsList();
   showToast(`✅ Added ${qty} nos`);
@@ -5805,7 +5874,22 @@ function editSpecialTotal(idx, currentTotal) {
   if (isNaN(newTotal) || newTotal < 0) return;
   const specials = getSpecials();
   specials[proj][idx].total = newTotal;
+  
+  // Generate ID if missing
+  if (!specials[proj][idx].id) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    specials[proj][idx].id = `FIT_${timestamp}_${random}`;
+  }
+  
+  const item = specials[proj][idx];
   saveSpecials(specials);
+  
+  // Push updated total to Appwrite
+  pushFitting(item, proj, item.id).catch(err => {
+    dbg('[editSpecialTotal] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   renderSpecialsList();
   showToast('✅ Total updated');
@@ -5826,10 +5910,22 @@ function addSpecial() {
     dbg('[addSpecial] cleared from deleted: ' + name);
   }
   
+  // Generate unique ID for the new fitting
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substr(2, 9);
+  const id = `FIT_${timestamp}_${random}`;
+  
   const specials = getSpecials();
   if (!specials[proj]) specials[proj] = [];
-  specials[proj].push({ name, total });
+  const newItem = { id, name, total };
+  specials[proj].push(newItem);
   saveSpecials(specials);
+  
+  // Push to Appwrite
+  pushFitting(newItem, proj, id).catch(err => {
+    dbg('[addSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   document.getElementById('sp-name').value = '';
   document.getElementById('sp-total').value = '';
@@ -5852,6 +5948,13 @@ function deleteSpecial(idx) {
       if (!deletedSpecials.includes(itemKey)) {
         deletedSpecials.push(itemKey);
         LS.set('phx_deleted_specials', deletedSpecials);
+      }
+      
+      // Delete from Appwrite if item has an ID
+      if (deletedItem.id) {
+        deleteFittingFromAW(deletedItem.id).catch(err => {
+          dbg('[deleteSpecial] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
+        });
       }
       
       specials[proj].splice(idx, 1);
@@ -5928,10 +6031,22 @@ function addValveSpecial() {
     dbg('[addValveSpecial] cleared from deleted: ' + name);
   }
   
+  // Generate unique ID for the new valve
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substr(2, 9);
+  const id = `VLV_${timestamp}_${random}`;
+  
   const valves = getValveSpecials();
   if (!valves[proj]) valves[proj] = [];
-  valves[proj].push({ name, total });
+  const newItem = { id, name, total };
+  valves[proj].push(newItem);
   saveValveSpecials(valves);
+  
+  // Push to Appwrite
+  pushValve(newItem, proj, id).catch(err => {
+    dbg('[addValveSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   document.getElementById('vsp-name').value = '';
   document.getElementById('vsp-total').value = '';
@@ -5945,7 +6060,22 @@ function addValveSpecialQty(idx) {
   if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
   const valves = getValveSpecials();
   valves[proj][idx].total = (valves[proj][idx].total || 0) + qty;
+  
+  // Generate ID if missing
+  if (!valves[proj][idx].id) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    valves[proj][idx].id = `VLV_${timestamp}_${random}`;
+  }
+  
+  const item = valves[proj][idx];
   saveValveSpecials(valves);
+  
+  // Push updated total to Appwrite
+  pushValve(item, proj, item.id).catch(err => {
+    dbg('[addValveSpecialQty] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   renderValvesList();
   showToast(`✅ Added ${qty} nos`);
@@ -5957,7 +6087,22 @@ function editValveSpecialTotal(idx, currentTotal) {
   if (isNaN(newTotal) || newTotal < 0) return;
   const valves = getValveSpecials();
   valves[proj][idx].total = newTotal;
+  
+  // Generate ID if missing
+  if (!valves[proj][idx].id) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    valves[proj][idx].id = `VLV_${timestamp}_${random}`;
+  }
+  
+  const item = valves[proj][idx];
   saveValveSpecials(valves);
+  
+  // Push updated total to Appwrite
+  pushValve(item, proj, item.id).catch(err => {
+    dbg('[editValveSpecialTotal] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+  });
+  
   pushConfig();
   renderValvesList();
   showToast('✅ Total updated');
@@ -5978,6 +6123,13 @@ function deleteValveSpecial(idx) {
       if (!deletedValveSpecials.includes(itemKey)) {
         deletedValveSpecials.push(itemKey);
         LS.set('phx_deleted_valve_specials', deletedValveSpecials);
+      }
+      
+      // Delete from Appwrite if item has an ID
+      if (deletedItem.id) {
+        deleteValveFromAW(deletedItem.id).catch(err => {
+          dbg('[deleteValveSpecial] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
+        });
       }
       
       valves[proj].splice(idx, 1);
