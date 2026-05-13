@@ -1646,6 +1646,38 @@ async function deleteFittingFromAW(fittingId) {
   return awDelete(AW.collections.fittings, docId);
 }
 
+// Delete fitting by project+name (for items without ID)
+async function deleteFittingByName(projectName, fittingName) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  try {
+    // Search for fitting matching project+name
+    const response = await _awDB.listDocuments(
+      AW.database,
+      AW.collections.fittings,
+      [
+        Appwrite.Query.equal('project', projectName),
+        Appwrite.Query.equal('name', fittingName),
+        Appwrite.Query.limit(1)
+      ]
+    );
+    
+    if (response.documents.length > 0) {
+      const docId = response.documents[0].$id;
+      await awDelete(AW.collections.fittings, docId);
+      dbg(`[deleteFittingByName] ✅ deleted ${docId}`);
+      return true;
+    } else {
+      dbg(`[deleteFittingByName] ⚠️ not found: ${projectName}::${fittingName}`, 'warn');
+      return false;
+    }
+  } catch (err) {
+    dbg(`[deleteFittingByName] ❌ error: ${err.message}`, 'error');
+    throw err;
+  }
+}
+
 // Push individual valve
 async function pushValve(valve, projectName, valveId) {
   const migrationCompleted = LS.get('phx_migration_completed', false);
@@ -1693,6 +1725,38 @@ async function deleteValveFromAW(valveId) {
   
   const docId = String(valveId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
   return awDelete(AW.collections.valves, docId);
+}
+
+// Delete valve by project+name (for items without ID)
+async function deleteValveByName(projectName, valveName) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  try {
+    // Search for valve matching project+name
+    const response = await _awDB.listDocuments(
+      AW.database,
+      AW.collections.valves,
+      [
+        Appwrite.Query.equal('project', projectName),
+        Appwrite.Query.equal('name', valveName),
+        Appwrite.Query.limit(1)
+      ]
+    );
+    
+    if (response.documents.length > 0) {
+      const docId = response.documents[0].$id;
+      await awDelete(AW.collections.valves, docId);
+      dbg(`[deleteValveByName] ✅ deleted ${docId}`);
+      return true;
+    } else {
+      dbg(`[deleteValveByName] ⚠️ not found: ${projectName}::${valveName}`, 'warn');
+      return false;
+    }
+  } catch (err) {
+    dbg(`[deleteValveByName] ❌ error: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Push assignments for a project
@@ -5950,10 +6014,14 @@ function deleteSpecial(idx) {
         LS.set('phx_deleted_specials', deletedSpecials);
       }
       
-      // Delete from Appwrite if item has an ID
+      // Delete from Appwrite - use ID if available, otherwise search by name
       if (deletedItem.id) {
         deleteFittingFromAW(deletedItem.id).catch(err => {
-          dbg('[deleteSpecial] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
+          dbg('[deleteSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
+        });
+      } else {
+        deleteFittingByName(proj, deletedItem.name).catch(err => {
+          dbg('[deleteSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
         });
       }
       
@@ -6125,10 +6193,14 @@ function deleteValveSpecial(idx) {
         LS.set('phx_deleted_valve_specials', deletedValveSpecials);
       }
       
-      // Delete from Appwrite if item has an ID
+      // Delete from Appwrite - use ID if available, otherwise search by name
       if (deletedItem.id) {
         deleteValveFromAW(deletedItem.id).catch(err => {
-          dbg('[deleteValveSpecial] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
+          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
+        });
+      } else {
+        deleteValveByName(proj, deletedItem.name).catch(err => {
+          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
         });
       }
       
