@@ -1809,6 +1809,31 @@ async function deleteValveByName(projectName, valveName) {
   }
 }
 
+async function pushDeletedListsToAW() {
+  if (!_awDB) return;
+  
+  try {
+    // Get current adminData from Appwrite
+    const adminDoc = await _awDB.getDocument(AW.database, AW.collections.config, 'adminData');
+    const adminData = JSON.parse(adminDoc.value);
+    
+    // Update deleted lists
+    adminData.deletedSpecials = LS.get('phx_deleted_specials', []);
+    adminData.deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+    adminData.updatedAt = Date.now();
+    
+    // Push back to Appwrite
+    await awUpdate(AW.collections.config, 'adminData', {
+      key: 'adminData',
+      value: JSON.stringify(adminData)
+    });
+    
+    dbg('[pushDeletedLists] ✅ Updated deleted lists in Appwrite');
+  } catch (err) {
+    dbg('[pushDeletedLists] ⚠️ Failed: ' + err.message, 'warn');
+  }
+}
+
 // Push assignments for a project
 async function pushAssignment(projectName, users) {
   const migrationCompleted = LS.get('phx_migration_completed', false);
@@ -6081,6 +6106,10 @@ function addSpecial() {
   if (newDeleted.length !== deletedSpecials.length) {
     LS.set('phx_deleted_specials', newDeleted);
     dbg('[addSpecial] cleared from deleted: ' + name);
+    // Immediately push updated deleted list to Appwrite
+    pushDeletedListsToAW().catch(err => {
+      dbg('[addSpecial] ⚠️ Failed to push deleted lists: ' + err.message, 'warn');
+    });
   }
   
   // Generate unique ID for the new fitting
@@ -6206,6 +6235,10 @@ function addValveSpecial() {
   if (newDeleted.length !== deletedValveSpecials.length) {
     LS.set('phx_deleted_valve_specials', newDeleted);
     dbg('[addValveSpecial] cleared from deleted: ' + name);
+    // Immediately push updated deleted list to Appwrite
+    pushDeletedListsToAW().catch(err => {
+      dbg('[addValveSpecial] ⚠️ Failed to push deleted lists: ' + err.message, 'warn');
+    });
   }
   
   // Generate unique ID for the new valve
