@@ -5664,7 +5664,7 @@ function renderSettingsProjects() {
   return html;
 }
 
-function addProject() {
+async function addProject() {
   const name = document.getElementById('newProjName').value.trim();
   if (!name) return;
   const projects = getProjects();
@@ -5672,10 +5672,12 @@ function addProject() {
   projects.push(name);
   saveProjects(projects);
   
-  // Push to Appwrite
-  pushProject(name).catch(err => {
+  // Push to Appwrite - WAIT for it to complete
+  try {
+    await pushProject(name);
+  } catch (err) {
     dbg('[addProject] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
   pushConfig();
   document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
@@ -5822,7 +5824,7 @@ function addRoutePipeRow() {
   list.appendChild(div);
 }
 
-function addRoute(proj) {
+async function addRoute(proj) {
   const name    = document.getElementById('rt-name').value.trim();
   const len     = parseFloat(document.getElementById('rt-len').value) || 0;
   const startCh = parseFloat(document.getElementById('rt-startCh').value) || 0;
@@ -5845,10 +5847,12 @@ function addRoute(proj) {
   routes[proj].push(newRoute);
   saveRoutes(routes);
   
-  // Push to Appwrite
-  pushRoute(newRoute, proj).catch(err => {
+  // Push to Appwrite - WAIT for it to complete
+  try {
+    await pushRoute(newRoute, proj);
+  } catch (err) {
     dbg('[addRoute] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
   pushConfig();
   manageRoutes(proj);
@@ -6531,7 +6535,7 @@ function switchUserMgmtTab(role, el) {
   }
 }
 
-function addProjectToUser(username) {
+async function addProjectToUser(username) {
   const sel = document.getElementById('addProjSel_' + username);
   const proj = sel ? sel.value : '';
   if (!proj) { showToast('Select a project first'); return; }
@@ -6554,28 +6558,32 @@ function addProjectToUser(username) {
   users[username].projects.push(proj);
   saveUsers(users);
   
-  // Update assignments in Appwrite
+  // Update assignments in Appwrite - WAIT for it to complete
   const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
-  pushAssignment(proj, projectUsers).catch(err => {
+  try {
+    await pushAssignment(proj, projectUsers);
+  } catch (err) {
     dbg('[addProjectToUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
   pushConfig();
   showToast('✅ ' + proj + ' assigned to @' + username);
   document.getElementById('main').innerHTML = renderUsersTab();
 }
 
-function removeProjectFromUser(username, proj) {
+async function removeProjectFromUser(username, proj) {
   const users = getUsers();
   if (!users[username]) return;
   users[username].projects = (users[username].projects || []).filter(function(p){return p !== proj;});
   saveUsers(users);
   
-  // Update assignments in Appwrite
+  // Update assignments in Appwrite - WAIT for it to complete
   const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
-  pushAssignment(proj, projectUsers).catch(err => {
+  try {
+    await pushAssignment(proj, projectUsers);
+  } catch (err) {
     dbg('[removeProjectFromUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
   pushConfig();
   showToast('🗑️ Removed ' + proj + ' from @' + username);
