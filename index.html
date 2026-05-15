@@ -6093,7 +6093,7 @@ function editSpecialTotal(idx, currentTotal) {
   showToast('✅ Total updated');
 }
 
-function addSpecial() {
+async function addSpecial() {
   const name = document.getElementById('sp-name').value.trim();
   const total= parseInt(document.getElementById('sp-total').value) || 0;
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
@@ -6106,10 +6106,8 @@ function addSpecial() {
   if (newDeleted.length !== deletedSpecials.length) {
     LS.set('phx_deleted_specials', newDeleted);
     dbg('[addSpecial] cleared from deleted: ' + name);
-    // Immediately push updated deleted list to Appwrite
-    pushDeletedListsToAW().catch(err => {
-      dbg('[addSpecial] ⚠️ Failed to push deleted lists: ' + err.message, 'warn');
-    });
+    // WAIT for deleted list to be pushed to Appwrite before continuing
+    await pushDeletedListsToAW();
   }
   
   // Generate unique ID for the new fitting
@@ -6222,7 +6220,7 @@ function renderValvesList() {
   }).join('');
 }
 
-function addValveSpecial() {
+async function addValveSpecial() {
   const name  = document.getElementById('vsp-name').value.trim();
   const total = parseInt(document.getElementById('vsp-total').value) || 0;
   const proj  = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
@@ -6235,10 +6233,8 @@ function addValveSpecial() {
   if (newDeleted.length !== deletedValveSpecials.length) {
     LS.set('phx_deleted_valve_specials', newDeleted);
     dbg('[addValveSpecial] cleared from deleted: ' + name);
-    // Immediately push updated deleted list to Appwrite
-    pushDeletedListsToAW().catch(err => {
-      dbg('[addValveSpecial] ⚠️ Failed to push deleted lists: ' + err.message, 'warn');
-    });
+    // WAIT for deleted list to be pushed to Appwrite before continuing
+    await pushDeletedListsToAW();
   }
   
   // Generate unique ID for the new valve
