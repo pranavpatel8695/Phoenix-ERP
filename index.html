@@ -6099,17 +6099,6 @@ async function addSpecial() {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter special name'); return; }
   
-  // Clear from deleted array if re-adding
-  const itemKey = `${proj}::${name}`.toLowerCase();
-  const deletedSpecials = LS.get('phx_deleted_specials', []);
-  const newDeleted = deletedSpecials.filter(k => k !== itemKey);
-  if (newDeleted.length !== deletedSpecials.length) {
-    LS.set('phx_deleted_specials', newDeleted);
-    dbg('[addSpecial] cleared from deleted: ' + name);
-    // WAIT for deleted list to be pushed to Appwrite before continuing
-    await pushDeletedListsToAW();
-  }
-  
   // Generate unique ID for the new fitting
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
@@ -6121,10 +6110,23 @@ async function addSpecial() {
   specials[proj].push(newItem);
   saveSpecials(specials);
   
-  // Push to Appwrite
-  pushFitting(newItem, proj, id).catch(err => {
+  // STEP 1: Push fitting to Appwrite FIRST (before clearing deleted list)
+  try {
+    await pushFitting(newItem, proj, id);
+  } catch (err) {
     dbg('[addSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
+  
+  // STEP 2: Clear from deleted array AFTER fitting is saved
+  const itemKey = `${proj}::${name}`.toLowerCase();
+  const deletedSpecials = LS.get('phx_deleted_specials', []);
+  const newDeleted = deletedSpecials.filter(k => k !== itemKey);
+  if (newDeleted.length !== deletedSpecials.length) {
+    LS.set('phx_deleted_specials', newDeleted);
+    dbg('[addSpecial] cleared from deleted: ' + name);
+    // Update deleted list in Appwrite
+    await pushDeletedListsToAW();
+  }
   
   pushConfig();
   document.getElementById('sp-name').value = '';
@@ -6226,17 +6228,6 @@ async function addValveSpecial() {
   const proj  = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter valve name'); return; }
   
-  // Clear from deleted array if re-adding
-  const itemKey = `${proj}::${name}`.toLowerCase();
-  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
-  const newDeleted = deletedValveSpecials.filter(k => k !== itemKey);
-  if (newDeleted.length !== deletedValveSpecials.length) {
-    LS.set('phx_deleted_valve_specials', newDeleted);
-    dbg('[addValveSpecial] cleared from deleted: ' + name);
-    // WAIT for deleted list to be pushed to Appwrite before continuing
-    await pushDeletedListsToAW();
-  }
-  
   // Generate unique ID for the new valve
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
@@ -6248,10 +6239,23 @@ async function addValveSpecial() {
   valves[proj].push(newItem);
   saveValveSpecials(valves);
   
-  // Push to Appwrite
-  pushValve(newItem, proj, id).catch(err => {
+  // STEP 1: Push valve to Appwrite FIRST (before clearing deleted list)
+  try {
+    await pushValve(newItem, proj, id);
+  } catch (err) {
     dbg('[addValveSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
+  
+  // STEP 2: Clear from deleted array AFTER valve is saved
+  const itemKey = `${proj}::${name}`.toLowerCase();
+  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+  const newDeleted = deletedValveSpecials.filter(k => k !== itemKey);
+  if (newDeleted.length !== deletedValveSpecials.length) {
+    LS.set('phx_deleted_valve_specials', newDeleted);
+    dbg('[addValveSpecial] cleared from deleted: ' + name);
+    // Update deleted list in Appwrite
+    await pushDeletedListsToAW();
+  }
   
   pushConfig();
   document.getElementById('vsp-name').value = '';
