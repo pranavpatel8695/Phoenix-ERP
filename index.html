@@ -785,6 +785,18 @@ async function forceSyncAll() {
 
 async function fetchAllData() {
   if (!_awDB) { console.warn('[fetchAllData] SDK not ready'); setSyncStatus('offline'); return; }
+  
+  // ONE-TIME MIGRATION: Clear stale deleted lists (v4.2.3)
+  // This fixes cross-device sync issues where old deleted lists block items
+  const migrationKey = 'phx_deleted_lists_migrated_v4.2.3';
+  if (!LS.get(migrationKey, false)) {
+    dbg('[MIGRATION] Clearing stale deleted lists for v4.2.3...');
+    LS.set('phx_deleted_specials', []);
+    LS.set('phx_deleted_valve_specials', []);
+    LS.set(migrationKey, true);
+    dbg('[MIGRATION] ✅ Deleted lists cleared! Will sync from Appwrite.');
+  }
+  
   dbg('[fetchAllData] start');
   setSyncStatus('syncing');
   try {
