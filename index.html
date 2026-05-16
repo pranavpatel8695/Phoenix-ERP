@@ -211,6 +211,9 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
         onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
+    <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
+      Version 4.2.6 - Cross-Device Sync Fix
+    </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
 </div>
@@ -5608,10 +5611,24 @@ function renderSettingsTab() {
         <div class="tab-item" onclick="showSettingsTab('export',this)">📄 Export</div>
       </div>`;
     content = renderSettingsSpecials();
-    return `<div class="section-title mb-4">⚙️ Settings</div>${tabs}<div id="settingsContent">${content}</div>`;
+    return `
+      <div class="section-title mb-4">⚙️ Settings</div>
+      ${tabs}
+      <div id="settingsContent">${content}</div>
+      <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
+        Phoenix ERP v4.2.6 - Cross-Device Sync Fix
+      </div>
+    `;
   }
 
-  return `<div class="section-title mb-4">⚙️ Settings</div>${tabs}<div id="settingsContent">${content}</div>`;
+  return `
+    <div class="section-title mb-4">⚙️ Settings</div>
+    ${tabs}
+    <div id="settingsContent">${content}</div>
+    <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
+      Phoenix ERP v4.2.6 - Cross-Device Sync Fix
+    </div>
+  `;
 }
 
 function showSettingsTab(tab, el) {
@@ -6151,22 +6168,36 @@ async function addSpecial() {
   saveSpecials(specials); // Now saveSpecials won't block it!
   
   // STEP 3: Push to Appwrite
+  let pushSuccess = false;
   try {
     await pushFitting(newItem, proj, id);
+    pushSuccess = true;
   } catch (err) {
     dbg('[addSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync to Appwrite: ' + err.message);
+    console.error('[addSpecial] Full error:', err);
   }
   
   // STEP 4: Update deleted list in Appwrite if it was cleared
   if (newDeleted.length !== deletedSpecials.length) {
-    await pushDeletedListsToAW();
+    try {
+      await pushDeletedListsToAW();
+    } catch (err) {
+      dbg('[addSpecial] ⚠️ Deleted list push failed: ' + err.message, 'warn');
+      showToast('⚠️ Failed to update deleted list: ' + err.message);
+    }
   }
   
   // NO pushConfig() - let realtime sync handle it
   document.getElementById('sp-name').value = '';
   document.getElementById('sp-total').value = '';
   renderSpecialsList();
-  showToast('✅ Special added');
+  
+  if (pushSuccess) {
+    showToast('✅ Special added & synced');
+  } else {
+    showToast('⚠️ Special added locally but NOT synced to Appwrite');
+  }
 }
 
 function deleteSpecial(idx) {
@@ -6289,22 +6320,36 @@ async function addValveSpecial() {
   saveValveSpecials(valves); // Now saveValveSpecials won't block it!
   
   // STEP 3: Push to Appwrite
+  let pushSuccess = false;
   try {
     await pushValve(newItem, proj, id);
+    pushSuccess = true;
   } catch (err) {
     dbg('[addValveSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync to Appwrite: ' + err.message);
+    console.error('[addValveSpecial] Full error:', err);
   }
   
   // STEP 4: Update deleted list in Appwrite if it was cleared
   if (newDeleted.length !== deletedValveSpecials.length) {
-    await pushDeletedListsToAW();
+    try {
+      await pushDeletedListsToAW();
+    } catch (err) {
+      dbg('[addValveSpecial] ⚠️ Deleted list push failed: ' + err.message, 'warn');
+      showToast('⚠️ Failed to update deleted list: ' + err.message);
+    }
   }
   
   // NO pushConfig() - let realtime sync handle it
   document.getElementById('vsp-name').value = '';
   document.getElementById('vsp-total').value = '';
   renderValvesList();
-  showToast('✅ Valve added');
+  
+  if (pushSuccess) {
+    showToast('✅ Valve added & synced');
+  } else {
+    showToast('⚠️ Valve added locally but NOT synced to Appwrite');
+  }
 }
 
 async function addValveSpecialQty(idx) {
