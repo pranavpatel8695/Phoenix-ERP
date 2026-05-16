@@ -822,14 +822,13 @@ async function fetchConfig() {
       if (d.valveSpecials) mergeValveSpecials(d.valveSpecials);
       if (d.users) mergeUsers(d.users, d.deletedUsers||[]);
       
-      // Merge deleted items arrays
-      if (d.deletedSpecials?.length) {
-        const localDelSpec = LS.get('phx_deleted_specials', []);
-        LS.set('phx_deleted_specials', [...new Set([...localDelSpec, ...d.deletedSpecials])]);
+      // CRITICAL: REPLACE deleted lists with what's in Appwrite (don't merge!)
+      // This allows cross-device sync when items are removed from deleted list
+      if (d.deletedSpecials !== undefined) {
+        LS.set('phx_deleted_specials', d.deletedSpecials || []);
       }
-      if (d.deletedValveSpecials?.length) {
-        const localDelValve = LS.get('phx_deleted_valve_specials', []);
-        LS.set('phx_deleted_valve_specials', [...new Set([...localDelValve, ...d.deletedValveSpecials])]);
+      if (d.deletedValveSpecials !== undefined) {
+        LS.set('phx_deleted_valve_specials', d.deletedValveSpecials || []);
       }
       
       if (d.deletedReports?.length) {
