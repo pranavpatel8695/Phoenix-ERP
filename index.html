@@ -351,13 +351,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
+    dbg('[VERSION] Phoenix ERP v4.2.4 - Cross-Device Sync Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '4.0.1'; // Debug Fix Edition
+const APP_VERSION = '4.2.4'; // Cross-Device Sync Fix
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -800,9 +801,12 @@ async function fetchAllData() {
   dbg('[fetchAllData] start');
   setSyncStatus('syncing');
   try {
+    // CRITICAL: Run fetchConfig FIRST to update deleted lists BEFORE fetching separated collections
+    await fetchConfig();
+    
+    // Then run everything else in parallel
     await Promise.all([
-      fetchConfig(),
-      fetchSeparatedCollections(),  // NEW: Fetch from separated collections
+      fetchSeparatedCollections(),  // Now deleted list is already updated!
       fetchReports(),
       fetchCollection(AW.collections.attendance,  saveAttendance,  'phx_attendance'),
       fetchCollection(AW.collections.storeItems,   saveStoreItems,  'phx_store_items'),
@@ -936,6 +940,7 @@ async function fetchSeparatedCollections() {
       fittingDocs.forEach(f => {
         if (!fittingsByProject[f.project]) fittingsByProject[f.project] = [];
         fittingsByProject[f.project].push({
+          id: f.$id || f.id,  // CRITICAL: Include ID from Appwrite!
           name: f.name,
           total: f.total || 0
         });
@@ -951,6 +956,7 @@ async function fetchSeparatedCollections() {
       valveDocs.forEach(v => {
         if (!valvesByProject[v.project]) valvesByProject[v.project] = [];
         valvesByProject[v.project].push({
+          id: v.$id || v.id,  // CRITICAL: Include ID from Appwrite!
           name: v.name,
           total: v.total || 0
         });
