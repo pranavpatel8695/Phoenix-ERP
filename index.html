@@ -6046,7 +6046,7 @@ function renderSpecialsList() {
   }).join('');
 }
 
-function addSpecialQty(idx) {
+async function addSpecialQty(idx) {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   const qty  = parseInt(document.getElementById('sp-add-' + idx)?.value) || 0;
   if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
@@ -6064,16 +6064,18 @@ function addSpecialQty(idx) {
   saveSpecials(specials);
   
   // Push updated total to Appwrite
-  pushFitting(item, proj, item.id).catch(err => {
+  try {
+    await pushFitting(item, proj, item.id);
+  } catch (err) {
     dbg('[addSpecialQty] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
-  pushConfig();
+  // NO pushConfig() - let realtime sync handle it
   renderSpecialsList();
   showToast(`✅ Added ${qty} nos`);
 }
 
-function editSpecialTotal(idx, currentTotal) {
+async function editSpecialTotal(idx, currentTotal) {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   const newTotal = parseInt(prompt(`Set new total for this special (current: ${currentTotal}):`, currentTotal));
   if (isNaN(newTotal) || newTotal < 0) return;
@@ -6091,11 +6093,13 @@ function editSpecialTotal(idx, currentTotal) {
   saveSpecials(specials);
   
   // Push updated total to Appwrite
-  pushFitting(item, proj, item.id).catch(err => {
+  try {
+    await pushFitting(item, proj, item.id);
+  } catch (err) {
     dbg('[editSpecialTotal] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
-  pushConfig();
+  // NO pushConfig() - let realtime sync handle it
   renderSpecialsList();
   showToast('✅ Total updated');
 }
@@ -6135,7 +6139,7 @@ async function addSpecial() {
     await pushDeletedListsToAW();
   }
   
-  pushConfig();
+  // NO pushConfig() - let realtime sync handle it
   document.getElementById('sp-name').value = '';
   document.getElementById('sp-total').value = '';
   renderSpecialsList();
@@ -6150,29 +6154,35 @@ function deleteSpecial(idx) {
   showConfirm(
     'Delete Fitting',
     `Delete "${deletedItem.name}"? This will sync across all devices.`,
-    () => {
+    async () => {
+      // Delete from Appwrite FIRST - use ID if available, otherwise search by name
+      if (deletedItem.id) {
+        try {
+          await deleteFittingFromAW(deletedItem.id);
+        } catch (err) {
+          dbg('[deleteSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
+        }
+      } else {
+        try {
+          await deleteFittingByName(proj, deletedItem.name);
+        } catch (err) {
+          dbg('[deleteSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
+        }
+      }
+      
       // Track deleted item
       const deletedSpecials = LS.get('phx_deleted_specials', []);
       const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
       if (!deletedSpecials.includes(itemKey)) {
         deletedSpecials.push(itemKey);
         LS.set('phx_deleted_specials', deletedSpecials);
-      }
-      
-      // Delete from Appwrite - use ID if available, otherwise search by name
-      if (deletedItem.id) {
-        deleteFittingFromAW(deletedItem.id).catch(err => {
-          dbg('[deleteSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
-        });
-      } else {
-        deleteFittingByName(proj, deletedItem.name).catch(err => {
-          dbg('[deleteSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
-        });
+        // Update deleted list in Appwrite
+        await pushDeletedListsToAW();
       }
       
       specials[proj].splice(idx, 1);
       saveSpecials(specials);
-      pushConfig();
+      // NO pushConfig() - let realtime sync handle it
       renderSpecialsList();
       dbg('[deleteSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
       showToast('🗑️ Fitting deleted');
@@ -6264,14 +6274,14 @@ async function addValveSpecial() {
     await pushDeletedListsToAW();
   }
   
-  pushConfig();
+  // NO pushConfig() - let realtime sync handle it
   document.getElementById('vsp-name').value = '';
   document.getElementById('vsp-total').value = '';
   renderValvesList();
   showToast('✅ Valve added');
 }
 
-function addValveSpecialQty(idx) {
+async function addValveSpecialQty(idx) {
   const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   const qty  = parseInt(document.getElementById('vsp-add-' + idx)?.value) || 0;
   if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
@@ -6289,16 +6299,18 @@ function addValveSpecialQty(idx) {
   saveValveSpecials(valves);
   
   // Push updated total to Appwrite
-  pushValve(item, proj, item.id).catch(err => {
+  try {
+    await pushValve(item, proj, item.id);
+  } catch (err) {
     dbg('[addValveSpecialQty] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
-  pushConfig();
+  // NO pushConfig() - let realtime sync handle it
   renderValvesList();
   showToast(`✅ Added ${qty} nos`);
 }
 
-function editValveSpecialTotal(idx, currentTotal) {
+async function editValveSpecialTotal(idx, currentTotal) {
   const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   const newTotal = parseInt(prompt(`Set new total for this valve (current: ${currentTotal}):`, currentTotal));
   if (isNaN(newTotal) || newTotal < 0) return;
@@ -6316,11 +6328,13 @@ function editValveSpecialTotal(idx, currentTotal) {
   saveValveSpecials(valves);
   
   // Push updated total to Appwrite
-  pushValve(item, proj, item.id).catch(err => {
+  try {
+    await pushValve(item, proj, item.id);
+  } catch (err) {
     dbg('[editValveSpecialTotal] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-  });
+  }
   
-  pushConfig();
+  // NO pushConfig() - let realtime sync handle it
   renderValvesList();
   showToast('✅ Total updated');
 }
@@ -6333,29 +6347,35 @@ function deleteValveSpecial(idx) {
   showConfirm(
     'Delete Valve',
     `Delete "${deletedItem.name}"? This will sync across all devices.`,
-    () => {
+    async () => {
+      // Delete from Appwrite FIRST - use ID if available, otherwise search by name
+      if (deletedItem.id) {
+        try {
+          await deleteValveFromAW(deletedItem.id);
+        } catch (err) {
+          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
+        }
+      } else {
+        try {
+          await deleteValveByName(proj, deletedItem.name);
+        } catch (err) {
+          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
+        }
+      }
+      
       // Track deleted item (using name, not type+size)
       const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
       const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
       if (!deletedValveSpecials.includes(itemKey)) {
         deletedValveSpecials.push(itemKey);
         LS.set('phx_deleted_valve_specials', deletedValveSpecials);
-      }
-      
-      // Delete from Appwrite - use ID if available, otherwise search by name
-      if (deletedItem.id) {
-        deleteValveFromAW(deletedItem.id).catch(err => {
-          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
-        });
-      } else {
-        deleteValveByName(proj, deletedItem.name).catch(err => {
-          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
-        });
+        // Update deleted list in Appwrite
+        await pushDeletedListsToAW();
       }
       
       valves[proj].splice(idx, 1);
       saveValveSpecials(valves);
-      pushConfig();
+      // NO pushConfig() - let realtime sync handle it
       renderValvesList();
       dbg('[deleteValveSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
       showToast('🗑️ Valve deleted');
