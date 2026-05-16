@@ -1831,7 +1831,10 @@ async function pushDeletedListsToAW() {
       value: JSON.stringify(adminData)
     });
     
-    dbg('[pushDeletedLists] ✅ Updated deleted lists in Appwrite');
+    // CRITICAL: Update local cache immediately so mergeSpecials uses fresh data
+    LS.set('phx_config_adminData', adminData);
+    
+    dbg('[pushDeletedLists] ✅ Updated deleted lists in Appwrite + local cache');
   } catch (err) {
     dbg('[pushDeletedLists] ⚠️ Failed: ' + err.message, 'warn');
   }
@@ -6110,7 +6113,16 @@ async function addSpecial() {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter special name'); return; }
   
-  // Generate unique ID for the new fitting
+  // STEP 1: Clear from deleted array FIRST (before creating item)
+  const itemKey = `${proj}::${name}`.toLowerCase();
+  const deletedSpecials = LS.get('phx_deleted_specials', []);
+  const newDeleted = deletedSpecials.filter(k => k !== itemKey);
+  if (newDeleted.length !== deletedSpecials.length) {
+    LS.set('phx_deleted_specials', newDeleted);
+    dbg('[addSpecial] cleared from deleted: ' + name);
+  }
+  
+  // STEP 2: Generate unique ID and create item
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
   const id = `FIT_${timestamp}_${random}`;
@@ -6119,23 +6131,17 @@ async function addSpecial() {
   if (!specials[proj]) specials[proj] = [];
   const newItem = { id, name, total };
   specials[proj].push(newItem);
-  saveSpecials(specials);
+  saveSpecials(specials); // Now saveSpecials won't block it!
   
-  // STEP 1: Push fitting to Appwrite FIRST (before clearing deleted list)
+  // STEP 3: Push to Appwrite
   try {
     await pushFitting(newItem, proj, id);
   } catch (err) {
     dbg('[addSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
   }
   
-  // STEP 2: Clear from deleted array AFTER fitting is saved
-  const itemKey = `${proj}::${name}`.toLowerCase();
-  const deletedSpecials = LS.get('phx_deleted_specials', []);
-  const newDeleted = deletedSpecials.filter(k => k !== itemKey);
+  // STEP 4: Update deleted list in Appwrite if it was cleared
   if (newDeleted.length !== deletedSpecials.length) {
-    LS.set('phx_deleted_specials', newDeleted);
-    dbg('[addSpecial] cleared from deleted: ' + name);
-    // Update deleted list in Appwrite
     await pushDeletedListsToAW();
   }
   
@@ -6245,7 +6251,16 @@ async function addValveSpecial() {
   const proj  = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter valve name'); return; }
   
-  // Generate unique ID for the new valve
+  // STEP 1: Clear from deleted array FIRST (before creating item)
+  const itemKey = `${proj}::${name}`.toLowerCase();
+  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
+  const newDeleted = deletedValveSpecials.filter(k => k !== itemKey);
+  if (newDeleted.length !== deletedValveSpecials.length) {
+    LS.set('phx_deleted_valve_specials', newDeleted);
+    dbg('[addValveSpecial] cleared from deleted: ' + name);
+  }
+  
+  // STEP 2: Generate unique ID and create item
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
   const id = `VLV_${timestamp}_${random}`;
@@ -6254,23 +6269,17 @@ async function addValveSpecial() {
   if (!valves[proj]) valves[proj] = [];
   const newItem = { id, name, total };
   valves[proj].push(newItem);
-  saveValveSpecials(valves);
+  saveValveSpecials(valves); // Now saveValveSpecials won't block it!
   
-  // STEP 1: Push valve to Appwrite FIRST (before clearing deleted list)
+  // STEP 3: Push to Appwrite
   try {
     await pushValve(newItem, proj, id);
   } catch (err) {
     dbg('[addValveSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
   }
   
-  // STEP 2: Clear from deleted array AFTER valve is saved
-  const itemKey = `${proj}::${name}`.toLowerCase();
-  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
-  const newDeleted = deletedValveSpecials.filter(k => k !== itemKey);
+  // STEP 4: Update deleted list in Appwrite if it was cleared
   if (newDeleted.length !== deletedValveSpecials.length) {
-    LS.set('phx_deleted_valve_specials', newDeleted);
-    dbg('[addValveSpecial] cleared from deleted: ' + name);
-    // Update deleted list in Appwrite
     await pushDeletedListsToAW();
   }
   
