@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 4.2.6 - Cross-Device Sync Fix
+      Version 5.0.0 - Appwrite-First
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v4.2.4 - Cross-Device Sync Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.0.0 - Appwrite-First Architecture', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '4.2.4'; // Cross-Device Sync Fix
+const APP_VERSION = '5.0.0'; // Appwrite-First Architecture
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -477,72 +477,24 @@ const getRoutes      = () => LS.get('phx_routes', {});
 const saveRoutes     = v => LS.set('phx_routes', v);
 const getAssignments = () => LS.get('phx_assignments', {});
 const saveAssignments= v => LS.set('phx_assignments', v);
-const getSpecials    = () => LS.get('phx_specials', {});
-const saveSpecials   = v => {
-  // Guard: never save items that are in phx_deleted_specials
-  try {
-    const deletedSpecials = LS.get('phx_deleted_specials', []);
-    if (deletedSpecials.length && typeof v === 'object') {
-      const cleaned = {};
-      let filteredCount = 0;
-      Object.keys(v).forEach(proj => {
-        if (Array.isArray(v[proj])) {
-          const beforeCount = v[proj].length;
-          cleaned[proj] = v[proj].filter(item => {
-            const itemKey = `${proj}::${item.name}`.toLowerCase();
-            const isDeleted = deletedSpecials.includes(itemKey);
-            if (isDeleted) {
-              dbg('[saveSpecials] BLOCKED: ' + item.name + ' (in deleted array)', 'warn');
-              filteredCount++;
-            }
-            return !isDeleted;
-          });
-          if (beforeCount !== cleaned[proj].length) {
-            dbg('[saveSpecials] filtered ' + (beforeCount - cleaned[proj].length) + ' items from ' + proj, 'warn');
-          }
-        }
-      });
-      if (filteredCount > 0) {
-        dbg('[saveSpecials] TOTAL BLOCKED: ' + filteredCount + ' items', 'error');
-      }
-      v = cleaned;
-    }
-  } catch(e) {}
-  LS.set('phx_specials', v);
-};
-const getValveSpecials  = () => LS.get('phx_valve_specials', {});
-const saveValveSpecials = v  => {
-  // Guard: never save items that are in phx_deleted_valve_specials
-  try {
-    const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
-    if (deletedValveSpecials.length && typeof v === 'object') {
-      const cleaned = {};
-      let filteredCount = 0;
-      Object.keys(v).forEach(proj => {
-        if (Array.isArray(v[proj])) {
-          const beforeCount = v[proj].length;
-          cleaned[proj] = v[proj].filter(item => {
-            const itemKey = `${proj}::${item.name}`.toLowerCase();
-            const isDeleted = deletedValveSpecials.includes(itemKey);
-            if (isDeleted) {
-              dbg('[saveValveSpecials] BLOCKED: ' + item.name + ' (in deleted array)', 'warn');
-              filteredCount++;
-            }
-            return !isDeleted;
-          });
-          if (beforeCount !== cleaned[proj].length) {
-            dbg('[saveValveSpecials] filtered ' + (beforeCount - cleaned[proj].length) + ' items from ' + proj, 'warn');
-          }
-        }
-      });
-      if (filteredCount > 0) {
-        dbg('[saveValveSpecials] TOTAL BLOCKED: ' + filteredCount + ' items', 'error');
-      }
-      v = cleaned;
-    }
-  } catch(e) {}
-  LS.set('phx_valve_specials', v);
-};
+
+// ============================================
+// APPWRITE-FIRST ARCHITECTURE (v5.0.0)
+// Memory cache - Appwrite is the ONLY source of truth
+// ============================================
+
+// In-memory cache for fittings and valves (fetched from Appwrite)
+let _fittingsCache = {};
+let _valvesCache = {};
+
+// Getters - return from memory cache (populated by fetchSeparatedCollections)
+const getSpecials = () => _fittingsCache;
+const getValveSpecials = () => _valvesCache;
+
+// NO MORE saveSpecials/saveValveSpecials - Appwrite is the source of truth!
+// All changes go directly to Appwrite via pushFitting/pushValve
+// fetchSeparatedCollections populates the memory cache
+
 const getAttendance     = () => LS.get('phx_attendance', []);
 const saveAttendance    = v  => LS.set('phx_attendance', v);
 const getStoreItems     = () => LS.get('phx_store_items', []);
@@ -801,6 +753,15 @@ async function fetchAllData() {
     dbg('[MIGRATION] ✅ Deleted lists cleared! Will sync from Appwrite.');
   }
   
+  // CRITICAL: Ensure migration_completed flag is set (required for push functions)
+  // If separated collections exist in Appwrite, migration is complete
+  if (!LS.get('phx_migration_completed', false)) {
+    dbg('[MIGRATION] Setting migration_completed flag for v4.2.6...');
+    LS.set('phx_migration_completed', true);
+    LS.set('phx_migration_date', new Date().toISOString());
+    dbg('[MIGRATION] ✅ Migration flag set! Push functions enabled.');
+  }
+  
   dbg('[fetchAllData] start');
   setSyncStatus('syncing');
   try {
@@ -943,13 +904,15 @@ async function fetchSeparatedCollections() {
       fittingDocs.forEach(f => {
         if (!fittingsByProject[f.project]) fittingsByProject[f.project] = [];
         fittingsByProject[f.project].push({
-          id: f.$id || f.id,  // CRITICAL: Include ID from Appwrite!
+          id: f.$id || f.id,
           name: f.name,
           total: f.total || 0
         });
       });
-      saveSpecials(fittingsByProject);
+      _fittingsCache = fittingsByProject;  // ← Update memory cache directly!
       dbg('[fetchSeparated] fittings: ' + fittingDocs.length);
+    } else {
+      _fittingsCache = {};  // Empty cache if no fittings
     }
     
     // Fetch Valves
@@ -959,13 +922,15 @@ async function fetchSeparatedCollections() {
       valveDocs.forEach(v => {
         if (!valvesByProject[v.project]) valvesByProject[v.project] = [];
         valvesByProject[v.project].push({
-          id: v.$id || v.id,  // CRITICAL: Include ID from Appwrite!
+          id: v.$id || v.id,
           name: v.name,
           total: v.total || 0
         });
       });
-      saveValveSpecials(valvesByProject);
+      _valvesCache = valvesByProject;  // ← Update memory cache directly!
       dbg('[fetchSeparated] valves: ' + valveDocs.length);
+    } else {
+      _valvesCache = {};  // Empty cache if no valves
     }
     
     // Fetch Assignments
@@ -1673,7 +1638,11 @@ async function deleteRouteFromAW(routeId) {
 // Push individual fitting
 async function pushFitting(fitting, projectName, fittingId) {
   const migrationCompleted = LS.get('phx_migration_completed', false);
-  if (!migrationCompleted) return;
+  if (!migrationCompleted) {
+    const error = new Error('Migration not completed - separated collections not enabled');
+    dbg('[pushFitting] ❌ Migration not completed', 'error');
+    throw error;
+  }
   
   const docId = fittingId || ('FIT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
   // Direct Appwrite call - fittings_config has separate fields, not a JSON blob
@@ -1754,7 +1723,11 @@ async function deleteFittingByName(projectName, fittingName) {
 // Push individual valve
 async function pushValve(valve, projectName, valveId) {
   const migrationCompleted = LS.get('phx_migration_completed', false);
-  if (!migrationCompleted) return;
+  if (!migrationCompleted) {
+    const error = new Error('Migration not completed - separated collections not enabled');
+    dbg('[pushValve] ❌ Migration not completed', 'error');
+    throw error;
+  }
   
   const docId = valveId || ('VLV_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
   // Direct Appwrite call - valves_config has separate fields, not a JSON blob
@@ -5616,7 +5589,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v4.2.6 - Cross-Device Sync Fix
+        Phoenix ERP v5.0.0 - Appwrite-First
       </div>
     `;
   }
@@ -5626,7 +5599,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v4.2.6 - Cross-Device Sync Fix
+      Phoenix ERP v5.0.0 - Appwrite-First
     </div>
   `;
 }
@@ -6147,56 +6120,38 @@ async function addSpecial() {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter special name'); return; }
   
-  // STEP 1: Clear from deleted array FIRST (before creating item)
-  const itemKey = `${proj}::${name}`.toLowerCase();
-  const deletedSpecials = LS.get('phx_deleted_specials', []);
-  const newDeleted = deletedSpecials.filter(k => k !== itemKey);
-  if (newDeleted.length !== deletedSpecials.length) {
-    LS.set('phx_deleted_specials', newDeleted);
-    dbg('[addSpecial] cleared from deleted: ' + name);
-  }
-  
-  // STEP 2: Generate unique ID and create item
+  // Generate unique ID
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
   const id = `FIT_${timestamp}_${random}`;
-  
-  const specials = getSpecials();
-  if (!specials[proj]) specials[proj] = [];
   const newItem = { id, name, total };
-  specials[proj].push(newItem);
-  saveSpecials(specials); // Now saveSpecials won't block it!
   
-  // STEP 3: Push to Appwrite
+  // Push to Appwrite FIRST
   let pushSuccess = false;
   try {
     await pushFitting(newItem, proj, id);
     pushSuccess = true;
+    
+    // Update memory cache on success
+    if (!_fittingsCache[proj]) _fittingsCache[proj] = [];
+    _fittingsCache[proj].push(newItem);
+    
+    dbg('[addSpecial] ✅ Added to Appwrite & memory cache');
   } catch (err) {
     dbg('[addSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-    showToast('⚠️ Failed to sync to Appwrite: ' + err.message);
+    showToast('⚠️ Failed to sync: ' + err.message);
     console.error('[addSpecial] Full error:', err);
   }
   
-  // STEP 4: Update deleted list in Appwrite if it was cleared
-  if (newDeleted.length !== deletedSpecials.length) {
-    try {
-      await pushDeletedListsToAW();
-    } catch (err) {
-      dbg('[addSpecial] ⚠️ Deleted list push failed: ' + err.message, 'warn');
-      showToast('⚠️ Failed to update deleted list: ' + err.message);
-    }
-  }
-  
-  // NO pushConfig() - let realtime sync handle it
+  // Clear form and refresh UI
   document.getElementById('sp-name').value = '';
   document.getElementById('sp-total').value = '';
   renderSpecialsList();
   
   if (pushSuccess) {
-    showToast('✅ Special added & synced');
+    showToast('✅ Fitting added & synced');
   } else {
-    showToast('⚠️ Special added locally but NOT synced to Appwrite');
+    showToast('⚠️ Failed to add fitting');
   }
 }
 
@@ -6209,37 +6164,25 @@ function deleteSpecial(idx) {
     'Delete Fitting',
     `Delete "${deletedItem.name}"? This will sync across all devices.`,
     async () => {
-      // Delete from Appwrite FIRST - use ID if available, otherwise search by name
-      if (deletedItem.id) {
-        try {
+      // Delete from Appwrite FIRST
+      try {
+        if (deletedItem.id) {
           await deleteFittingFromAW(deletedItem.id);
-        } catch (err) {
-          dbg('[deleteSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
-        }
-      } else {
-        try {
+        } else {
           await deleteFittingByName(proj, deletedItem.name);
-        } catch (err) {
-          dbg('[deleteSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
         }
+        
+        // Update memory cache on success
+        _fittingsCache[proj].splice(idx, 1);
+        
+        dbg('[deleteSpecial] ✅ Deleted from Appwrite & memory cache: ' + deletedItem.name);
+        showToast('🗑️ Fitting deleted & synced');
+      } catch (err) {
+        dbg('[deleteSpecial] ⚠️ Delete failed: ' + err.message, 'warn');
+        showToast('⚠️ Failed to delete: ' + err.message);
       }
       
-      // Track deleted item
-      const deletedSpecials = LS.get('phx_deleted_specials', []);
-      const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
-      if (!deletedSpecials.includes(itemKey)) {
-        deletedSpecials.push(itemKey);
-        LS.set('phx_deleted_specials', deletedSpecials);
-        // Update deleted list in Appwrite
-        await pushDeletedListsToAW();
-      }
-      
-      specials[proj].splice(idx, 1);
-      saveSpecials(specials);
-      // NO pushConfig() - let realtime sync handle it
       renderSpecialsList();
-      dbg('[deleteSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
-      showToast('🗑️ Fitting deleted');
     }
   );
 }
