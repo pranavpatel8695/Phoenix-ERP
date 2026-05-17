@@ -6060,6 +6060,7 @@ async function addSpecialQty(idx) {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   const qty  = parseInt(document.getElementById('sp-add-' + idx)?.value) || 0;
   if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
+  
   const specials = getSpecials();
   specials[proj][idx].total = (specials[proj][idx].total || 0) + qty;
   
@@ -6071,16 +6072,17 @@ async function addSpecialQty(idx) {
   }
   
   const item = specials[proj][idx];
-  saveSpecials(specials);
   
   // Push updated total to Appwrite
   try {
     await pushFitting(item, proj, item.id);
+    // Memory cache already updated (specials is reference to _fittingsCache)
+    dbg('[addSpecialQty] ✅ Updated in Appwrite');
   } catch (err) {
     dbg('[addSpecialQty] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync: ' + err.message);
   }
   
-  // NO pushConfig() - let realtime sync handle it
   renderSpecialsList();
   showToast(`✅ Added ${qty} nos`);
 }
@@ -6089,6 +6091,7 @@ async function editSpecialTotal(idx, currentTotal) {
   const proj = document.getElementById('specialsProjSel')?.value || getVisibleProjects()[0] || '';
   const newTotal = parseInt(prompt(`Set new total for this special (current: ${currentTotal}):`, currentTotal));
   if (isNaN(newTotal) || newTotal < 0) return;
+  
   const specials = getSpecials();
   specials[proj][idx].total = newTotal;
   
@@ -6100,16 +6103,17 @@ async function editSpecialTotal(idx, currentTotal) {
   }
   
   const item = specials[proj][idx];
-  saveSpecials(specials);
   
   // Push updated total to Appwrite
   try {
     await pushFitting(item, proj, item.id);
+    // Memory cache already updated (specials is reference to _fittingsCache)
+    dbg('[editSpecialTotal] ✅ Updated in Appwrite');
   } catch (err) {
     dbg('[editSpecialTotal] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync: ' + err.message);
   }
   
-  // NO pushConfig() - let realtime sync handle it
   renderSpecialsList();
   showToast('✅ Total updated');
 }
@@ -6242,48 +6246,30 @@ async function addValveSpecial() {
   const proj  = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   if (!name) { showToast('Enter valve name'); return; }
   
-  // STEP 1: Clear from deleted array FIRST (before creating item)
-  const itemKey = `${proj}::${name}`.toLowerCase();
-  const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
-  const newDeleted = deletedValveSpecials.filter(k => k !== itemKey);
-  if (newDeleted.length !== deletedValveSpecials.length) {
-    LS.set('phx_deleted_valve_specials', newDeleted);
-    dbg('[addValveSpecial] cleared from deleted: ' + name);
-  }
-  
-  // STEP 2: Generate unique ID and create item
+  // Generate unique ID
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
   const id = `VLV_${timestamp}_${random}`;
-  
-  const valves = getValveSpecials();
-  if (!valves[proj]) valves[proj] = [];
   const newItem = { id, name, total };
-  valves[proj].push(newItem);
-  saveValveSpecials(valves); // Now saveValveSpecials won't block it!
   
-  // STEP 3: Push to Appwrite
+  // Push to Appwrite FIRST
   let pushSuccess = false;
   try {
     await pushValve(newItem, proj, id);
     pushSuccess = true;
+    
+    // Update memory cache on success
+    if (!_valvesCache[proj]) _valvesCache[proj] = [];
+    _valvesCache[proj].push(newItem);
+    
+    dbg('[addValveSpecial] ✅ Added to Appwrite & memory cache');
   } catch (err) {
     dbg('[addValveSpecial] ⚠️ Appwrite push failed: ' + err.message, 'warn');
-    showToast('⚠️ Failed to sync to Appwrite: ' + err.message);
+    showToast('⚠️ Failed to sync: ' + err.message);
     console.error('[addValveSpecial] Full error:', err);
   }
   
-  // STEP 4: Update deleted list in Appwrite if it was cleared
-  if (newDeleted.length !== deletedValveSpecials.length) {
-    try {
-      await pushDeletedListsToAW();
-    } catch (err) {
-      dbg('[addValveSpecial] ⚠️ Deleted list push failed: ' + err.message, 'warn');
-      showToast('⚠️ Failed to update deleted list: ' + err.message);
-    }
-  }
-  
-  // NO pushConfig() - let realtime sync handle it
+  // Clear form and refresh UI
   document.getElementById('vsp-name').value = '';
   document.getElementById('vsp-total').value = '';
   renderValvesList();
@@ -6291,7 +6277,7 @@ async function addValveSpecial() {
   if (pushSuccess) {
     showToast('✅ Valve added & synced');
   } else {
-    showToast('⚠️ Valve added locally but NOT synced to Appwrite');
+    showToast('⚠️ Failed to add valve');
   }
 }
 
@@ -6299,6 +6285,7 @@ async function addValveSpecialQty(idx) {
   const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   const qty  = parseInt(document.getElementById('vsp-add-' + idx)?.value) || 0;
   if (!qty || qty < 1) { showToast('Enter qty to add'); return; }
+  
   const valves = getValveSpecials();
   valves[proj][idx].total = (valves[proj][idx].total || 0) + qty;
   
@@ -6310,16 +6297,17 @@ async function addValveSpecialQty(idx) {
   }
   
   const item = valves[proj][idx];
-  saveValveSpecials(valves);
   
   // Push updated total to Appwrite
   try {
     await pushValve(item, proj, item.id);
+    // Memory cache already updated (valves is reference to _valvesCache)
+    dbg('[addValveSpecialQty] ✅ Updated in Appwrite');
   } catch (err) {
     dbg('[addValveSpecialQty] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync: ' + err.message);
   }
   
-  // NO pushConfig() - let realtime sync handle it
   renderValvesList();
   showToast(`✅ Added ${qty} nos`);
 }
@@ -6328,6 +6316,7 @@ async function editValveSpecialTotal(idx, currentTotal) {
   const proj = document.getElementById('valvesProjSel')?.value || getVisibleProjects()[0] || '';
   const newTotal = parseInt(prompt(`Set new total for this valve (current: ${currentTotal}):`, currentTotal));
   if (isNaN(newTotal) || newTotal < 0) return;
+  
   const valves = getValveSpecials();
   valves[proj][idx].total = newTotal;
   
@@ -6339,16 +6328,17 @@ async function editValveSpecialTotal(idx, currentTotal) {
   }
   
   const item = valves[proj][idx];
-  saveValveSpecials(valves);
   
   // Push updated total to Appwrite
   try {
     await pushValve(item, proj, item.id);
+    // Memory cache already updated (valves is reference to _valvesCache)
+    dbg('[editValveSpecialTotal] ✅ Updated in Appwrite');
   } catch (err) {
     dbg('[editValveSpecialTotal] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync: ' + err.message);
   }
   
-  // NO pushConfig() - let realtime sync handle it
   renderValvesList();
   showToast('✅ Total updated');
 }
@@ -6362,37 +6352,25 @@ function deleteValveSpecial(idx) {
     'Delete Valve',
     `Delete "${deletedItem.name}"? This will sync across all devices.`,
     async () => {
-      // Delete from Appwrite FIRST - use ID if available, otherwise search by name
-      if (deletedItem.id) {
-        try {
+      // Delete from Appwrite FIRST
+      try {
+        if (deletedItem.id) {
           await deleteValveFromAW(deletedItem.id);
-        } catch (err) {
-          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by ID failed: ' + err.message, 'warn');
-        }
-      } else {
-        try {
+        } else {
           await deleteValveByName(proj, deletedItem.name);
-        } catch (err) {
-          dbg('[deleteValveSpecial] ⚠️ Appwrite delete by name failed: ' + err.message, 'warn');
         }
+        
+        // Update memory cache on success
+        _valvesCache[proj].splice(idx, 1);
+        
+        dbg('[deleteValveSpecial] ✅ Deleted from Appwrite & memory cache: ' + deletedItem.name);
+        showToast('🗑️ Valve deleted & synced');
+      } catch (err) {
+        dbg('[deleteValveSpecial] ⚠️ Delete failed: ' + err.message, 'warn');
+        showToast('⚠️ Failed to delete: ' + err.message);
       }
       
-      // Track deleted item (using name, not type+size)
-      const deletedValveSpecials = LS.get('phx_deleted_valve_specials', []);
-      const itemKey = `${proj}::${deletedItem.name}`.toLowerCase();
-      if (!deletedValveSpecials.includes(itemKey)) {
-        deletedValveSpecials.push(itemKey);
-        LS.set('phx_deleted_valve_specials', deletedValveSpecials);
-        // Update deleted list in Appwrite
-        await pushDeletedListsToAW();
-      }
-      
-      valves[proj].splice(idx, 1);
-      saveValveSpecials(valves);
-      // NO pushConfig() - let realtime sync handle it
       renderValvesList();
-      dbg('[deleteValveSpecial] deleted: ' + deletedItem.name + ' from ' + proj);
-      showToast('🗑️ Valve deleted');
     }
   );
 }
