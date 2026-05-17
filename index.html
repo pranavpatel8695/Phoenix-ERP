@@ -471,29 +471,28 @@ function getUserLabel(u) {
 // All engineer-level roles (same access as old 'supervisor')
 const ENGINEER_ROLES = ['supervisor','senior_engineer','junior_engineer','work_assistant','store_manager'];
 function isEngineer(role) { return ENGINEER_ROLES.includes(role); }
-const getProjects    = () => LS.get('phx_projects', []);
-const saveProjects   = v => LS.set('phx_projects', v);
-const getRoutes      = () => LS.get('phx_routes', {});
-const saveRoutes     = v => LS.set('phx_routes', v);
-const getAssignments = () => LS.get('phx_assignments', {});
-const saveAssignments= v => LS.set('phx_assignments', v);
-
 // ============================================
 // APPWRITE-FIRST ARCHITECTURE (v5.0.0)
 // Memory cache - Appwrite is the ONLY source of truth
 // ============================================
 
-// In-memory cache for fittings and valves (fetched from Appwrite)
+// In-memory cache for all separated collections
+let _projectsCache = [];
+let _routesCache = {};
+let _assignmentsCache = {};
 let _fittingsCache = {};
 let _valvesCache = {};
 
 // Getters - return from memory cache (populated by fetchSeparatedCollections)
+const getProjects = () => _projectsCache;
+const getRoutes = () => _routesCache;
+const getAssignments = () => _assignmentsCache;
 const getSpecials = () => _fittingsCache;
 const getValveSpecials = () => _valvesCache;
 
-// NO MORE saveSpecials/saveValveSpecials - Appwrite is the source of truth!
-// All changes go directly to Appwrite via pushFitting/pushValve
-// fetchSeparatedCollections populates the memory cache
+// NO MORE save functions - Appwrite is the source of truth!
+// All changes go directly to Appwrite via push functions
+// fetchSeparatedCollections populates the memory caches
 
 const getAttendance     = () => LS.get('phx_attendance', []);
 const saveAttendance    = v  => LS.set('phx_attendance', v);
@@ -874,8 +873,10 @@ async function fetchSeparatedCollections() {
     const projectDocs = await awList(AW.collections.projects, ["limit(500)"]);
     if (projectDocs && projectDocs.length) {
       const projects = projectDocs.map(d => d.name).filter(Boolean);
-      saveProjects(projects);
+      _projectsCache = projects;  // ← Update memory cache directly!
       dbg('[fetchSeparated] projects: ' + projects.length);
+    } else {
+      _projectsCache = [];  // Empty cache if no projects
     }
     
     // Fetch Routes
@@ -893,8 +894,10 @@ async function fetchSeparatedCollections() {
           pipes: r.pipes
         });
       });
-      saveRoutes(routesByProject);
+      _routesCache = routesByProject;  // ← Update memory cache directly!
       dbg('[fetchSeparated] routes: ' + routeDocs.length);
+    } else {
+      _routesCache = {};  // Empty cache if no routes
     }
     
     // Fetch Fittings
@@ -940,8 +943,10 @@ async function fetchSeparatedCollections() {
       assignDocs.forEach(a => {
         assignments[a.project] = a.users || [];
       });
-      saveAssignments(assignments);
+      _assignmentsCache = assignments;  // ← Update memory cache directly!
       dbg('[fetchSeparated] assignments: ' + assignDocs.length);
+    } else {
+      _assignmentsCache = {};  // Empty cache if no assignments
     }
     
     dbg('[fetchSeparated] ✅ All separated collections fetched');
@@ -5679,19 +5684,27 @@ async function addProject() {
   if (!name) return;
   const projects = getProjects();
   if (projects.includes(name)) { showToast('Project already exists'); return; }
-  projects.push(name);
-  saveProjects(projects);
   
-  // Push to Appwrite - WAIT for it to complete
+  // Push to Appwrite FIRST
+  let pushSuccess = false;
   try {
     await pushProject(name);
+    pushSuccess = true;
+    
+    // Update memory cache on success
+    _projectsCache.push(name);
+    
+    dbg('[addProject] ✅ Added to Appwrite & memory cache');
   } catch (err) {
     dbg('[addProject] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to add project: ' + err.message);
   }
   
-  pushConfig();
   document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
-  showToast('✅ Project added');
+  
+  if (pushSuccess) {
+    showToast('✅ Project added & synced');
+  }
 }
 
 function deleteProject(name) {
@@ -5712,52 +5725,54 @@ function deleteProject(name) {
     + `• ${attendance} Attendance Record(s)\n`
     + `• Removed from ${users} User Assignment(s)\n\nThis cannot be undone.`;
 
-  showConfirm('Delete Project', msg, () => {
-    // 1. Remove project from list
-    saveProjects(getProjects().filter(x => x !== name));
+  showConfirm('Delete Project', msg, async () => {
+    try {
+      // Delete from Appwrite FIRST
+      await deleteProjectFromAW(name);
+      
+      // Update memory caches on success
+      // 1. Remove project from list
+      _projectsCache = _projectsCache.filter(x => x !== name);
 
-    // 2. Remove routes
-    const r = getRoutes(); delete r[name]; saveRoutes(r);
+      // 2. Remove routes
+      delete _routesCache[name];
 
-    // 3. Remove reports
-    saveReports(getReports().filter(r => r.project !== name));
+      // 3. Remove reports
+      saveReports(getReports().filter(r => r.project !== name));
 
-    // 4. Remove machinery assigned to this project
-    const remainingMachIds = new Set(getMachinery().filter(m => m.project !== name).map(m => m.id));
-    saveMachinery(getMachinery().filter(m => m.project !== name));
-    saveMachLogs(getMachLogs().filter(l => remainingMachIds.has(l.machineId)));
-    saveMachService(getMachService().filter(l => remainingMachIds.has(l.machineId)));
-    saveMachIssues(getMachIssues().filter(l => remainingMachIds.has(l.machineId)));
+      // 4. Remove machinery assigned to this project
+      const remainingMachIds = new Set(getMachinery().filter(m => m.project !== name).map(m => m.id));
+      saveMachinery(getMachinery().filter(m => m.project !== name));
+      saveMachLogs(getMachLogs().filter(l => remainingMachIds.has(l.machineId)));
+      saveMachService(getMachService().filter(l => remainingMachIds.has(l.machineId)));
+      saveMachIssues(getMachIssues().filter(l => remainingMachIds.has(l.machineId)));
 
-    // 5. Remove store items & transactions
-    saveStoreItems(getStoreItems().filter(i => i.project !== name));
-    saveStoreTxns(getStoreTxns().filter(t => t.project !== name && t.fromProject !== name));
+      // 5. Remove store items & transactions
+      saveStoreItems(getStoreItems().filter(i => i.project !== name));
+      saveStoreTxns(getStoreTxns().filter(t => t.project !== name && t.fromProject !== name));
 
-    // 6. Remove attendance records for this project
-    saveAttendance(getAttendance().filter(a => a.project !== name));
+      // 6. Remove attendance records for this project
+      saveAttendance(getAttendance().filter(a => a.project !== name));
 
-    // 7. Remove project from user assignments
-    const allUsers = getUsers();
-    Object.keys(allUsers).forEach(u => {
-      if (allUsers[u].projects) {
-        allUsers[u].projects = allUsers[u].projects.filter(p => p !== name);
-      }
-    });
-    saveUsers(allUsers);
+      // 7. Remove project from user assignments
+      const allUsers = getUsers();
+      Object.keys(allUsers).forEach(u => {
+        if (allUsers[u].projects) {
+          allUsers[u].projects = allUsers[u].projects.filter(p => p !== name);
+        }
+      });
+      saveUsers(allUsers);
 
-    // 8. Remove assignments
-    const asgn = getAssignments();
-    delete asgn[name];
-    saveAssignments(asgn);
-    
-    // Delete from Appwrite
-    deleteProjectFromAW(name).catch(err => {
-      dbg('[deleteProject] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
-    });
-
-    pushConfig();
-    document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
-    showToast('🗑️ Project and all related data deleted');
+      // 8. Remove assignments from memory cache
+      delete _assignmentsCache[name];
+      
+      dbg('[deleteProject] ✅ Deleted from Appwrite & memory cache');
+      document.getElementById('settingsContent').innerHTML = renderSettingsProjects();
+      showToast('🗑️ Project deleted & synced');
+    } catch (err) {
+      dbg('[deleteProject] ⚠️ Delete failed: ' + err.message, 'warn');
+      showToast('⚠️ Failed to delete: ' + err.message);
+    }
   });
 }
 
@@ -5850,23 +5865,29 @@ async function addRoute(proj) {
   }).filter(Boolean) : [];
 
   const pipe = pipes.length ? `${pipes[0].dia} ${pipes[0].material}` : '';
-
-  const routes = getRoutes();
-  if (!routes[proj]) routes[proj] = [];
   const newRoute = { id: 'R' + Date.now(), name, length: len, startCh, pipe, pipes };
-  routes[proj].push(newRoute);
-  saveRoutes(routes);
   
-  // Push to Appwrite - WAIT for it to complete
+  // Push to Appwrite FIRST
+  let pushSuccess = false;
   try {
     await pushRoute(newRoute, proj);
+    pushSuccess = true;
+    
+    // Update memory cache on success
+    if (!_routesCache[proj]) _routesCache[proj] = [];
+    _routesCache[proj].push(newRoute);
+    
+    dbg('[addRoute] ✅ Added to Appwrite & memory cache');
   } catch (err) {
     dbg('[addRoute] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to add route: ' + err.message);
   }
   
-  pushConfig();
   manageRoutes(proj);
-  showToast('✅ Route added');
+  
+  if (pushSuccess) {
+    showToast('✅ Route added & synced');
+  }
 }
 
 function deleteRoute(proj, idx) {
@@ -5881,40 +5902,46 @@ function deleteRoute(proj, idx) {
     showConfirm(
       '⚠️ Route Has Entries',
       `"${rt.name}" has <strong>${reports.length} report(s)</strong> (${types}).<br><br>Deleting this route will <strong>not</strong> delete the reports, but they will lose their route reference.<br><br>Are you sure you want to delete this route?`,
-      () => {
-        routes[proj].splice(idx, 1);
-        saveRoutes(routes);
-        
-        // Delete from Appwrite
-        if (rt.id) {
-          deleteRouteFromAW(rt.id).catch(err => {
-            dbg('[deleteRoute] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
-          });
+      async () => {
+        // Delete from Appwrite FIRST
+        try {
+          if (rt.id) {
+            await deleteRouteFromAW(rt.id);
+          }
+          
+          // Update memory cache on success
+          _routesCache[proj].splice(idx, 1);
+          
+          dbg('[deleteRoute] ✅ Deleted from Appwrite & memory cache');
+          manageRoutes(proj);
+          showToast('🗑️ Route deleted & synced');
+        } catch (err) {
+          dbg('[deleteRoute] ⚠️ Delete failed: ' + err.message, 'warn');
+          showToast('⚠️ Failed to delete: ' + err.message);
         }
-        
-        pushConfig();
-        manageRoutes(proj);
-        showToast('🗑️ Route deleted');
       }
     );
     return;
   }
 
   // No entries — confirm simple delete
-  showConfirm('Delete Route', `Delete route "${rt.name}"?`, () => {
-    routes[proj].splice(idx, 1);
-    saveRoutes(routes);
-    
-    // Delete from Appwrite
-    if (rt.id) {
-      deleteRouteFromAW(rt.id).catch(err => {
-        dbg('[deleteRoute] ⚠️ Appwrite delete failed: ' + err.message, 'warn');
-      });
+  showConfirm('Delete Route', `Delete route "${rt.name}"?`, async () => {
+    // Delete from Appwrite FIRST
+    try {
+      if (rt.id) {
+        await deleteRouteFromAW(rt.id);
+      }
+      
+      // Update memory cache on success
+      _routesCache[proj].splice(idx, 1);
+      
+      dbg('[deleteRoute] ✅ Deleted from Appwrite & memory cache');
+      manageRoutes(proj);
+      showToast('🗑️ Route deleted & synced');
+    } catch (err) {
+      dbg('[deleteRoute] ⚠️ Delete failed: ' + err.message, 'warn');
+      showToast('⚠️ Failed to delete: ' + err.message);
     }
-    
-    pushConfig();
-    manageRoutes(proj);
-    showToast('🗑️ Route deleted');
   });
 }
 
@@ -6570,15 +6597,20 @@ async function addProjectToUser(username) {
   users[username].projects.push(proj);
   saveUsers(users);
   
-  // Update assignments in Appwrite - WAIT for it to complete
+  // Update assignments in Appwrite & memory cache
   const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
   try {
     await pushAssignment(proj, projectUsers);
+    
+    // Update memory cache on success
+    _assignmentsCache[proj] = projectUsers;
+    
+    dbg('[addProjectToUser] ✅ Updated Appwrite & memory cache');
   } catch (err) {
     dbg('[addProjectToUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync assignment: ' + err.message);
   }
   
-  pushConfig();
   showToast('✅ ' + proj + ' assigned to @' + username);
   document.getElementById('main').innerHTML = renderUsersTab();
 }
@@ -6589,15 +6621,20 @@ async function removeProjectFromUser(username, proj) {
   users[username].projects = (users[username].projects || []).filter(function(p){return p !== proj;});
   saveUsers(users);
   
-  // Update assignments in Appwrite - WAIT for it to complete
+  // Update assignments in Appwrite & memory cache
   const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
   try {
     await pushAssignment(proj, projectUsers);
+    
+    // Update memory cache on success
+    _assignmentsCache[proj] = projectUsers;
+    
+    dbg('[removeProjectFromUser] ✅ Updated Appwrite & memory cache');
   } catch (err) {
     dbg('[removeProjectFromUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    showToast('⚠️ Failed to sync assignment: ' + err.message);
   }
   
-  pushConfig();
   showToast('🗑️ Removed ' + proj + ' from @' + username);
   document.getElementById('main').innerHTML = renderUsersTab();
 }
