@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.0.2 - Assignments Sync
+      Version 5.0.3 - Fix
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.0.2 - Assignments Sync', 'info');
+    dbg('[VERSION] Phoenix ERP v5.0.3 - Assignments Sync Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.0.2'; // Assignments Sync
+const APP_VERSION = '5.0.3'; // Assignments Sync Fix
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -767,14 +767,30 @@ async function fetchAllData() {
     // CRITICAL: Run fetchConfig FIRST to update deleted lists BEFORE fetching separated collections
     await fetchConfig();
     
+    // Then run everything else in parallel
+    await Promise.all([
+      fetchSeparatedCollections(),  // Populates _projectsCache, _routesCache, etc.
+      fetchReports(),
+      fetchCollection(AW.collections.attendance,  saveAttendance,  'phx_attendance'),
+      fetchCollection(AW.collections.storeItems,   saveStoreItems,  'phx_store_items'),
+      fetchCollection(AW.collections.storeTxns,    saveStoreTxns,   'phx_store_txns'),
+      fetchCollection(AW.collections.machinery,    saveMachinery,   'phx_machinery'),
+      fetchCollection(AW.collections.machLogs,     saveMachLogs,    'phx_mach_logs'),
+      fetchCollection(AW.collections.machService,  saveMachService, 'phx_mach_service'),
+      fetchCollection(AW.collections.machIssues,   saveMachIssues,  'phx_mach_issues'),
+    ]);
+    
     // ONE-TIME SYNC: Push existing user assignments to assignments_config collection
-    const assignmentsSyncKey = 'phx_assignments_synced_v5.0.1';
+    // IMPORTANT: Run AFTER fetchSeparatedCollections so _projectsCache is populated!
+    const assignmentsSyncKey = 'phx_assignments_synced_v5.0.2';
     if (!LS.get(assignmentsSyncKey, false)) {
       dbg('[SYNC] Syncing existing user assignments to Appwrite...');
       try {
         const users = getUsers();
-        const projects = getProjects();
+        const projects = getProjects();  // Now _projectsCache is populated!
         let syncedCount = 0;
+        
+        dbg('[SYNC] Found ' + projects.length + ' projects, checking assignments...');
         
         // For each project, find all users assigned to it
         for (const proj of projects) {
@@ -793,21 +809,10 @@ async function fetchAllData() {
         dbg('[SYNC] ✅ Synced ' + syncedCount + ' project assignments to Appwrite!');
       } catch (err) {
         dbg('[SYNC] ⚠️ Assignment sync failed: ' + err.message, 'warn');
+        console.error('[SYNC] Full error:', err);
       }
     }
     
-    // Then run everything else in parallel
-    await Promise.all([
-      fetchSeparatedCollections(),  // Now deleted list is already updated!
-      fetchReports(),
-      fetchCollection(AW.collections.attendance,  saveAttendance,  'phx_attendance'),
-      fetchCollection(AW.collections.storeItems,   saveStoreItems,  'phx_store_items'),
-      fetchCollection(AW.collections.storeTxns,    saveStoreTxns,   'phx_store_txns'),
-      fetchCollection(AW.collections.machinery,    saveMachinery,   'phx_machinery'),
-      fetchCollection(AW.collections.machLogs,     saveMachLogs,    'phx_mach_logs'),
-      fetchCollection(AW.collections.machService,  saveMachService, 'phx_mach_service'),
-      fetchCollection(AW.collections.machIssues,   saveMachIssues,  'phx_mach_issues'),
-    ]);
     setSyncStatus('synced');
     scheduleRender();
   } catch(e) {
@@ -823,11 +828,10 @@ async function fetchConfig() {
   if (adminDoc?.value) {
     try {
       const d = JSON.parse(adminDoc.value);
-      if (d.projects?.length) saveProjects(d.projects);
-      if (d.routes && Object.keys(d.routes).length) mergeRoutes(d.routes);
-      if (d.assignments) saveAssignments(d.assignments);
-      if (d.specials) mergeSpecials(d.specials);
-      if (d.valveSpecials) mergeValveSpecials(d.valveSpecials);
+      
+      // NOTE: In v5.0+, we fetch from separated collections, not from config
+      // Keep this for backwards compatibility with old deployments only
+      // Users data still uses config for now
       if (d.users) mergeUsers(d.users, d.deletedUsers||[]);
       
       // CRITICAL: REPLACE deleted lists with what's in Appwrite (don't merge!)
@@ -5640,7 +5644,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.0.2 - Assignments Sync
+        Phoenix ERP v5.0.3
       </div>
     `;
   }
@@ -5650,7 +5654,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.0.2 - Assignments Sync
+      Phoenix ERP v5.0.3
     </div>
   `;
 }
