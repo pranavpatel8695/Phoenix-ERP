@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.0.0 - Appwrite-First
+      Version 5.0.1 - Routes Fix
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.0.0 - Appwrite-First Architecture', 'info');
+    dbg('[VERSION] Phoenix ERP v5.0.1 - Routes Pipes Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.0.0'; // Appwrite-First Architecture
+const APP_VERSION = '5.0.1'; // Routes Pipes Fix
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -885,13 +885,23 @@ async function fetchSeparatedCollections() {
       const routesByProject = {};
       routeDocs.forEach(r => {
         if (!routesByProject[r.project]) routesByProject[r.project] = [];
+        
+        // Parse pipes from JSON string back to array
+        let pipes = [];
+        try {
+          pipes = r.pipes ? JSON.parse(r.pipes) : [];
+        } catch (e) {
+          dbg('[fetchSeparated] ⚠️ Failed to parse pipes for route: ' + r.name, 'warn');
+          pipes = [];
+        }
+        
         routesByProject[r.project].push({
           id: r.id || r.$id,
           name: r.name,
           length: r.length,
           startCh: r.startCh || 0,
           pipe: r.pipe,
-          pipes: r.pipes
+          pipes: pipes  // ← Now an array!
         });
       });
       _routesCache = routesByProject;  // ← Update memory cache directly!
@@ -1600,9 +1610,16 @@ async function pushRoute(route, projectName) {
   if (!migrationCompleted) return;
   
   const docId = route.id || ('ROUTE_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+  
+  // Convert pipes array to JSON string for Appwrite (schema expects string)
   const data = {
-    ...route,
-    project: projectName
+    project: projectName,
+    id: route.id,
+    name: route.name,
+    length: route.length,
+    startCh: route.startCh,
+    pipe: route.pipe,
+    pipes: JSON.stringify(route.pipes || [])  // ← Convert array to string!
   };
   
   try {
@@ -5594,7 +5611,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.0.0 - Appwrite-First
+        Phoenix ERP v5.0.1 - Routes Fix
       </div>
     `;
   }
@@ -5604,7 +5621,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.0.0 - Appwrite-First
+      Phoenix ERP v5.0.1 - Routes Fix
     </div>
   `;
 }
