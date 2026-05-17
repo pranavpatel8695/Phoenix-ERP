@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.0.1 - Routes Fix
+      Version 5.0.2 - Assignments Sync
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.0.1 - Routes Pipes Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.0.2 - Assignments Sync', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.0.1'; // Routes Pipes Fix
+const APP_VERSION = '5.0.2'; // Assignments Sync
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -766,6 +766,35 @@ async function fetchAllData() {
   try {
     // CRITICAL: Run fetchConfig FIRST to update deleted lists BEFORE fetching separated collections
     await fetchConfig();
+    
+    // ONE-TIME SYNC: Push existing user assignments to assignments_config collection
+    const assignmentsSyncKey = 'phx_assignments_synced_v5.0.1';
+    if (!LS.get(assignmentsSyncKey, false)) {
+      dbg('[SYNC] Syncing existing user assignments to Appwrite...');
+      try {
+        const users = getUsers();
+        const projects = getProjects();
+        let syncedCount = 0;
+        
+        // For each project, find all users assigned to it
+        for (const proj of projects) {
+          const projectUsers = Object.keys(users).filter(u => 
+            (users[u].projects || []).includes(proj)
+          );
+          
+          if (projectUsers.length > 0) {
+            await pushAssignment(proj, projectUsers);
+            syncedCount++;
+            dbg('[SYNC] ✅ ' + proj + ': ' + projectUsers.length + ' users');
+          }
+        }
+        
+        LS.set(assignmentsSyncKey, true);
+        dbg('[SYNC] ✅ Synced ' + syncedCount + ' project assignments to Appwrite!');
+      } catch (err) {
+        dbg('[SYNC] ⚠️ Assignment sync failed: ' + err.message, 'warn');
+      }
+    }
     
     // Then run everything else in parallel
     await Promise.all([
@@ -5611,7 +5640,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.0.1 - Routes Fix
+        Phoenix ERP v5.0.2 - Assignments Sync
       </div>
     `;
   }
@@ -5621,7 +5650,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.0.1 - Routes Fix
+      Phoenix ERP v5.0.2 - Assignments Sync
     </div>
   `;
 }
