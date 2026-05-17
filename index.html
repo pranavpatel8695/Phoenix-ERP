@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.0.3 - Fix
+      Version 5.0.4
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.0.3 - Assignments Sync Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.0.4 - Assignments Data Type Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.0.3'; // Assignments Sync Fix
+const APP_VERSION = '5.0.4'; // Assignments Data Type Fix
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -984,7 +984,15 @@ async function fetchSeparatedCollections() {
     if (assignDocs && assignDocs.length) {
       const assignments = {};
       assignDocs.forEach(a => {
-        assignments[a.project] = a.users || [];
+        // Parse users from JSON string back to array
+        let users = [];
+        try {
+          users = a.users ? JSON.parse(a.users) : [];
+        } catch (e) {
+          dbg('[fetchSeparated] ⚠️ Failed to parse users for project: ' + a.project, 'warn');
+          users = [];
+        }
+        assignments[a.project] = users;  // ← Now an array!
       });
       _assignmentsCache = assignments;  // ← Update memory cache directly!
       dbg('[fetchSeparated] assignments: ' + assignDocs.length);
@@ -1891,12 +1899,18 @@ async function pushDeletedListsToAW() {
 // Push assignments for a project
 async function pushAssignment(projectName, users) {
   const migrationCompleted = LS.get('phx_migration_completed', false);
-  if (!migrationCompleted) return;
+  if (!migrationCompleted) {
+    const error = new Error('Migration not completed - separated collections not enabled');
+    dbg('[pushAssignment] ❌ Migration not completed', 'error');
+    throw error;
+  }
   
   const docId = projectName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  // Convert users array to JSON string for Appwrite (schema expects string)
   const data = {
     project: projectName,
-    users: users || []
+    users: JSON.stringify(users || [])  // ← Convert array to string!
   };
   
   try {
@@ -5644,7 +5658,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.0.3
+        Phoenix ERP v5.0.4
       </div>
     `;
   }
@@ -5654,7 +5668,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.0.3
+      Phoenix ERP v5.0.4
     </div>
   `;
 }
