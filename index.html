@@ -992,14 +992,24 @@ async function fetchAllOtherCollections() {
     
     // Fetch Reports
     const reportDocs = await awList(AW.collections.reports, ["limit(5000)"]);
+    dbg('[fetchOther] reports raw docs: ' + (reportDocs?.length || 0));
+    
     if (reportDocs && reportDocs.length) {
       const reports = reportDocs.map(d => {
-        try { return JSON.parse(d.data); } catch(e) { return null; }
+        try { 
+          const parsed = JSON.parse(d.data);
+          return parsed;
+        } catch(e) { 
+          dbg('[fetchOther] Failed to parse report: ' + e.message, 'error');
+          return null;
+        }
       }).filter(Boolean);
       _reportsCache = reports;
-      dbg('[fetchOther] reports: ' + reports.length);
+      dbg('[fetchOther] reports: ' + reports.length + ' loaded into cache');
+      dbg('[fetchOther] _reportsCache length: ' + _reportsCache.length);
     } else {
       _reportsCache = [];
+      dbg('[fetchOther] reports: 0 (no documents in Appwrite)');
     }
     
     // Fetch Machinery
