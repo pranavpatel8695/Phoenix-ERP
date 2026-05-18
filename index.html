@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.4
+      Version 5.1.5
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.4 - Realtime Sync Fixed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.5 - Valve/Fitting Quantity Tracking Fixed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.4'; // Realtime Sync Fixed
+const APP_VERSION = '5.1.5'; // Valve/Fitting Quantity Tracking Fixed
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -5925,7 +5925,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.4
+        Phoenix ERP v5.1.5
       </div>
     `;
   }
@@ -5935,7 +5935,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.4
+      Phoenix ERP v5.1.5
     </div>
   `;
 }
@@ -6393,7 +6393,20 @@ function renderSpecialsList() {
   if (!items.length) { el.innerHTML = '<div class="text-sm text-muted">No specials yet.</div>'; return; }
   const reports = getReports().filter(r => r.project === proj && r.type === 'fitting');
   el.innerHTML = items.map((s,i) => {
-    const used = reports.reduce((sum,r) => r.special===s.name ? sum+(parseInt(r.qty)||1) : sum, 0);
+    // Calculate used quantity from NEW format (fittings array) and OLD format (for backward compatibility)
+    const used = reports.reduce((sum, r) => {
+      // NEW format: r.fittings = [{type: "...", qty: 2}, ...]
+      if (r.fittings && Array.isArray(r.fittings)) {
+        const matching = r.fittings.filter(f => f.type === s.name);
+        return sum + matching.reduce((s, f) => s + (parseInt(f.qty) || 1), 0);
+      }
+      // OLD format: r.special = "..." and r.qty = 2
+      if (r.special === s.name) {
+        return sum + (parseInt(r.qty) || 1);
+      }
+      return sum;
+    }, 0);
+    
     const left = (s.total||0) - used;
     const pct  = s.total ? Math.min(100, Math.round(used/s.total*100)) : 0;
     const color= pct>=100?'var(--red)':pct>=75?'var(--orange)':'var(--green)';
@@ -6577,7 +6590,20 @@ function renderValvesList() {
   if (!items.length) { el.innerHTML = '<div class="text-sm text-muted">No valves yet.</div>'; return; }
   const reports = getReports().filter(r => r.project === proj && r.type === 'valve');
   el.innerHTML = items.map((s, i) => {
-    const used  = reports.reduce((sum, r) => r.valType === s.name ? sum + (parseInt(r.qty)||1) : sum, 0);
+    // Calculate used quantity from NEW format (valves array) and OLD format (for backward compatibility)
+    const used = reports.reduce((sum, r) => {
+      // NEW format: r.valves = [{type: "...", qty: 2}, ...]
+      if (r.valves && Array.isArray(r.valves)) {
+        const matching = r.valves.filter(v => v.type === s.name);
+        return sum + matching.reduce((s, v) => s + (parseInt(v.qty) || 1), 0);
+      }
+      // OLD format: r.valType = "..." and r.qty = 2
+      if (r.valType === s.name) {
+        return sum + (parseInt(r.qty) || 1);
+      }
+      return sum;
+    }, 0);
+    
     const left  = (s.total || 0) - used;
     const pct   = s.total ? Math.min(100, Math.round(used / s.total * 100)) : 0;
     const color = pct >= 100 ? 'var(--red)' : pct >= 75 ? 'var(--orange)' : 'var(--green)';
