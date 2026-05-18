@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.0-fix3
+      Version 5.1.0-debug
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.0-fix3 - Dropdown Filters Fixed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.0-debug - Dropdown Debug Logging', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.0-fix3'; // Valve/Fitting Dropdown Project Filter Fixed
+const APP_VERSION = '5.1.0-debug'; // Dropdown Debug Logging Added
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -3105,6 +3105,13 @@ function buildTypeFields(type, p={}) {
     const selectedProj = (p.project && vp.includes(p.project)) ? p.project : vp[0] || '';
     const valveItems = (getValveSpecials()[selectedProj] || []);
     
+    // DEBUG: Log what project is being used
+    console.log('[VALVE FORM DEBUG] Visible projects:', vp);
+    console.log('[VALVE FORM DEBUG] p.project:', p.project);
+    console.log('[VALVE FORM DEBUG] Selected project for valves:', selectedProj);
+    console.log('[VALVE FORM DEBUG] Valve items found:', valveItems.length);
+    console.log('[VALVE FORM DEBUG] All valve specials:', Object.keys(getValveSpecials()));
+    
     // Convert old format to new if needed
     let existingValves = p.valves || [];
     if (!existingValves.length && p.valType) {
@@ -3237,6 +3244,13 @@ function buildTypeFields(type, p={}) {
     const vp = getVisibleProjects();
     const selectedProj = (p.project && vp.includes(p.project)) ? p.project : vp[0] || '';
     const specItems = (getSpecials()[selectedProj] || []);
+    
+    // DEBUG: Log what project is being used
+    console.log('[FITTING FORM DEBUG] Visible projects:', vp);
+    console.log('[FITTING FORM DEBUG] p.project:', p.project);
+    console.log('[FITTING FORM DEBUG] Selected project for fittings:', selectedProj);
+    console.log('[FITTING FORM DEBUG] Fitting items found:', specItems.length);
+    console.log('[FITTING FORM DEBUG] All fitting specials:', Object.keys(getSpecials()));
     
     // Convert old format to new if needed
     let existingFittings = p.fittings || [];
@@ -4002,6 +4016,12 @@ function addValveRow() {
   const valveItems = (getValveSpecials()[project] || []);
   const hasSpecials = valveItems.length > 0;
   
+  // DEBUG: Log what project is being used when adding a row
+  console.log('[ADD VALVE ROW DEBUG] Project from dropdown:', document.getElementById('f-project')?.value);
+  console.log('[ADD VALVE ROW DEBUG] Project used:', project);
+  console.log('[ADD VALVE ROW DEBUG] Valve items found:', valveItems.length);
+  console.log('[ADD VALVE ROW DEBUG] All valve specials:', Object.keys(getValveSpecials()));
+  
   const html = `
     <div class="valve-row" data-index="${index}" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -4049,6 +4069,12 @@ function addFittingRow() {
   const project = document.getElementById('f-project')?.value || getVisibleProjects()[0] || '';
   const specItems = (getSpecials()[project] || []);
   const hasSpecials = specItems.length > 0;
+  
+  // DEBUG: Log what project is being used when adding a row
+  console.log('[ADD FITTING ROW DEBUG] Project from dropdown:', document.getElementById('f-project')?.value);
+  console.log('[ADD FITTING ROW DEBUG] Project used:', project);
+  console.log('[ADD FITTING ROW DEBUG] Fitting items found:', specItems.length);
+  console.log('[ADD FITTING ROW DEBUG] All fitting specials:', Object.keys(getSpecials()));
   
   const html = `
     <div class="fitting-row" data-index="${index}" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
@@ -5769,7 +5795,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.0-fix3
+        Phoenix ERP v5.1.0-debug
       </div>
     `;
   }
@@ -5779,7 +5805,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.0-fix3
+      Phoenix ERP v5.1.0-debug
     </div>
   `;
 }
