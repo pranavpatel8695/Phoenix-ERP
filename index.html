@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.2
+      Version 5.1.2-fix
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.2 - Valve/Fitting Dropdown Auto-Refresh', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.2-fix - Complete Row Rebuild on Project Change', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.2'; // Valve/Fitting Dropdowns Auto-Refresh on Project Change
+const APP_VERSION = '5.1.2-fix'; // Complete Row Rebuild on Project Change
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -3734,40 +3734,91 @@ function refreshValveFittingDropdowns() {
   const proj = document.getElementById('f-project')?.value;
   if (!proj) return;
   
-  // Refresh all valve dropdowns
-  const valveSelects = document.querySelectorAll('.valve-type[data-index]');
-  const valveItems = getValveSpecials()[proj] || [];
+  console.log('[REFRESH] Refreshing valve/fitting dropdowns for project:', proj);
   
-  valveSelects.forEach(select => {
-    if (select.tagName === 'SELECT') {
-      const currentValue = select.value;
-      select.innerHTML = '<option value="">— Select Valve —</option>' + 
-        valveItems.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
-      // Restore selection if it still exists
-      if (currentValue && valveItems.find(v => v.name === currentValue)) {
-        select.value = currentValue;
-      }
-    }
-  });
+  // Refresh all valve rows
+  const valveContainer = document.getElementById('valve-rows-container');
+  if (valveContainer) {
+    const valveItems = getValveSpecials()[proj] || [];
+    const hasValveSpecials = valveItems.length > 0;
+    console.log('[REFRESH] Valve items found:', valveItems.length);
+    
+    // Rebuild each valve row
+    const valveRows = valveContainer.querySelectorAll('.valve-row');
+    valveRows.forEach((row, idx) => {
+      const currentType = row.querySelector('.valve-type')?.value || '';
+      const currentQty = row.querySelector('.valve-qty')?.value || '1';
+      const canRemove = valveRows.length > 1;
+      
+      const newHtml = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;color:var(--muted)">Valve ${idx + 1}</div>
+          ${canRemove ? `<button type="button" onclick="removeValveRow(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:0;width:24px;height:24px">×</button>` : ''}
+        </div>
+        ${hasValveSpecials ? `
+          <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+            <select class="valve-type" data-index="${idx}">
+              <option value="">— Select Valve —</option>
+              ${valveItems.map(s=>`<option value="${s.name}"${currentType===s.name?' selected':''}>${s.name}</option>`).join('')}
+            </select>
+          </div>` : `
+          <div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:6px;padding:6px;font-size:10px;color:var(--orange);margin-bottom:8px">
+            ⚠️ No valves in Settings
+          </div>
+          <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+            <input type="text" class="valve-type" data-index="${idx}" value="${currentType}" placeholder="e.g. Sluice Valve 600mm">
+          </div>`}
+        <div class="field-group"><label>Quantity (Nos) <span class="req">*</span></label>
+          <input type="number" class="valve-qty" data-index="${idx}" value="${currentQty}" min="1">
+        </div>
+      `;
+      
+      row.innerHTML = newHtml;
+    });
+  }
   
-  // Refresh all fitting dropdowns
-  const fittingSelects = document.querySelectorAll('.fitting-type[data-index]');
-  const fittingItems = getSpecials()[proj] || [];
+  // Refresh all fitting rows
+  const fittingContainer = document.getElementById('fitting-rows-container');
+  if (fittingContainer) {
+    const fittingItems = getSpecials()[proj] || [];
+    const hasFittingSpecials = fittingItems.length > 0;
+    console.log('[REFRESH] Fitting items found:', fittingItems.length);
+    
+    // Rebuild each fitting row
+    const fittingRows = fittingContainer.querySelectorAll('.fitting-row');
+    fittingRows.forEach((row, idx) => {
+      const currentType = row.querySelector('.fitting-type')?.value || '';
+      const currentQty = row.querySelector('.fitting-qty')?.value || '1';
+      const canRemove = fittingRows.length > 1;
+      
+      const newHtml = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;color:var(--muted)">Fitting ${idx + 1}</div>
+          ${canRemove ? `<button type="button" onclick="removeFittingRow(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:0;width:24px;height:24px">×</button>` : ''}
+        </div>
+        ${hasFittingSpecials ? `
+          <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+            <select class="fitting-type" data-index="${idx}">
+              <option value="">— Select Fitting —</option>
+              ${fittingItems.map(s=>`<option value="${s.name}"${currentType===s.name?' selected':''}>${s.name}</option>`).join('')}
+            </select>
+          </div>` : `
+          <div style="background:rgba(255,159,10,0.08);border:1px solid rgba(255,159,10,0.3);border-radius:6px;padding:6px;font-size:10px;color:var(--orange);margin-bottom:8px">
+            ⚠️ No fittings in Settings
+          </div>
+          <div class="field-group"><label>Type & Size <span class="req">*</span></label>
+            <input type="text" class="fitting-type" data-index="${idx}" value="${currentType}" placeholder="e.g. Tee (Equal) 600mm">
+          </div>`}
+        <div class="field-group"><label>Quantity <span class="req">*</span></label>
+          <input type="number" class="fitting-qty" data-index="${idx}" value="${currentQty}" min="1">
+        </div>
+      `;
+      
+      row.innerHTML = newHtml;
+    });
+  }
   
-  fittingSelects.forEach(select => {
-    if (select.tagName === 'SELECT') {
-      const currentValue = select.value;
-      select.innerHTML = '<option value="">— Select Fitting —</option>' + 
-        fittingItems.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
-      // Restore selection if it still exists
-      if (currentValue && fittingItems.find(f => f.name === currentValue)) {
-        select.value = currentValue;
-      }
-    }
-  });
-  
-  console.log('[REFRESH] Updated valve/fitting dropdowns for project:', proj);
-  console.log('[REFRESH] Valve items:', valveItems.length, 'Fitting items:', fittingItems.length);
+  console.log('[REFRESH] Rebuild complete');
 }
 
 function updateChainageHint() {
@@ -5851,7 +5902,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.2
+        Phoenix ERP v5.1.2-fix
       </div>
     `;
   }
@@ -5861,7 +5912,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.2
+      Phoenix ERP v5.1.2-fix
     </div>
   `;
 }
