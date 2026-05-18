@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.0.4
+      Version 5.1.0-alpha - Reports ✅
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.0.4 - Assignments Data Type Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.0-alpha - Reports Migrated', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.0.4'; // Assignments Data Type Fix
+const APP_VERSION = '5.1.0-alpha'; // Reports Collection Migrated to Appwrite-First
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -472,71 +472,56 @@ function getUserLabel(u) {
 const ENGINEER_ROLES = ['supervisor','senior_engineer','junior_engineer','work_assistant','store_manager'];
 function isEngineer(role) { return ENGINEER_ROLES.includes(role); }
 // ============================================
-// APPWRITE-FIRST ARCHITECTURE (v5.0.0)
-// Memory cache - Appwrite is the ONLY source of truth
+// APPWRITE-FIRST ARCHITECTURE (v5.1.0)
+// Memory cache - Appwrite is the ONLY source of truth for ALL collections
 // ============================================
 
-// In-memory cache for all separated collections
+// In-memory cache for project/route/assignment collections (v5.0.0)
 let _projectsCache = [];
 let _routesCache = {};
 let _assignmentsCache = {};
 let _fittingsCache = {};
 let _valvesCache = {};
 
-// Getters - return from memory cache (populated by fetchSeparatedCollections)
+// In-memory cache for machinery collections (v5.1.0)
+let _machineryCache = [];
+let _machLogsCache = [];
+let _machServiceCache = [];
+let _machIssuesCache = [];
+
+// In-memory cache for other collections (v5.1.0)
+let _reportsCache = [];
+let _attendanceCache = [];
+let _storeItemsCache = [];
+let _storeTxnsCache = [];
+
+// Getters - return from memory cache (populated by fetch functions)
 const getProjects = () => _projectsCache;
 const getRoutes = () => _routesCache;
 const getAssignments = () => _assignmentsCache;
 const getSpecials = () => _fittingsCache;
 const getValveSpecials = () => _valvesCache;
 
-// NO MORE save functions - Appwrite is the source of truth!
-// All changes go directly to Appwrite via push functions
-// fetchSeparatedCollections populates the memory caches
+const getMachinery = () => _machineryCache;
+const getMachLogs = () => _machLogsCache;
+const getMachService = () => _machServiceCache;
+const getMachIssues = () => _machIssuesCache;
 
-const getAttendance     = () => LS.get('phx_attendance', []);
-const saveAttendance    = v  => LS.set('phx_attendance', v);
-const getStoreItems     = () => LS.get('phx_store_items', []);
-const saveStoreItems = v => {
-  // Guard: never restore items that are in phx_deleted_store_items
-  try {
-    const deletedItems = LS.get('phx_deleted_store_items', []);
-    const beforeCount = v.length;
-    if (deletedItems.length) {
-      v = v.filter(i => !deletedItems.includes(i.id));
-      if (v.length !== beforeCount) {
-        dbg('[saveStoreItems] filtered out ' + (beforeCount - v.length) + ' deleted items');
-      }
-    }
-  } catch(e) {}
-  dbg('[saveStoreItems] saving ' + v.length + ' items to localStorage');
-  LS.set('phx_store_items', v);
-};
-const getStoreTxns      = () => LS.get('phx_store_txns', []);
-const saveStoreTxns     = v  => LS.set('phx_store_txns', v);
-const getMachinery      = () => LS.get('phx_machinery', []);
-const saveMachinery     = v  => LS.set('phx_machinery', v);
-const getMachLogs       = () => LS.get('phx_mach_logs', []);
-const saveMachLogs      = v  => LS.set('phx_mach_logs', v);
-const getMachService    = () => LS.get('phx_mach_service', []);
-const saveMachService   = v  => LS.set('phx_mach_service', v);
-const getMachIssues     = () => LS.get('phx_mach_issues', []);
-const saveMachIssues    = v  => LS.set('phx_mach_issues', v);
+const getReports = () => _reportsCache;
+const getAttendance = () => _attendanceCache;
+const getStoreItems = () => _storeItemsCache;
+const getStoreTxns = () => _storeTxnsCache;
+
+// NO MORE save functions - Appwrite is the source of truth!
+// All changes go directly to Appwrite, then update memory cache
+// Fetch functions populate the memory caches on load
+
+// Users still in config collection (will migrate separately due to auth complexity)
+const getUsers = () => LS.get('phx_users', {});
+const saveUsers = v => LS.set('phx_users', v);
 
 let _rptTypeFilter = 'all';
 let _rptProjFilter = '';
-
-function getReports() {
-  return LS.get('phx_reports', []);
-}
-function saveReports(r) {
-  // Guard: never restore reports that are in phx_deleted_reports
-  try {
-    const deleted = LS.get('phx_deleted_reports', []);
-    if (deleted.length) r = r.filter(x => !deleted.includes(String(x.id)));
-  } catch(e) {}
-  LS.set('phx_reports', r);
-}
 
 function getVisibleProjects() {
   const all = getProjects();
@@ -767,17 +752,10 @@ async function fetchAllData() {
     // CRITICAL: Run fetchConfig FIRST to update deleted lists BEFORE fetching separated collections
     await fetchConfig();
     
-    // Then run everything else in parallel
+    // Fetch all collections in parallel and populate memory caches directly
     await Promise.all([
-      fetchSeparatedCollections(),  // Populates _projectsCache, _routesCache, etc.
-      fetchReports(),
-      fetchCollection(AW.collections.attendance,  saveAttendance,  'phx_attendance'),
-      fetchCollection(AW.collections.storeItems,   saveStoreItems,  'phx_store_items'),
-      fetchCollection(AW.collections.storeTxns,    saveStoreTxns,   'phx_store_txns'),
-      fetchCollection(AW.collections.machinery,    saveMachinery,   'phx_machinery'),
-      fetchCollection(AW.collections.machLogs,     saveMachLogs,    'phx_mach_logs'),
-      fetchCollection(AW.collections.machService,  saveMachService, 'phx_mach_service'),
-      fetchCollection(AW.collections.machIssues,   saveMachIssues,  'phx_mach_issues'),
+      fetchSeparatedCollections(),  // Populates _projectsCache, _routesCache, _assignmentsCache, _fittingsCache, _valvesCache
+      fetchAllOtherCollections()    // Populates all remaining caches
     ]);
     
     // ONE-TIME SYNC: Push existing user assignments to assignments_config collection
@@ -1005,6 +983,116 @@ async function fetchSeparatedCollections() {
   } catch (error) {
     dbg('[fetchSeparated] ❌ Error: ' + error.message, 'error');
     console.error('[fetchSeparated] Full error:', error);
+  }
+}
+
+// ── FETCH ALL OTHER COLLECTIONS (v5.1.0) ──────────────────────────
+// Populates memory caches for reports, machinery, attendance, store collections
+async function fetchAllOtherCollections() {
+  try {
+    dbg('[fetchOther] Fetching reports, machinery, attendance, store...');
+    
+    // Fetch Reports
+    const reportDocs = await awList(AW.collections.reports, ["limit(5000)"]);
+    if (reportDocs && reportDocs.length) {
+      const reports = reportDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _reportsCache = reports;
+      dbg('[fetchOther] reports: ' + reports.length);
+    } else {
+      _reportsCache = [];
+    }
+    
+    // Fetch Machinery
+    const machineryDocs = await awList(AW.collections.machinery, ["limit(5000)"]);
+    if (machineryDocs && machineryDocs.length) {
+      const machinery = machineryDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _machineryCache = machinery;
+      dbg('[fetchOther] machinery: ' + machinery.length);
+    } else {
+      _machineryCache = [];
+    }
+    
+    // Fetch Machine Logs
+    const logDocs = await awList(AW.collections.machLogs, ["limit(5000)"]);
+    if (logDocs && logDocs.length) {
+      const logs = logDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _machLogsCache = logs;
+      dbg('[fetchOther] mach_logs: ' + logs.length);
+    } else {
+      _machLogsCache = [];
+    }
+    
+    // Fetch Machine Service
+    const serviceDocs = await awList(AW.collections.machService, ["limit(5000)"]);
+    if (serviceDocs && serviceDocs.length) {
+      const service = serviceDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _machServiceCache = service;
+      dbg('[fetchOther] mach_service: ' + service.length);
+    } else {
+      _machServiceCache = [];
+    }
+    
+    // Fetch Machine Issues
+    const issueDocs = await awList(AW.collections.machIssues, ["limit(5000)"]);
+    if (issueDocs && issueDocs.length) {
+      const issues = issueDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _machIssuesCache = issues;
+      dbg('[fetchOther] mach_issues: ' + issues.length);
+    } else {
+      _machIssuesCache = [];
+    }
+    
+    // Fetch Attendance
+    const attendanceDocs = await awList(AW.collections.attendance, ["limit(5000)"]);
+    if (attendanceDocs && attendanceDocs.length) {
+      const attendance = attendanceDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _attendanceCache = attendance;
+      dbg('[fetchOther] attendance: ' + attendance.length);
+    } else {
+      _attendanceCache = [];
+    }
+    
+    // Fetch Store Items
+    const itemDocs = await awList(AW.collections.storeItems, ["limit(5000)"]);
+    if (itemDocs && itemDocs.length) {
+      const items = itemDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _storeItemsCache = items;
+      dbg('[fetchOther] store_items: ' + items.length);
+    } else {
+      _storeItemsCache = [];
+    }
+    
+    // Fetch Store Transactions
+    const txnDocs = await awList(AW.collections.storeTxns, ["limit(5000)"]);
+    if (txnDocs && txnDocs.length) {
+      const txns = txnDocs.map(d => {
+        try { return JSON.parse(d.data); } catch(e) { return null; }
+      }).filter(Boolean);
+      _storeTxnsCache = txns;
+      dbg('[fetchOther] store_txns: ' + txns.length);
+    } else {
+      _storeTxnsCache = [];
+    }
+    
+    dbg('[fetchOther] ✅ All other collections fetched');
+    
+  } catch (error) {
+    dbg('[fetchOther] ❌ Error: ' + error.message, 'error');
+    console.error('[fetchOther] Full error:', error);
   }
 }
 
@@ -4284,36 +4372,48 @@ async function submitReport(type) {
       }));
     } catch(e) { console.warn('Photo key storage failed:', e); }
   }
-  // Keep photos inline in local report (strip only for Appwrite upload)
-  const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
-
-  // Save locally
-  const reports = getReports();
-  if (_editId) {
-    const idx = reports.findIndex(r => String(r.id) === String(_editId));
-    if (idx > -1) { dataLean.id = _editId; reports[idx] = dataLean; }
-  } else {
-    reports.push(dataLean);
-  }
-  saveReports(reports);
-
-  closeFormModal();
-  showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
-  renderCurrentTab();
-
-  // Save to Appwrite in background
-  setSyncStatus('syncing');
-  saveReportToAW(data).then(ok => {
-    setSyncStatus(ok ? 'synced' : 'offline');
-    if (!ok) showToast('⚠️ Saved locally — will sync when online');
-    else {
-      // Persist _awId to localStorage
+  
+  // APPWRITE-FIRST: Push to Appwrite FIRST, then update cache
+  try {
+    setSyncStatus('syncing');
+    
+    // Push to Appwrite (this handles photo stripping internally)
+    const ok = await saveReportToAW(data);
+    
+    if (ok) {
+      // Update memory cache after successful Appwrite save
       const reports = getReports();
-      const idx = reports.findIndex(r => String(r.id) === String(data.id));
-      if (idx >= 0 && data._awId) { reports[idx]._awId = data._awId; LS.set('phx_reports', reports); }
-
+      const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
+      
+      if (_editId) {
+        const idx = reports.findIndex(r => String(r.id) === String(_editId));
+        if (idx > -1) {
+          dataLean.id = _editId;
+          reports[idx] = dataLean;
+        } else {
+          reports.push(dataLean);
+        }
+      } else {
+        reports.push(dataLean);
+      }
+      
+      _reportsCache = reports;  // Update cache directly
+      
+      setSyncStatus('synced');
+      closeFormModal();
+      showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
+      renderCurrentTab();
+      
+    } else {
+      setSyncStatus('offline');
+      showToast('❌ Failed to save report - check connection');
     }
-  });
+    
+  } catch (err) {
+    setSyncStatus('offline');
+    showToast('❌ Error saving report: ' + err.message);
+    console.error('[submitReport] Error:', err);
+  }
 }
 
 // ── REPORTS TAB ───────────────────────────────────────────────
@@ -5117,7 +5217,7 @@ function editReport(id) {
   openReportForm(r.type, r);
 }
 
-function deleteReport(id) {
+async function deleteReport(id) {
   const reports = getReports();
   const r = reports.find(r => String(r.id) === String(id));
   if (!r) return;
@@ -5142,18 +5242,26 @@ function deleteReport(id) {
   }
 
   showConfirm('Delete Report', 'Delete this report? This cannot be undone.', async () => {
-    // Update deleted list FIRST so saveReports guard doesn't restore it
-    const deletedList = LS.get('phx_deleted_reports', []);
-    if (!deletedList.includes(String(id))) { deletedList.push(String(id)); LS.set('phx_deleted_reports', deletedList); }
-    const updated = getReports().filter(r => String(r.id) !== String(id));
-    saveReports(updated);
-    deletePhotosForReport(id);
-    renderCurrentTab();
-    showToast('🗑️ Deleted');
-    if (r) {
+    try {
+      // APPWRITE-FIRST: Delete from Appwrite first
       setSyncStatus('syncing');
       const ok = await deleteReportFromAW(r);
-      setSyncStatus(ok ? 'synced' : 'offline');
+      
+      if (ok) {
+        // Update memory cache
+        _reportsCache = getReports().filter(r => String(r.id) !== String(id));
+        deletePhotosForReport(id);
+        renderCurrentTab();
+        showToast('🗑️ Deleted');
+        setSyncStatus('synced');
+      } else {
+        showToast('❌ Failed to delete from server');
+        setSyncStatus('offline');
+      }
+    } catch (err) {
+      showToast('❌ Delete failed: ' + err.message);
+      setSyncStatus('offline');
+      console.error('[deleteReport] Error:', err);
     }
   });
 }
@@ -5658,7 +5766,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.0.4
+        Phoenix ERP v5.1.0-alpha - Reports ✅
       </div>
     `;
   }
@@ -5668,7 +5776,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.0.4
+      Phoenix ERP v5.1.0-alpha - Reports ✅
     </div>
   `;
 }
@@ -7044,6 +7152,7 @@ function hideLoader() {
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
   initSDK(); // Initialize Appwrite SDK after all declarations are ready
+  
   // Fresh start — clear all old data on first load of v4.0
   if (localStorage.getItem('phx_version') !== '4.0') {
     const keysToRemove = Object.keys(localStorage).filter(k =>
@@ -8097,19 +8206,27 @@ function renderSettingsMachinery() {
         </div>`).join('')}`;
 }
 
-function deleteMachine(id) {
+async function deleteMachine(id) {
   const machine = getMachinery().find(m => m.id === id);
   const machineName = machine ? machine.name : 'this machine';
   
   showConfirm(
     'Delete Machine',
     `Delete "${machineName}"? All logs and service records will remain. This will sync across all devices.`,
-    () => {
-      saveMachinery(getMachinery().filter(m=>m.id!==id));
-      deleteMachineFromAW(id).catch(e => dbg('[deleteMachine] AW delete failed: '+e.message,'warn'));
-      pushConfig();
-      document.getElementById('settingsContent').innerHTML = renderSettingsMachinery();
-      showToast('🗑️ Machine deleted');
+    async () => {
+      try {
+        // APPWRITE-FIRST: Delete from Appwrite first
+        await deleteMachineFromAW(id);
+        
+        // Update memory cache
+        _machineryCache = getMachinery().filter(m => m.id !== id);
+        
+        document.getElementById('settingsContent').innerHTML = renderSettingsMachinery();
+        showToast('🗑️ Machine deleted');
+      } catch (err) {
+        showToast('❌ Failed to delete: ' + err.message);
+        console.error('[deleteMachine] Error:', err);
+      }
     }
   );
 }
@@ -8451,12 +8568,12 @@ function openAddMachine() {
   document.getElementById('formModal').classList.remove('hidden');
 }
 
-function saveMachine(editId) {
+async function saveMachine(editId) {
   const name = document.getElementById('mf-name')?.value?.trim();
   const project = document.getElementById('mf-project')?.value;
   if (!name) { showToast('⚠️ Machine name required'); return; }
   if (!project) { showToast('⚠️ Select a site/project'); return; }
-  const machines = getMachinery();
+  
   const obj = {
     id: editId || 'MCH_'+Date.now(),
     name, project,
@@ -8470,11 +8587,29 @@ function saveMachine(editId) {
     createdBy: currentUser, timestamp: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  if (editId) { const i=machines.findIndex(m=>m.id===editId); if(i>-1) machines[i]=obj; }
-  else machines.push(obj);
-  saveMachinery(machines); 
-  pushMachine(obj).catch(()=>{}); pushConfig();
-  showToast('✅ Machine saved'); closeFormModal(); renderCurrentTab();
+  
+  // APPWRITE-FIRST: Push to Appwrite, then update cache
+  try {
+    await pushMachine(obj);
+    
+    // Update memory cache
+    const machines = getMachinery();
+    if (editId) {
+      const i = machines.findIndex(m => m.id === editId);
+      if (i > -1) machines[i] = obj;
+      else machines.push(obj);
+    } else {
+      machines.push(obj);
+    }
+    _machineryCache = machines;  // Update cache directly
+    
+    showToast('✅ Machine saved');
+    closeFormModal();
+    renderCurrentTab();
+  } catch (err) {
+    showToast('❌ Failed to save: ' + err.message);
+    console.error('[saveMachine] Error:', err);
+  }
 }
 
 function openEditMachine(id) {
@@ -8550,13 +8685,13 @@ function openAddMachLog() {
   document.getElementById('formModal').classList.remove('hidden');
 }
 
-function saveMachLog() {
+async function saveMachLog() {
   const machineId = document.getElementById('lf-mach')?.value;
   const date = document.getElementById('lf-date')?.value;
   const workDone = document.getElementById('lf-work')?.value?.trim();
   if (!machineId||!date||!workDone) { showToast('⚠️ Machine, date & work done required'); return; }
-  const logs = getMachLogs();
-  logs.push({
+  
+  const obj = {
     id: 'LOG_'+Date.now(), machineId, date,
     operator: document.getElementById('lf-operator')?.value||'',
     hours: parseFloat(document.getElementById('lf-hours')?.value)||0,
@@ -8565,9 +8700,24 @@ function saveMachLog() {
     meterReading: document.getElementById('lf-meter')?.value||'',
     remarks: document.getElementById('lf-remarks')?.value||'',
     loggedBy: currentUser, timestamp: new Date().toISOString()
-  });
-  saveMachLogs(logs); if(logs.length) pushMachLog(logs[logs.length-1]).catch(()=>{}); pushConfig();
-  showToast('✅ Log saved'); closeFormModal(); renderCurrentTab();
+  };
+  
+  // APPWRITE-FIRST: Push to Appwrite first
+  try {
+    await pushMachLog(obj);
+    
+    // Update memory cache
+    const logs = getMachLogs();
+    logs.push(obj);
+    _machLogsCache = logs;
+    
+    showToast('✅ Log saved');
+    closeFormModal();
+    renderCurrentTab();
+  } catch (err) {
+    showToast('❌ Failed to save: ' + err.message);
+    console.error('[saveMachLog] Error:', err);
+  }
 }
 
 function openAddService() {
