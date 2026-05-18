@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.3
+      Version 5.1.4
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.3 - Fitting Form Validation Fixed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.4 - Realtime Sync Fixed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.3'; // Fitting Form Validation Fixed
+const APP_VERSION = '5.1.4'; // Realtime Sync Fixed
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -1336,12 +1336,15 @@ function handleGenericEvent(payload, isDelete, getFn, saveFn) {
 function handleReportEvent(payload, isCreate, isUpdate, isDelete) {
   try {
     const deletedReports = LS.get('phx_deleted_reports', []);
-    const reports = getReports();
+    
     if (isDelete) {
       const id = payload.$id || payload.id;
-      saveReports(reports.filter(r => String(r.id) !== String(id) && r._awId !== id));
+      // Update memory cache directly (Appwrite-first architecture)
+      _reportsCache = _reportsCache.filter(r => String(r.id) !== String(id) && r._awId !== id);
+      renderCurrentTab();  // Refresh UI to show deletion
       return;
     }
+    
     // Parse the report
     const base = payload.data_json ? JSON.parse(payload.data_json) : {};
     ['type','project','route','date','supervisor','timestamp'].forEach(f => { if(payload[f]) base[f]=payload[f]; });
@@ -1350,18 +1353,28 @@ function handleReportEvent(payload, isCreate, isUpdate, isDelete) {
     if (payload.to_ch !== undefined) base.to = payload.to_ch;
     if (!base.id) base.id = payload.$id;
     base._awId = payload.$id;
+    
     if (deletedReports.includes(String(base.id))) return;
+    
     // Restore photos
     const stored = getPhotosForReport(base.id);
-    const loc = reports.find(r => String(r.id) === String(base.id));
+    const loc = _reportsCache.find(r => String(r.id) === String(base.id));
     base.photosStart = base.photosStart?.length ? base.photosStart : (loc?.photosStart||stored?.photosStart||[]);
     base.photosEnd   = base.photosEnd?.length   ? base.photosEnd   : (loc?.photosEnd||stored?.photosEnd||[]);
     base.photos      = base.photos?.length       ? base.photos      : (loc?.photos||stored?.photos||[]);
-    const idx = reports.findIndex(r => String(r.id) === String(base.id));
-    if (idx >= 0) reports[idx] = base;
-    else reports.push(base);
-    saveReports(reports);
-  } catch(e) { console.warn('[Realtime] handleReportEvent error:', e); }
+    
+    // Update memory cache directly (Appwrite-first architecture)
+    const idx = _reportsCache.findIndex(r => String(r.id) === String(base.id));
+    if (idx >= 0) {
+      _reportsCache[idx] = base;
+    } else {
+      _reportsCache.push(base);
+    }
+    
+    renderCurrentTab();  // Refresh UI to show new/updated report
+  } catch(e) { 
+    console.warn('[Realtime] handleReportEvent error:', e); 
+  }
 }
 
 // ── VISIBILITY CHANGE: disconnect when screen off, reconnect when on ───────────
@@ -5912,7 +5925,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.3
+        Phoenix ERP v5.1.4
       </div>
     `;
   }
@@ -5922,7 +5935,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.3
+      Phoenix ERP v5.1.4
     </div>
   `;
 }
