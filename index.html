@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.0-debug
+      Version 5.1.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.0-debug - Dropdown Debug Logging', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.1 - Report Delete Fixed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.0-debug'; // Dropdown Debug Logging Added
+const APP_VERSION = '5.1.1'; // Report Delete Bug Fixed
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -2116,8 +2116,22 @@ async function saveReportToAW(r) {
 }
 
 async function deleteReportFromAW(r) {
-  const awId = r._awId || ('r'+String(r.id).replace(/[^a-zA-Z0-9]/g,'').replace(/^r+/,'').slice(0,30));
-  return awDelete(AW.collections.reports, awId);
+  // Use the same ID pattern as saveReportToAW for consistency
+  const docId = String(r.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  try {
+    const success = await awDelete(AW.collections.reports, docId);
+    if (success) {
+      dbg('[deleteReport] ✅ deleted: ' + docId);
+    } else {
+      dbg('[deleteReport] ❌ failed to delete: ' + docId, 'error');
+    }
+    return success;
+  } catch (err) {
+    dbg('[deleteReport] ❌ exception: ' + err.message, 'error');
+    console.error('[deleteReport] Full error:', err);
+    return false;
+  }
 }
 
 // ── USER HELPERS ──────────────────────────────────────────────────────────────
@@ -5795,7 +5809,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.0-debug
+        Phoenix ERP v5.1.1
       </div>
     `;
   }
@@ -5805,7 +5819,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.0-debug
+      Phoenix ERP v5.1.1
     </div>
   `;
 }
