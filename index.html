@@ -996,11 +996,17 @@ async function fetchAllOtherCollections() {
     
     if (reportDocs && reportDocs.length) {
       const reports = reportDocs.map(d => {
-        try { 
-          const parsed = JSON.parse(d.data);
+        try {
+          // IMPORTANT: Reports use data_json field, not data!
+          const dataStr = d.data_json || d.data;
+          if (!dataStr) {
+            dbg('[fetchOther] Report has no data: ' + d.$id, 'warn');
+            return null;
+          }
+          const parsed = JSON.parse(dataStr);
           return parsed;
         } catch(e) { 
-          dbg('[fetchOther] Failed to parse report: ' + e.message, 'error');
+          dbg('[fetchOther] Failed to parse report ' + d.$id + ': ' + e.message, 'error');
           return null;
         }
       }).filter(Boolean);
