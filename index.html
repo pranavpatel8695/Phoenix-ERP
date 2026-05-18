@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.5
+      Version 5.1.5-debug
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.5 - Valve/Fitting Quantity Tracking Fixed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.5-debug - Chamber Form Debug Logging', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.5'; // Valve/Fitting Quantity Tracking Fixed
+const APP_VERSION = '5.1.5-debug'; // Chamber Form Debug Logging
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -3205,11 +3205,28 @@ function buildTypeFields(type, p={}) {
     const chamProj = p.project || getVisibleProjects()[0] || '';
     const valveReps = getReports()
       .filter(r => r.type === 'valve' && r.project === chamProj && r.chamberReq === 'Yes');
+    
+    // DEBUG: Log what's being found
+    console.log('[CHAMBER FORM DEBUG] Project:', chamProj);
+    console.log('[CHAMBER FORM DEBUG] Total valve reports:', getReports().filter(r => r.type === 'valve').length);
+    console.log('[CHAMBER FORM DEBUG] Valve reports with chamber req:', getReports().filter(r => r.type === 'valve' && r.chamberReq === 'Yes').length);
+    console.log('[CHAMBER FORM DEBUG] Matching this project:', valveReps.length);
+    console.log('[CHAMBER FORM DEBUG] Valve details:', valveReps.map(r => ({
+      project: r.project,
+      chainage: r.chainage,
+      location: r.location,
+      chamberReq: r.chamberReq
+    })));
+    
     // Store date in option data attribute for dependency check
     const chamLocOpts = valveReps.map(r => {
       const label = `Ch:${r.chainage}m${r.location ? ' — ' + r.location : ''}`;
+      console.log('[CHAMBER FORM DEBUG] Creating option:', label);
       return `<option value="${label}" data-date="${r.date||''}"${p.location===label?' selected':''}>${label}</option>`;
     }).join('');
+    
+    console.log('[CHAMBER FORM DEBUG] chamLocOpts HTML:', chamLocOpts);
+    
     const chamLocs = valveReps.map(r => `Ch:${r.chainage}m${r.location ? ' — ' + r.location : ''}`);
     const chamHasOther = p.location && !chamLocs.includes(p.location);
 
@@ -5925,7 +5942,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.5
+        Phoenix ERP v5.1.5-debug
       </div>
     `;
   }
@@ -5935,7 +5952,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.5
+      Phoenix ERP v5.1.5-debug
     </div>
   `;
 }
