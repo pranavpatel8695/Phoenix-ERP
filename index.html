@@ -516,9 +516,7 @@ const getStoreTxns = () => _storeTxnsCache;
 // All changes go directly to Appwrite, then update memory cache
 // Fetch functions populate the memory caches on load
 
-// Users still in config collection (will migrate separately due to auth complexity)
-const getUsers = () => LS.get('phx_users', {});
-const saveUsers = v => LS.set('phx_users', v);
+// Users still in config collection (getUsers/saveUsers defined earlier at line ~428)
 
 let _rptTypeFilter = 'all';
 let _rptProjFilter = '';
