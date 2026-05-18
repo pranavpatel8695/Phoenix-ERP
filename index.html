@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.0-alpha - Reports ✅
+      Version 5.1.0-fix (Working)
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.0-alpha - Reports Migrated', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.0-fix - Working Hybrid', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.0-alpha'; // Reports Collection Migrated to Appwrite-First
+const APP_VERSION = '5.1.0-fix'; // Working Hybrid (Fetch Appwrite-first, Save hybrid)
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -4074,7 +4074,7 @@ function removeFittingRow(index) {
 }
 
 // ── SUBMIT REPORT ─────────────────────────────────────────────
-async function submitReport(type) {
+function submitReport(type) {
   const project = document.getElementById('f-project')?.value;
   const route   = document.getElementById('f-route')?.value;
   const date    = document.getElementById('f-date')?.value;
@@ -4372,48 +4372,33 @@ async function submitReport(type) {
       }));
     } catch(e) { console.warn('Photo key storage failed:', e); }
   }
-  
-  // APPWRITE-FIRST: Push to Appwrite FIRST, then update cache
-  try {
-    setSyncStatus('syncing');
-    
-    // Push to Appwrite (this handles photo stripping internally)
-    const ok = await saveReportToAW(data);
-    
-    if (ok) {
-      // Update memory cache after successful Appwrite save
-      const reports = getReports();
-      const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
-      
-      if (_editId) {
-        const idx = reports.findIndex(r => String(r.id) === String(_editId));
-        if (idx > -1) {
-          dataLean.id = _editId;
-          reports[idx] = dataLean;
-        } else {
-          reports.push(dataLean);
-        }
-      } else {
-        reports.push(dataLean);
-      }
-      
-      _reportsCache = reports;  // Update cache directly
-      
-      setSyncStatus('synced');
-      closeFormModal();
-      showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
-      renderCurrentTab();
-      
-    } else {
-      setSyncStatus('offline');
-      showToast('❌ Failed to save report - check connection');
-    }
-    
-  } catch (err) {
-    setSyncStatus('offline');
-    showToast('❌ Error saving report: ' + err.message);
-    console.error('[submitReport] Error:', err);
+  // Keep photos inline in local report (strip only for Appwrite upload)
+  const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
+
+  // Save to memory cache (Appwrite-first for reports)
+  const reports = getReports();
+  if (_editId) {
+    const idx = reports.findIndex(r => String(r.id) === String(_editId));
+    if (idx > -1) { dataLean.id = _editId; reports[idx] = dataLean; }
+    else { reports.push(dataLean); }
+  } else {
+    reports.push(dataLean);
   }
+  _reportsCache = reports;  // Update cache directly
+
+  closeFormModal();
+  showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
+  renderCurrentTab();
+
+  // Save to Appwrite in background
+  setSyncStatus('syncing');
+  saveReportToAW(data).then(ok => {
+    setSyncStatus(ok ? 'synced' : 'offline');
+    if (!ok) showToast('⚠️ Saved locally — will sync when online');
+  }).catch(err => {
+    console.error('[submitReport] Appwrite error:', err);
+    setSyncStatus('offline');
+  });
 }
 
 // ── REPORTS TAB ───────────────────────────────────────────────
@@ -5766,7 +5751,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.0-alpha - Reports ✅
+        Phoenix ERP v5.1.0-fix
       </div>
     `;
   }
@@ -5776,7 +5761,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.0-alpha - Reports ✅
+      Phoenix ERP v5.1.0-fix
     </div>
   `;
 }
