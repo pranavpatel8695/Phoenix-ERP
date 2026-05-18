@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.2-fix
+      Version 5.1.3
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.2-fix - Complete Row Rebuild on Project Change', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.3 - Fitting Form Validation Fixed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.2-fix'; // Complete Row Rebuild on Project Change
+const APP_VERSION = '5.1.3'; // Fitting Form Validation Fixed
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -4331,26 +4331,36 @@ function submitReport(type) {
     if (err) { showDependencyError(err); return; }
   }
   if (type === 'fitting') {
-    const fitName = g('f-fitType');
-    const qty     = gf('f-qty') || 1;
-    if (!fitName) { showToast('⚠️ Select a fitting type'); return; }
+    // Validate inventory limits for fittings with total limits
     const specials = getSpecials()[project] || [];
-    const special  = specials.find(s => s.name === fitName);
-    if (special && special.total) {
-      // Count already used (excluding current edit)
-      const usedQty = getReports().filter(r =>
-        r.type === 'fitting' && r.project === project &&
-        r.fitType === fitName && String(r.id) !== String(_editId||'')
-      ).reduce((s, r) => s + (parseInt(r.qty)||1), 0);
-      const available = (special.total || 0) - usedQty;
-      if (qty > available) {
-        showDependencyError({
-          title: 'Qty Exceeds Available Stock',
-          msg: `You are trying to use ${qty} nos of "${fitName}", but only ${available} nos remain (Total: ${special.total}, Used: ${usedQty}).`,
-          prereq: 'Specials Stock',
-          missing: `Available: ${available} nos`
-        });
-        return;
+    
+    // Check each fitting in _tempFittings (already collected above at line 4299-4310)
+    for (const fitting of _tempFittings) {
+      const fitName = fitting.type;
+      const qty = fitting.qty || 1;
+      const special = specials.find(s => s.name === fitName);
+      
+      if (special && special.total) {
+        // Count already used (excluding current edit)
+        const usedQty = getReports().filter(r =>
+          r.type === 'fitting' && r.project === project &&
+          r.fittings && r.fittings.some(f => f.type === fitName) &&
+          String(r.id) !== String(_editId||'')
+        ).reduce((s, r) => {
+          const fitQty = r.fittings.find(f => f.type === fitName)?.qty || 0;
+          return s + fitQty;
+        }, 0);
+        
+        const available = (special.total || 0) - usedQty;
+        if (qty > available) {
+          showDependencyError({
+            title: 'Qty Exceeds Available Stock',
+            msg: `You are trying to use ${qty} nos of "${fitName}", but only ${available} nos remain (Total: ${special.total}, Used: ${usedQty}).`,
+            prereq: 'Specials Stock',
+            missing: `Available: ${available} nos`
+          });
+          return;
+        }
       }
     }
   }
@@ -5902,7 +5912,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.2-fix
+        Phoenix ERP v5.1.3
       </div>
     `;
   }
@@ -5912,7 +5922,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.2-fix
+      Phoenix ERP v5.1.3
     </div>
   `;
 }
