@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.5-debug
+      Version 5.1.6
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.5-debug - Chamber Form Debug Logging', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.6 - Chamber Location Dropdown Auto-Refresh', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.5-debug'; // Chamber Form Debug Logging
+const APP_VERSION = '5.1.6'; // Chamber Location Dropdown Auto-Refresh
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -3764,7 +3764,7 @@ function refreshValveFittingDropdowns() {
   const proj = document.getElementById('f-project')?.value;
   if (!proj) return;
   
-  console.log('[REFRESH] Refreshing valve/fitting dropdowns for project:', proj);
+  console.log('[REFRESH] Refreshing valve/fitting/chamber dropdowns for project:', proj);
   
   // Refresh all valve rows
   const valveContainer = document.getElementById('valve-rows-container');
@@ -3846,6 +3846,34 @@ function refreshValveFittingDropdowns() {
       
       row.innerHTML = newHtml;
     });
+  }
+  
+  // Refresh chamber location dropdown
+  const chamberLocationSel = document.getElementById('f-location-sel');
+  if (chamberLocationSel) {
+    const valveReps = getReports()
+      .filter(r => r.type === 'valve' && r.project === proj && r.chamberReq === 'Yes');
+    
+    console.log('[REFRESH] Chamber locations found:', valveReps.length);
+    
+    const currentValue = chamberLocationSel.value;
+    const chamLocOpts = valveReps.map(r => {
+      const label = `Ch:${r.chainage}m${r.location ? ' — ' + r.location : ''}`;
+      return `<option value="${label}" data-date="${r.date||''}">${label}</option>`;
+    }).join('');
+    
+    chamberLocationSel.innerHTML = 
+      (valveReps.length ? '' : '<option value="">— No valves with chamber required yet —</option>') +
+      chamLocOpts +
+      '<option value="__other__">— Other (type below) —</option>';
+    
+    // Restore selection if it still exists
+    if (currentValue && currentValue !== '__other__') {
+      const optionExists = Array.from(chamberLocationSel.options).some(opt => opt.value === currentValue);
+      if (optionExists) {
+        chamberLocationSel.value = currentValue;
+      }
+    }
   }
   
   console.log('[REFRESH] Rebuild complete');
@@ -5942,7 +5970,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.5-debug
+        Phoenix ERP v5.1.6
       </div>
     `;
   }
@@ -5952,7 +5980,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.5-debug
+      Phoenix ERP v5.1.6
     </div>
   `;
 }
