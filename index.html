@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.1
+      Version 5.1.2
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.1 - Report Delete Fixed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.2 - Valve/Fitting Dropdown Auto-Refresh', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.1'; // Report Delete Bug Fixed
+const APP_VERSION = '5.1.2'; // Valve/Fitting Dropdowns Auto-Refresh on Project Change
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -3726,6 +3726,48 @@ function updateFormRoutes(selectedRoute) {
   updateChainageHint();
   // Refresh pipe spec display if on pipe form
   updatePipeSpecDisplay();
+  // CRITICAL: Refresh valve/fitting dropdowns when project changes
+  refreshValveFittingDropdowns();
+}
+
+function refreshValveFittingDropdowns() {
+  const proj = document.getElementById('f-project')?.value;
+  if (!proj) return;
+  
+  // Refresh all valve dropdowns
+  const valveSelects = document.querySelectorAll('.valve-type[data-index]');
+  const valveItems = getValveSpecials()[proj] || [];
+  
+  valveSelects.forEach(select => {
+    if (select.tagName === 'SELECT') {
+      const currentValue = select.value;
+      select.innerHTML = '<option value="">— Select Valve —</option>' + 
+        valveItems.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+      // Restore selection if it still exists
+      if (currentValue && valveItems.find(v => v.name === currentValue)) {
+        select.value = currentValue;
+      }
+    }
+  });
+  
+  // Refresh all fitting dropdowns
+  const fittingSelects = document.querySelectorAll('.fitting-type[data-index]');
+  const fittingItems = getSpecials()[proj] || [];
+  
+  fittingSelects.forEach(select => {
+    if (select.tagName === 'SELECT') {
+      const currentValue = select.value;
+      select.innerHTML = '<option value="">— Select Fitting —</option>' + 
+        fittingItems.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+      // Restore selection if it still exists
+      if (currentValue && fittingItems.find(f => f.name === currentValue)) {
+        select.value = currentValue;
+      }
+    }
+  });
+  
+  console.log('[REFRESH] Updated valve/fitting dropdowns for project:', proj);
+  console.log('[REFRESH] Valve items:', valveItems.length, 'Fitting items:', fittingItems.length);
 }
 
 function updateChainageHint() {
@@ -5809,7 +5851,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.1
+        Phoenix ERP v5.1.2
       </div>
     `;
   }
@@ -5819,7 +5861,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.1
+      Phoenix ERP v5.1.2
     </div>
   `;
 }
