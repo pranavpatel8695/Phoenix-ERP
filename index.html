@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.0-fix (Working)
+      Version 5.1.0-fix3
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.0-fix - Working Hybrid', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.0-fix3 - Dropdown Filters Fixed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.0-fix'; // Working Hybrid (Fetch Appwrite-first, Save hybrid)
+const APP_VERSION = '5.1.0-fix3'; // Valve/Fitting Dropdown Project Filter Fixed
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -3100,8 +3100,10 @@ function buildTypeFields(type, p={}) {
 
   // ── 4. VALVE ───────────────────────────────────────────────
   if (type === 'valve') {
-    const valProj = p.project || getVisibleProjects()[0] || '';
-    const valveItems = (getValveSpecials()[valProj] || []);
+    // Use the project that will be selected in the dropdown (same as addValveRow)
+    const vp = getVisibleProjects();
+    const selectedProj = (p.project && vp.includes(p.project)) ? p.project : vp[0] || '';
+    const valveItems = (getValveSpecials()[selectedProj] || []);
     
     // Convert old format to new if needed
     let existingValves = p.valves || [];
@@ -3231,8 +3233,10 @@ function buildTypeFields(type, p={}) {
 
   // ── 6. FITTING ─────────────────────────────────────────────
   if (type === 'fitting') {
-    const fitProj = p.project || getVisibleProjects()[0] || '';
-    const specItems = (getSpecials()[fitProj] || []);
+    // Use the project that will be selected in the dropdown (same as addFittingRow)
+    const vp = getVisibleProjects();
+    const selectedProj = (p.project && vp.includes(p.project)) ? p.project : vp[0] || '';
+    const specItems = (getSpecials()[selectedProj] || []);
     
     // Convert old format to new if needed
     let existingFittings = p.fittings || [];
@@ -5765,7 +5769,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.0-fix
+        Phoenix ERP v5.1.0-fix3
       </div>
     `;
   }
@@ -5775,7 +5779,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.0-fix
+      Phoenix ERP v5.1.0-fix3
     </div>
   `;
 }
