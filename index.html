@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.3.0
+      Version 5.3.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.3.0 - Users Appwrite-First (Collection Auto-Create)', 'info');
+    dbg('[VERSION] Phoenix ERP v5.3.1 - Users LocalStorage→Appwrite Migration', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.3.0'; // Users Appwrite-First (Collection Auto-Create)
+const APP_VERSION = '5.3.1'; // Users LocalStorage→Appwrite Migration
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -789,6 +789,70 @@ async function fetchAllData() {
       } catch (err) {
         dbg('[SYNC] ⚠️ Assignment sync failed: ' + err.message, 'warn');
         console.error('[SYNC] Full error:', err);
+      }
+    }
+    
+    // ONE-TIME USER MIGRATION: Push existing users from localStorage to users_config collection
+    const usersMigrationKey = 'phx_users_migrated_v5.3.0';
+    if (!LS.get(usersMigrationKey, false)) {
+      dbg('[MIGRATION] Migrating users from localStorage to Appwrite...');
+      try {
+        // Get users from localStorage directly
+        const localUsers = LS.get('phx_users', {});
+        const usernames = Object.keys(localUsers);
+        let migratedCount = 0;
+        
+        dbg('[MIGRATION] Found ' + usernames.length + ' users in localStorage');
+        
+        // Push each user to Appwrite
+        for (const username of usernames) {
+          if (username === 'admin') continue; // Skip admin, it's always there
+          
+          const userData = localUsers[username];
+          try {
+            await pushUser(username, userData);
+            migratedCount++;
+            dbg('[MIGRATION] ✅ Migrated user: ' + username);
+          } catch (err) {
+            dbg('[MIGRATION] ⚠️ Failed to migrate user ' + username + ': ' + err.message, 'warn');
+          }
+        }
+        
+        // Re-fetch users from Appwrite to populate cache
+        try {
+          const userDocs = await awList(AW.collections.users, ["limit(1000)"]);
+          if (userDocs && userDocs.length) {
+            const users = {};
+            userDocs.forEach(u => {
+              let projects = [];
+              try {
+                projects = u.projects ? JSON.parse(u.projects) : [];
+              } catch (e) {
+                projects = [];
+              }
+              users[u.username] = {
+                role: u.role || 'junior_engineer',
+                pass: u.pass || '',
+                name: u.name || u.username,
+                projects: projects,
+                createdAt: u.createdAt || new Date().toISOString()
+              };
+            });
+            if (!users.admin) {
+              users.admin = { role: 'admin', pass: 'admin', name: 'Admin' };
+            }
+            _usersCache = users;
+            dbg('[MIGRATION] ✅ Users cache refreshed with ' + Object.keys(users).length + ' users');
+          }
+        } catch (err) {
+          dbg('[MIGRATION] ⚠️ Failed to refresh users cache: ' + err.message, 'warn');
+        }
+        
+        LS.set(usersMigrationKey, true);
+        dbg('[MIGRATION] ✅ Migrated ' + migratedCount + ' users to Appwrite!');
+      } catch (err) {
+        dbg('[MIGRATION] ⚠️ User migration failed: ' + err.message, 'warn');
+        console.error('[MIGRATION] Full error:', err);
       }
     }
     
@@ -6165,7 +6229,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.3.0
+        Phoenix ERP v5.3.1
       </div>
     `;
   }
@@ -6175,7 +6239,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.3.0
+      Phoenix ERP v5.3.1
     </div>
   `;
 }
