@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.7
+      Version 5.1.8
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.7 - All Form Dropdowns Auto-Refresh', 'info');
+    dbg('[VERSION] Phoenix ERP v5.1.8 - Mobile Chamber Chainage Auto-fill', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.7'; // All Form Dropdowns Auto-Refresh (Valve/Fitting/Chamber/Concrete)
+const APP_VERSION = '5.1.8'; // Mobile Chamber Chainage Auto-fill Fixed
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -3213,7 +3213,7 @@ function buildTypeFields(type, p={}) {
         <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📍 Location</div>
         <div class="field-group">
           <label>Valve Location (Chamber Required = Yes) <span class="req">*</span></label>
-          <select id="f-location-sel" onchange="onChamberLocChange(this)">
+          <select id="f-location-sel" onchange="onChamberLocChange(this)" oninput="onChamberLocChange(this)" onclick="onChamberLocChange(this)">
             ${chamLocs.length ? '' : '<option value="">— No valves with chamber required yet —</option>'}
             ${chamLocOpts}
             <option value="__other__"${chamHasOther?' selected':''}>— Other (type below) —</option>
@@ -3258,6 +3258,25 @@ function buildTypeFields(type, p={}) {
           </div>
         </div>
       </div>`;
+      
+      // Mobile-friendly: Add event listeners after DOM is ready
+      setTimeout(() => {
+        const chamberLocSel = document.getElementById('f-location-sel');
+        if (chamberLocSel && !chamberLocSel.dataset.mobileListenerAdded) {
+          chamberLocSel.dataset.mobileListenerAdded = 'true';
+          const mobileHandler = function(e) {
+            console.log('[MOBILE CHAMBER] Location changed to:', this.value);
+            onChamberLocChange(this);
+          };
+          chamberLocSel.addEventListener('change', mobileHandler, false);
+          chamberLocSel.addEventListener('input', mobileHandler, false);
+          // Trigger immediately if value is already set
+          if (chamberLocSel.value && chamberLocSel.value !== '__other__' && chamberLocSel.value !== '') {
+            console.log('[MOBILE CHAMBER] Triggering auto-fill on load');
+            onChamberLocChange(chamberLocSel);
+          }
+        }
+      }, 200);
   }
 
   // ── 6. FITTING ─────────────────────────────────────────────
@@ -5988,7 +6007,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.7
+        Phoenix ERP v5.1.8
       </div>
     `;
   }
@@ -5998,7 +6017,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.7
+      Phoenix ERP v5.1.8
     </div>
   `;
 }
