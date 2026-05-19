@@ -4979,17 +4979,22 @@ function submitReport(type) {
   _reportsCache = reports;  // Update cache directly
 
   closeFormModal();
-  showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
-  renderCurrentTab();
+  showToast(_editId ? '⏳ Updating report...' : '⏳ Submitting report...', 'info');
+  renderCurrentTab();  // ← Update UI immediately!
 
   // Save to Appwrite in background
   setSyncStatus('syncing');
   saveReportToAW(data).then(ok => {
     setSyncStatus(ok ? 'synced' : 'offline');
-    if (!ok) showToast('⚠️ Saved locally — will sync when online');
+    if (ok) {
+      showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
+    } else {
+      showToast('⚠️ Saved locally — will sync when online');
+    }
   }).catch(err => {
     console.error('[submitReport] Appwrite error:', err);
     setSyncStatus('offline');
+    showToast('⚠️ Saved locally — will sync when online');
   });
 }
 
@@ -5843,22 +5848,32 @@ async function deleteReport(id) {
     </div>`, 
     async () => {
     try {
-      // APPWRITE-FIRST: Delete from Appwrite first
+      // OPTIMISTIC UPDATE: Remove from UI immediately
+      showToast('⏳ Deleting report...', 'info');
+      _reportsCache = getReports().filter(r => String(r.id) !== String(id));
+      deletePhotosForReport(id);
+      renderCurrentTab();  // ← Update UI immediately!
+      
+      // APPWRITE-FIRST: Delete from Appwrite in background
       setSyncStatus('syncing');
       const ok = await deleteReportFromAW(r);
       
       if (ok) {
-        // Update memory cache
-        _reportsCache = getReports().filter(r => String(r.id) !== String(id));
-        deletePhotosForReport(id);
-        renderCurrentTab();
-        showToast('🗑️ Deleted');
+        showToast('✅ Report deleted');
         setSyncStatus('synced');
       } else {
+        // ROLLBACK: Restore if delete failed
+        _reportsCache = getReports();
+        _reportsCache.push(r);
+        renderCurrentTab();  // ← Rollback UI
         showToast('❌ Failed to delete from server');
         setSyncStatus('offline');
       }
     } catch (err) {
+      // ROLLBACK: Restore on error
+      _reportsCache = getReports();
+      _reportsCache.push(r);
+      renderCurrentTab();  // ← Rollback UI
       showToast('❌ Delete failed: ' + err.message);
       setSyncStatus('offline');
       console.error('[deleteReport] Error:', err);
@@ -8345,31 +8360,27 @@ async function markAttendanceFor(status, date, targetUser) {
     timestamp: new Date().toISOString()
   };
   
-  // APPWRITE-FIRST: Push to Appwrite first
+  // OPTIMISTIC UPDATE: Add to cache immediately
+  all.push(newRecord);
+  saveAttendance(all);
+  showToast('⏳ Marking attendance...', 'info');
+  renderCurrentTab();  // ← Update UI immediately!
+  
+  // APPWRITE-FIRST: Push to Appwrite in background
   try {
     await pushAttendance(newRecord);
-    
-    // Update memory cache on success
-    all.push(newRecord);
-    saveAttendance(all);
-    
     dbg('[markAttendanceForUser] ✅ Attendance synced to Appwrite');
-    showToast(`✅ ${status==='present'?'Present':'Absent'} marked for ${targetUserData?.name||targetUser} on ${date}`);
+    showToast(`✅ ${status==='present'?'Present':'Absent'} marked for ${targetUserData?.name||targetUser}`);
   } catch(e) {
     dbg('[markAttendanceForUser] ❌ Appwrite push failed: ' + e.message, 'error');
-    // Fallback: save to cache anyway
-    all.push(newRecord);
-    saveAttendance(all);
-    showToast(`⚠️ ${status==='present'?'Present':'Absent'} marked locally (sync pending)`);
+    showToast(`⚠️ Marked locally (will sync later)`);
   }
-  
-  renderCurrentTab();
 }
 
 function markAttendanceDate(status, date) {
   const all = getAttendance();
   if (all.find(a=>a.user===currentUser&&a.date===date&&a.atype==='attendance')) {
-    showToast('Already marked for ' + date); return;
+    showToast('⚠️ Already marked for ' + date); return;
   }
   const myProj = getVisibleProjects()[0]||'';
   const users = getUsers();
@@ -8384,26 +8395,26 @@ function markAttendanceDate(status, date) {
     pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() 
   };
   
-  // APPWRITE-FIRST: Push to Appwrite first
+  // OPTIMISTIC UPDATE: Add to cache immediately
+  all.push(newRecord);
+  saveAttendance(all);
+  showToast('⏳ Marking attendance...', 'info');
+  renderCurrentTab();  // ← Update UI immediately!
+  
+  // APPWRITE-FIRST: Push to Appwrite in background
   pushAttendance(newRecord).then(() => {
-    all.push(newRecord);
-    saveAttendance(all);
     dbg('[markAttendanceDate] ✅ Attendance synced');
     showToast('✅ Attendance marked for ' + date);
   }).catch(e => {
     dbg('[markAttendanceDate] ❌ Appwrite failed: ' + e.message, 'error');
-    all.push(newRecord);
-    saveAttendance(all);
-    showToast('⚠️ Marked locally (sync pending)');
+    showToast('⚠️ Marked locally (will sync later)');
   });
-  
-  renderCurrentTab();
 }
 
 function markAttendance(status) {
   const today = localToday();
   const all = getAttendance();
-  if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { showToast('Already marked'); return; }
+  if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { showToast('⚠️ Already marked'); return; }
   const myProj = getVisibleProjects()[0]||'';
   const users = getUsers();
   const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
@@ -8420,20 +8431,20 @@ function markAttendance(status) {
     adminStatus: 'pending', timestamp:new Date().toISOString() 
   };
   
-  // APPWRITE-FIRST: Push to Appwrite first
+  // OPTIMISTIC UPDATE: Add to cache immediately for instant UI feedback
+  all.push(newRecord);
+  saveAttendance(all);
+  showToast('⏳ Marking attendance...', 'info');
+  renderCurrentTab();  // ← Update UI immediately!
+  
+  // APPWRITE-FIRST: Push to Appwrite in background
   pushAttendance(newRecord).then(() => {
-    all.push(newRecord);
-    saveAttendance(all);
     dbg('[markAttendance] ✅ Attendance synced');
     showToast('✅ Attendance marked');
   }).catch(e => {
     dbg('[markAttendance] ❌ Appwrite failed: ' + e.message, 'error');
-    all.push(newRecord);
-    saveAttendance(all);
-    showToast('⚠️ Marked locally (sync pending)');
+    showToast('⚠️ Marked locally (will sync later)');
   });
-  
-  renderCurrentTab();
 }
 
 function applyLeave() {
@@ -8975,26 +8986,37 @@ async function reviewAttendance(id, role, decision) {
   const rec = all.find(a=>a.id===id);
   if (!rec) return;
   
+  // Store original status for rollback
+  const originalPmStatus = rec.pmStatus;
+  const originalAdminStatus = rec.adminStatus;
+  
+  // OPTIMISTIC UPDATE: Update immediately for instant UI feedback
   if (role==='pm') rec.pmStatus = decision;
   else rec.adminStatus = decision;
   
-  // APPWRITE-FIRST: Push to Appwrite first
+  // Update cache immediately
+  saveAttendance(all);
+  
+  // Show immediate feedback
+  showToast(decision==='approved'?'⏳ Approving...':'⏳ Rejecting...', 'info');
+  renderCurrentTab();  // ← Update UI immediately!
+  
+  // APPWRITE-FIRST: Push to Appwrite in background
   try {
     await pushAttendance(rec);
-    
-    // Update memory cache on success
-    saveAttendance(all);
-    
     dbg('[reviewAttendance] ✅ Review synced to Appwrite');
     showToast(decision==='approved'?'✅ Approved':'❌ Rejected');
   } catch(e) {
     dbg('[reviewAttendance] ❌ Appwrite push failed: ' + e.message, 'error');
-    // Fallback: save to cache anyway
+    
+    // ROLLBACK on failure
+    if (role==='pm') rec.pmStatus = originalPmStatus;
+    else rec.adminStatus = originalAdminStatus;
     saveAttendance(all);
-    showToast(decision==='approved'?'✅ Approved (sync pending)':'❌ Rejected (sync pending)');
+    
+    showToast('❌ Failed: ' + e.message);
+    renderCurrentTab();  // ← Rollback UI
   }
-  
-  renderCurrentTab();
 }
 
 function exportMonthlyAttendance(targetUser, selectedMonth) {
