@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.4.0
+      Version 5.4.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.4.0 - Attendance Appwrite-First Architecture', 'info');
+    dbg('[VERSION] Phoenix ERP v5.4.1 - Admin Approval Display Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.4.0'; // Attendance Appwrite-First Architecture
+const APP_VERSION = '5.4.1'; // Admin Approval Display Fix
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -6374,7 +6374,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.4.0
+        Phoenix ERP v5.4.1
       </div>
     `;
   }
@@ -6384,7 +6384,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.4.0
+      Phoenix ERP v5.4.1
     </div>
   `;
 }
@@ -8874,12 +8874,14 @@ function attendanceCard(a, role) {
   // Detect if directly marked by admin or PM (not self-submitted)
   const markedByAdmin = (a.markedBy && users[a.markedBy]?.role==='admin')
     || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='approved');
-  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm')
+  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='pending')  // ← Added adminStatus check
     || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='pending');
+  // If PM marked and admin approved, treat as admin-approved
+  const pmMarkedAdminApproved = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='approved');
 
-  const approvalChain = markedByAdmin
+  const approvalChain = markedByAdmin || pmMarkedAdminApproved  // ← Added pmMarkedAdminApproved
     ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--green);font-weight:700">
-        ✅ Marked & approved by ${a.markedByName||adminName}
+        ✅ ${pmMarkedAdminApproved ? `Marked by ${a.markedByName||pmDisplay}, approved by Admin` : `Marked & approved by ${a.markedByName||adminName}`}
        </div>`
     : markedByPM
       ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:11px">
