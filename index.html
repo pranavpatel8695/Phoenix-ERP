@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.4.1
+      Version 5.4.2
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.4.1 - Admin Approval Display Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.4.2 - Pure Appwrite-First (No localStorage)', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.4.1'; // Admin Approval Display Fix
+const APP_VERSION = '5.4.2'; // Pure Appwrite-First (No localStorage)
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -483,18 +483,10 @@ let _routesCache = {};
 let _assignmentsCache = {};
 let _fittingsCache = {};
 let _valvesCache = {};
-let _usersCache = {};  // NEW: Users cache (v5.2.4)
+let _usersCache = {};  // NEW: Users cache (v5.2.4) - Pure Appwrite-First, no localStorage!
 
-// Initialize users cache from localStorage immediately (will be updated from Appwrite on fetch)
-try {
-  const localUsers = LS.get('phx_users', {});
-  if (Object.keys(localUsers).length > 0) {
-    _usersCache = localUsers;
-    dbg('[INIT] Users cache initialized from localStorage: ' + Object.keys(localUsers).length + ' users');
-  }
-} catch (e) {
-  dbg('[INIT] Failed to initialize users cache from localStorage: ' + e.message, 'warn');
-}
+// NO localStorage initialization - Pure Appwrite-First!
+// Users cache will be populated ONLY from Appwrite on first fetch
 
 // In-memory cache for machinery collections (v5.1.0)
 let _machineryCache = [];
@@ -2503,7 +2495,7 @@ function mergeUsers(remoteUsers, deletedUsers=[]) {
     dbg('[mergeUsers] merged deletedUsers: ' + deletedUsers.length + ' total');
   }
   
-  saveUsers(merged);
+  // NO localStorage - Pure Appwrite-First!
 }
 
 function mergeSpecials(remoteSpecials) {
@@ -6374,7 +6366,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.4.1
+        Phoenix ERP v5.4.2
       </div>
     `;
   }
@@ -6384,7 +6376,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.4.1
+      Phoenix ERP v5.4.2
     </div>
   `;
 }
@@ -6545,7 +6537,7 @@ function deleteProject(name) {
           allUsers[u].projects = allUsers[u].projects.filter(p => p !== name);
         }
       });
-      saveUsers(allUsers);
+      // NO localStorage - Pure Appwrite-First!
 
       // 8. Remove assignments from memory cache
       delete _assignmentsCache[name];
@@ -6807,7 +6799,7 @@ function saveAccount() {
   const deletedList = LS.get('phx_deleted_users', []);
   LS.set('phx_deleted_users', deletedList.filter(u => u !== user));
   users[user] = { role, pass, name, projects: projs, createdAt: new Date().toISOString() };
-  saveUsers(users);
+  // NO localStorage - Pure Appwrite-First!
   const pending = LS.get('phx_pending_users', []);
   if (!pending.includes(user)) { pending.push(user); LS.set('phx_pending_users', pending); }
   pushConfig();
@@ -6868,7 +6860,7 @@ function deleteAccount(u) {
     if (!deleted.includes(u)) { deleted.push(u); LS.set('phx_deleted_users', deleted); }
     const users = getUsers();
     delete users[u];
-    saveUsers(users);
+    // NO localStorage - Pure Appwrite-First!
     pushConfig();
     document.getElementById('settingsContent').innerHTML = renderSettingsAccounts();
     showToast('🗑️ Account deleted');
@@ -7534,22 +7526,30 @@ async function addProjectToUser(username) {
 
   if (!users[username].projects) users[username].projects = [];
   if (users[username].projects.includes(proj)) { showToast('Already assigned'); return; }
+  
+  // Store original projects for rollback
+  const originalProjects = [...users[username].projects];
+  
   users[username].projects.push(proj);
   
   // APPWRITE-FIRST: Push to Appwrite first
   try {
     await pushUser(username, users[username]);
     
-    // Update memory cache on success
+    // Update memory cache on success (NO localStorage!)
     _usersCache[username] = users[username];
-    
-    // Also save to localStorage as backup
-    saveUsers(users);
     
     dbg('[addProjectToUser] ✅ User data synced to Appwrite');
   } catch (err) {
-    dbg('[addProjectToUser] ⚠️ User data sync failed: ' + err.message, 'warn');
-    showToast('⚠️ Changes saved locally, sync failed');
+    dbg('[addProjectToUser] ❌ User data sync failed: ' + err.message, 'error');
+    
+    // ROLLBACK: Restore original projects since push failed
+    users[username].projects = originalProjects;
+    _usersCache[username] = users[username];
+    
+    showToast('❌ Failed to sync changes: ' + err.message);
+    document.getElementById('main').innerHTML = renderUsersTab();
+    return; // ← Stop here if push failed
   }
   
   // Update assignments in Appwrite & memory cache
@@ -7573,22 +7573,31 @@ async function addProjectToUser(username) {
 async function removeProjectFromUser(username, proj) {
   const users = getUsers();
   if (!users[username]) return;
+  
+  // Store original projects for rollback
+  const originalProjects = [...(users[username].projects || [])];
+  
+  // Remove project locally
   users[username].projects = (users[username].projects || []).filter(function(p){return p !== proj;});
   
   // APPWRITE-FIRST: Push to Appwrite first
   try {
     await pushUser(username, users[username]);
     
-    // Update memory cache on success
+    // Update memory cache on success (NO localStorage!)
     _usersCache[username] = users[username];
-    
-    // Also save to localStorage as backup
-    saveUsers(users);
     
     dbg('[removeProjectFromUser] ✅ User data synced to Appwrite');
   } catch (err) {
-    dbg('[removeProjectFromUser] ⚠️ User data sync failed: ' + err.message, 'warn');
-    showToast('⚠️ Changes saved locally, sync failed');
+    dbg('[removeProjectFromUser] ❌ User data sync failed: ' + err.message, 'error');
+    
+    // ROLLBACK: Restore original projects since push failed
+    users[username].projects = originalProjects;
+    _usersCache[username] = users[username];
+    
+    showToast('❌ Failed to sync changes: ' + err.message);
+    document.getElementById('main').innerHTML = renderUsersTab();
+    return; // ← Stop here if push failed
   }
   
   // Update assignments in Appwrite & memory cache
@@ -7602,10 +7611,10 @@ async function removeProjectFromUser(username, proj) {
     dbg('[removeProjectFromUser] ✅ Assignment updated in Appwrite & memory cache');
   } catch (err) {
     dbg('[removeProjectFromUser] ⚠️ Assignment sync failed: ' + err.message, 'warn');
-    showToast('⚠️ Failed to sync assignment: ' + err.message);
+    showToast('⚠️ User updated but assignment sync failed: ' + err.message);
   }
   
-  showToast('🗑️ Removed ' + proj + ' from @' + username + ' & synced');
+  showToast('✅ Removed ' + proj + ' from @' + username);
   document.getElementById('main').innerHTML = renderUsersTab();
 }
 
@@ -7750,8 +7759,7 @@ async function saveUserUM() {
     // Update memory cache on success
     _usersCache[user] = userData;
     
-    // Also save to localStorage as backup
-    saveUsers(getUsers());
+    // NO localStorage - Pure Appwrite-First!
     
     // Track as pending push so sync never removes it
     const pending = LS.get('phx_pending_users', []);
@@ -7907,8 +7915,7 @@ async function updateUserUM(username) {
     // Update memory cache on success
     _usersCache[username] = users[username];
     
-    // Also save to localStorage as backup
-    saveUsers(users);
+    // NO localStorage - Pure Appwrite-First!
     
     dbg('[updateUserUM] ✅ User updated & synced to Appwrite');
     showToast('✅ @' + username + ' updated & synced');
@@ -7983,9 +7990,9 @@ function deleteUserUM(username) {
       // Update memory cache on success
       delete _usersCache[username];
       
-      // Also delete from localStorage
+      // Also delete from memory cache
       delete users[username];
-      saveUsers(users);
+      // NO localStorage - Pure Appwrite-First!
       
       // Clean up attendance records from Appwrite
       const userAttendance = getAttendance().filter(a => a.user === username);
@@ -8826,11 +8833,13 @@ function renderAttendanceHistoryCard(a) {
   })();
   const markedByAdmin = (a.markedBy && users[a.markedBy]?.role==='admin')
     || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='approved');
-  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm')
+  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='pending')  // ← FIXED: Added adminStatus check
     || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='pending');
+  // If PM marked and admin approved
+  const pmMarkedAdminApproved = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='approved');
 
-  const statusBadge = markedByAdmin
-    ? `<div style="font-size:10px;color:var(--green);font-weight:700;text-align:right">✅ Admin Approved</div>`
+  const statusBadge = markedByAdmin || pmMarkedAdminApproved  // ← Added pmMarkedAdminApproved
+    ? `<div style="font-size:10px;color:var(--green);font-weight:700;text-align:right">✅ ${pmMarkedAdminApproved ? 'PM & Admin Approved' : 'Admin Approved'}</div>`
     : markedByPM
       ? `<div style="font-size:10px;text-align:right"><div style="color:var(--green);font-weight:700">✅ PM Approved</div><div style="color:var(--orange)">⏳ Admin Pending</div></div>`
       : `<div style="font-size:10px;text-align:right">
