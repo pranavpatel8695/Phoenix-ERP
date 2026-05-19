@@ -426,7 +426,7 @@ const LS = {
   del: (k) => localStorage.removeItem(k)
 };
 
-const getUsers       = () => LS.get('phx_users', { admin: { role:'admin', pass:'admin', name:'Admin' } });
+// getUsers is now defined in the getters section after memory caches (uses _usersCache)
 const saveUsers = v => {
   // Safety check: never save fewer users than currently stored (except via explicit delete)
   try {
