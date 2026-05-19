@@ -1200,44 +1200,49 @@ async function fetchAllOtherCollections() {
     }
     
     // Fetch Attendance - handle both old JSON format and new individual fields
-    const attendanceDocs = await awList(AW.collections.attendance, ["limit(5000)"]);
-    if (attendanceDocs && attendanceDocs.length) {
-      const attendance = attendanceDocs.map(d => {
-        try {
-          // NEW FORMAT: Individual fields (Appwrite-First)
-          if (d.recordId) {
-            return {
-              id: d.recordId,
-              user: d.user || '',
-              userName: d.userName || d.user || '',
-              project: d.project || '',
-              atype: d.atype || 'attendance',
-              date: d.date || '',
-              status: d.status || '',
-              pmUser: d.pmUser || '',
-              pmName: d.pmName || '',
-              isBackfill: d.isBackfill || false,
-              pmStatus: d.pmStatus || 'pending',
-              adminStatus: d.adminStatus || 'pending',
-              markedBy: d.markedBy || '',
-              markedByName: d.markedByName || '',
-              timestamp: d.timestamp || ''
-            };
+    try {
+      const attendanceDocs = await awList(AW.collections.attendance, ["limit(5000)"]);
+      if (attendanceDocs && attendanceDocs.length) {
+        const attendance = attendanceDocs.map(d => {
+          try {
+            // NEW FORMAT: Individual fields (Appwrite-First)
+            if (d.recordId) {
+              return {
+                id: d.recordId,
+                user: d.user || '',
+                userName: d.userName || d.user || '',
+                project: d.project || '',
+                atype: d.atype || 'attendance',
+                date: d.date || '',
+                status: d.status || '',
+                pmUser: d.pmUser || '',
+                pmName: d.pmName || '',
+                isBackfill: d.isBackfill || false,
+                pmStatus: d.pmStatus || 'pending',
+                adminStatus: d.adminStatus || 'pending',
+                markedBy: d.markedBy || '',
+                markedByName: d.markedByName || '',
+                timestamp: d.timestamp || ''
+              };
+            }
+            // OLD FORMAT: JSON blob in 'data' field (backwards compatibility)
+            else if (d.data) {
+              return JSON.parse(d.data);
+            }
+            return null;
+          } catch(e) {
+            dbg('[fetchOther] Failed to parse attendance ' + d.$id + ': ' + e.message, 'warn');
+            return null;
           }
-          // OLD FORMAT: JSON blob in 'data' field (backwards compatibility)
-          else if (d.data) {
-            return JSON.parse(d.data);
-          }
-          return null;
-        } catch(e) {
-          dbg('[fetchOther] Failed to parse attendance ' + d.$id + ': ' + e.message, 'warn');
-          return null;
-        }
-      }).filter(Boolean);
-      _attendanceCache = attendance;
-      dbg('[fetchOther] attendance: ' + attendance.length);
-    } else {
-      _attendanceCache = [];
+        }).filter(Boolean);
+        _attendanceCache = attendance;
+        dbg('[fetchOther] attendance: ' + attendance.length);
+      } else {
+        _attendanceCache = [];
+      }
+    } catch(err) {
+      dbg('[fetchOther] ⚠️ Attendance fetch failed: ' + err.message, 'warn');
+      _attendanceCache = [];  // Set empty cache, don't block app load
     }
     
     // Fetch Store Items
@@ -2341,6 +2346,11 @@ async function pushAttendance(record) {
       );
       dbg(`[pushAttendance] ✅ updated ${record.id}`);
       return result;
+    }
+    // If attribute error (new fields don't exist), fall back to old format
+    if (err.message && (err.message.includes('attribute') || err.message.includes('Attribute'))) {
+      dbg(`[pushAttendance] ⚠️ New attributes not found, using old format`, 'warn');
+      return saveDoc(AW.collections.attendance, record.id, record);
     }
     dbg(`[pushAttendance] ❌ ${record.id}: ${err.message}`, 'error');
     throw err;
