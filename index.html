@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.1.9
+      Version 5.2.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -354,14 +354,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.1.9 - Mobile Concrete Form Auto-fill', 'info');
+    dbg('[VERSION] Phoenix ERP v5.2.1 - PM Validation Fixed + PM Deletion Warnings', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.1.9'; // Mobile Concrete Form Location Auto-fill Fixed
+const APP_VERSION = '5.2.1'; // PM Validation Bug Fixed + PM Constraint Warnings
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -5501,7 +5501,29 @@ async function deleteReport(id) {
     return;
   }
 
-  showConfirm('Delete Report', 'Delete this report? This cannot be undone.', async () => {
+  showConfirm(
+    '🗑️ Delete Report', 
+    `<div style="margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Delete this ${typeLabels[r.type] || r.type} report?</div>
+      <div style="background:rgba(255,69,58,0.08);border-left:3px solid var(--red);padding:12px;border-radius:6px;margin-top:12px;">
+        <div style="font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ Warning: This action cannot be undone</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          • Report data will be permanently deleted<br>
+          • Photos attached to this report will be removed<br>
+          • Changes will sync across all devices<br>
+          ${r.type === 'valve' && r.chamberReq === 'Yes' ? '• <strong>Chamber records</strong> linked to this valve will lose reference<br>' : ''}
+          ${r.type === 'fitting' && r.thrustBlock === 'Yes' ? '• <strong>Concrete records</strong> linked to this fitting will lose reference<br>' : ''}
+          ${r.type === 'pipe' && (r.encasing || r.encasings?.length) ? '• <strong>Concrete records</strong> linked to this encasing will lose reference<br>' : ''}
+        </div>
+      </div>
+    </div>`, 
+    async () => {
+    const typeLabels = {
+      excavation:'Excavation',pipe:'Pipe Laying',refill:'Refilling',
+      valve:'Valve Installation',chamber:'Chamber',fitting:'Fitting',structure:'Concrete Work',
+      civil_dpr:'DPR Entry',civil_drawing:'Drawing',civil_quality:'Quality Check',
+      civil_material:'Material',civil_labour:'Labour',civil_other:'Other'
+    };
     try {
       // APPWRITE-FIRST: Delete from Appwrite first
       setSyncStatus('syncing');
@@ -6026,7 +6048,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.1.9
+        Phoenix ERP v5.2.1
       </div>
     `;
   }
@@ -6036,7 +6058,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.1.9
+      Phoenix ERP v5.2.1
     </div>
   `;
 }
@@ -6437,6 +6459,20 @@ function saveAccount() {
   if (!name||!user||!pass) { showToast('Fill all fields'); return; }
   const users = getUsers();
   if (users[user]) { showToast('Username already exists'); return; }
+  
+  // ⚠️ PM VALIDATION: Check if assigning PM to projects that already have a PM
+  if (role === 'pm' && projs.length > 0) {
+    for (const proj of projs) {
+      const existingPM = Object.entries(users).find(([, v]) =>
+        v.role === 'pm' && (v.projects || []).includes(proj)
+      );
+      if (existingPM) {
+        showToast(`⚠️ ${existingPM[1].name || existingPM[0]} is already PM for "${proj}"`);
+        return;
+      }
+    }
+  }
+  
   // Remove from deleted list if re-creating a previously deleted username
   const deletedList = LS.get('phx_deleted_users', []);
   LS.set('phx_deleted_users', deletedList.filter(u => u !== user));
@@ -6451,7 +6487,53 @@ function saveAccount() {
 }
 
 function deleteAccount(u) {
-  showConfirm('Delete Account', `Delete account "@${u}"?`, () => {
+  const users = getUsers();
+  const user = users[u];
+  if (!user) return;
+  
+  const role = user.role || 'Unknown';
+  const name = user.name || u;
+  const projects = user.projects || [];
+  const projectList = projects.length ? projects.join(', ') : 'None';
+  
+  // Check if this is a PM and show PM constraint warning
+  const isPM = role === 'pm';
+  const pmWarning = isPM && projects.length > 0
+    ? `<div style="background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);padding:12px;border-radius:6px;margin-bottom:12px;">
+        <div style="font-weight:700;color:var(--orange);margin-bottom:8px;">⚠️ PM Constraint</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6;">
+          This user is the <strong>Project Manager</strong> for:<br>
+          <strong>${projectList}</strong><br><br>
+          <strong>Note:</strong> Each project can only have ONE PM. After deleting this PM, you will need to assign a new PM for ${projects.length === 1 ? 'this project' : 'these projects'}.
+        </div>
+      </div>`
+    : '';
+  
+  showConfirm(
+    '🗑️ Delete User Account',
+    `<div style="margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:12px;">Delete user "@${u}"?</div>
+      ${pmWarning}
+      <div style="background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);padding:12px;border-radius:6px;margin-bottom:12px;">
+        <div style="font-weight:700;color:var(--orange);margin-bottom:8px;">👤 User Details</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6;">
+          • Name: <strong>${name}</strong><br>
+          • Role: <strong>${role.toUpperCase()}</strong><br>
+          • Assigned Projects: <strong>${projectList}</strong>
+        </div>
+      </div>
+      <div style="background:rgba(255,69,58,0.08);border-left:3px solid var(--red);padding:12px;border-radius:6px;">
+        <div style="font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ This action cannot be undone</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          • User will no longer be able to log in<br>
+          • All permissions and access revoked<br>
+          • Project assignments removed<br>
+          • <strong>Created reports/data will remain</strong> with username<br>
+          • Changes will sync across all devices
+        </div>
+      </div>
+    </div>`,
+    () => {
     const deleted = LS.get('phx_deleted_users', []);
     if (!deleted.includes(u)) { deleted.push(u); LS.set('phx_deleted_users', deleted); }
     const users = getUsers();
@@ -6636,9 +6718,44 @@ function deleteSpecial(idx) {
   const specials = getSpecials();
   const deletedItem = specials[proj][idx];
   
+  // Check if fitting is used in any reports
+  const reports = getReports().filter(r => 
+    r.type === 'fitting' && 
+    r.project === proj && 
+    r.fittings && 
+    r.fittings.some(f => f.type === deletedItem.name)
+  );
+  const usedQty = reports.reduce((sum, r) => {
+    const fitting = r.fittings.find(f => f.type === deletedItem.name);
+    return sum + (parseInt(fitting?.qty) || 0);
+  }, 0);
+  
+  const warningMsg = reports.length > 0 
+    ? `<div style="background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);padding:12px;border-radius:6px;margin-bottom:12px;">
+        <div style="font-weight:700;color:var(--orange);margin-bottom:6px;">⚠️ Currently In Use</div>
+        <div style="font-size:13px;color:var(--muted);">
+          • Used in <strong>${reports.length} report(s)</strong><br>
+          • Total quantity used: <strong>${usedQty} nos</strong><br>
+          • <strong>Reports will NOT be deleted</strong> but will keep this fitting name
+        </div>
+      </div>`
+    : '';
+  
   showConfirm(
-    'Delete Fitting',
-    `Delete "${deletedItem.name}"? This will sync across all devices.`,
+    '🗑️ Delete Fitting',
+    `<div style="margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Delete "${deletedItem.name}"?</div>
+      ${warningMsg}
+      <div style="background:rgba(255,69,58,0.08);border-left:3px solid var(--red);padding:12px;border-radius:6px;">
+        <div style="font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ This action cannot be undone</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          • Fitting will be removed from Settings<br>
+          • Will no longer appear in Fitting form dropdown<br>
+          • Quantity tracking will stop<br>
+          • Changes will sync across all devices
+        </div>
+      </div>
+    </div>`,
     async () => {
       // Delete from Appwrite FIRST
       try {
@@ -6833,9 +6950,44 @@ function deleteValveSpecial(idx) {
   const valves = getValveSpecials();
   const deletedItem = valves[proj][idx];
   
+  // Check if valve is used in any reports
+  const reports = getReports().filter(r => 
+    r.type === 'valve' && 
+    r.project === proj && 
+    r.valves && 
+    r.valves.some(v => v.type === deletedItem.name)
+  );
+  const usedQty = reports.reduce((sum, r) => {
+    const valve = r.valves.find(v => v.type === deletedItem.name);
+    return sum + (parseInt(valve?.qty) || 0);
+  }, 0);
+  
+  const warningMsg = reports.length > 0 
+    ? `<div style="background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);padding:12px;border-radius:6px;margin-bottom:12px;">
+        <div style="font-weight:700;color:var(--orange);margin-bottom:6px;">⚠️ Currently In Use</div>
+        <div style="font-size:13px;color:var(--muted);">
+          • Used in <strong>${reports.length} report(s)</strong><br>
+          • Total quantity used: <strong>${usedQty} nos</strong><br>
+          • <strong>Reports will NOT be deleted</strong> but will keep this valve name
+        </div>
+      </div>`
+    : '';
+  
   showConfirm(
-    'Delete Valve',
-    `Delete "${deletedItem.name}"? This will sync across all devices.`,
+    '🗑️ Delete Valve',
+    `<div style="margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Delete "${deletedItem.name}"?</div>
+      ${warningMsg}
+      <div style="background:rgba(255,69,58,0.08);border-left:3px solid var(--red);padding:12px;border-radius:6px;">
+        <div style="font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ This action cannot be undone</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          • Valve will be removed from Settings<br>
+          • Will no longer appear in Valve form dropdown<br>
+          • Quantity tracking will stop<br>
+          • Changes will sync across all devices
+        </div>
+      </div>
+    </div>`,
     async () => {
       // Delete from Appwrite FIRST
       try {
@@ -7376,7 +7528,53 @@ async function updateUserUM(username) {
 }
 
 function deleteUserUM(username) {
-  showConfirm('Delete User', 'Delete account "@' + username + '"? This cannot be undone.', async function() {
+  const users = getUsers();
+  const user = users[username];
+  if (!user) return;
+  
+  const role = user.role || 'Unknown';
+  const name = user.name || username;
+  const projects = user.projects || [];
+  const projectList = projects.length ? projects.join(', ') : 'None';
+  
+  // Check if this is a PM and show PM constraint warning
+  const isPM = role === 'pm';
+  const pmWarning = isPM && projects.length > 0
+    ? `<div style="background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);padding:12px;border-radius:6px;margin-bottom:12px;">
+        <div style="font-weight:700;color:var(--orange);margin-bottom:8px;">⚠️ PM Constraint</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6;">
+          This user is the <strong>Project Manager</strong> for:<br>
+          <strong>${projectList}</strong><br><br>
+          <strong>Note:</strong> Each project can only have ONE PM. After deleting this PM, you will need to assign a new PM for ${projects.length === 1 ? 'this project' : 'these projects'}.
+        </div>
+      </div>`
+    : '';
+  
+  showConfirm(
+    '🗑️ Delete User Account',
+    `<div style="margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:12px;">Delete user "@${username}"?</div>
+      ${pmWarning}
+      <div style="background:rgba(255,159,10,0.08);border-left:3px solid var(--orange);padding:12px;border-radius:6px;margin-bottom:12px;">
+        <div style="font-weight:700;color:var(--orange);margin-bottom:8px;">👤 User Details</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6;">
+          • Name: <strong>${name}</strong><br>
+          • Role: <strong>${role.toUpperCase()}</strong><br>
+          • Assigned Projects: <strong>${projectList}</strong>
+        </div>
+      </div>
+      <div style="background:rgba(255,69,58,0.08);border-left:3px solid var(--red);padding:12px;border-radius:6px;">
+        <div style="font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ This action cannot be undone</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          • User will no longer be able to log in<br>
+          • All permissions and access revoked<br>
+          • Project assignments removed<br>
+          • <strong>Created reports/data will remain</strong> with username<br>
+          • Changes will sync across all devices
+        </div>
+      </div>
+    </div>`,
+    async function() {
     // Update deleted list FIRST so saveUsers guard doesn't restore the user
     const deleted = LS.get('phx_deleted_users', []);
     if (!deleted.includes(username)) { deleted.push(username); LS.set('phx_deleted_users', deleted); }
