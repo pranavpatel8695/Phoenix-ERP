@@ -8878,10 +8878,12 @@ function attendanceCard(a, role) {
     || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='pending');
   // If PM marked and admin approved, treat as admin-approved
   const pmMarkedAdminApproved = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='approved');
+  // Backdated self-submitted, fully approved by PM and Admin
+  const backdatedFullyApproved = (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='approved');
 
-  const approvalChain = markedByAdmin || pmMarkedAdminApproved  // ← Added pmMarkedAdminApproved
+  const approvalChain = markedByAdmin || pmMarkedAdminApproved || backdatedFullyApproved  // ← Added backdatedFullyApproved
     ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--green);font-weight:700">
-        ✅ ${pmMarkedAdminApproved ? `Marked by ${a.markedByName||pmDisplay}, approved by Admin` : `Marked & approved by ${a.markedByName||adminName}`}
+        ✅ ${pmMarkedAdminApproved ? `Marked by ${a.markedByName||pmDisplay}, approved by Admin` : backdatedFullyApproved ? `Approved by PM & Admin` : `Marked & approved by ${a.markedByName||adminName}`}
        </div>`
     : markedByPM
       ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:11px">
