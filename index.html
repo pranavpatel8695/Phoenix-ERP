@@ -8269,7 +8269,7 @@ function localToday() {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
-function markAttendanceFor(status, date, targetUser) {
+async function markAttendanceFor(status, date, targetUser) {
   const all = getAttendance();
   if (all.find(a=>a.user===targetUser&&a.date===date&&a.atype==='attendance')) {
     showToast('Already marked for ' + date); return;
