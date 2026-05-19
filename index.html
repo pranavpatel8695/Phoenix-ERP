@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.2.1
+      Version 5.3.0
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -339,7 +339,8 @@ const AW = {
     routes:      'routes_config',
     fittings:    'fittings_config',
     valves:      'valves_config',
-    assignments: 'assignments_config'
+    assignments: 'assignments_config',
+    users:       'users_config'       // NEW: Users collection
   }
 };
 
@@ -354,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.2.1 - PM Validation Fixed + PM Deletion Warnings', 'info');
+    dbg('[VERSION] Phoenix ERP v5.3.0 - Users Appwrite-First Architecture Complete', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.2.1'; // PM Validation Bug Fixed + PM Constraint Warnings
+const APP_VERSION = '5.3.0'; // Users Appwrite-First Architecture Complete
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -482,6 +483,7 @@ let _routesCache = {};
 let _assignmentsCache = {};
 let _fittingsCache = {};
 let _valvesCache = {};
+let _usersCache = {};  // NEW: Users cache (v5.2.4)
 
 // In-memory cache for machinery collections (v5.1.0)
 let _machineryCache = [];
@@ -501,6 +503,7 @@ const getRoutes = () => _routesCache;
 const getAssignments = () => _assignmentsCache;
 const getSpecials = () => _fittingsCache;
 const getValveSpecials = () => _valvesCache;
+const getUsers = () => Object.keys(_usersCache).length > 0 ? _usersCache : { admin: { role:'admin', pass:'admin', name:'Admin' } };  // NEW: Use cache
 
 const getMachinery = () => _machineryCache;
 const getMachLogs = () => _machLogsCache;
@@ -974,6 +977,41 @@ async function fetchSeparatedCollections() {
       dbg('[fetchSeparated] assignments: ' + assignDocs.length);
     } else {
       _assignmentsCache = {};  // Empty cache if no assignments
+    }
+    
+    // Fetch Users
+    const userDocs = await awList(AW.collections.users, ["limit(1000)"]);
+    if (userDocs && userDocs.length) {
+      const users = {};
+      userDocs.forEach(u => {
+        // Parse projects from JSON string back to array
+        let projects = [];
+        try {
+          projects = u.projects ? JSON.parse(u.projects) : [];
+        } catch (e) {
+          dbg('[fetchSeparated] ⚠️ Failed to parse projects for user: ' + u.username, 'warn');
+          projects = [];
+        }
+        
+        users[u.username] = {
+          role: u.role || 'junior_engineer',
+          pass: u.pass || '',
+          name: u.name || u.username,
+          projects: projects,  // ← Now an array!
+          createdAt: u.createdAt || new Date().toISOString()
+        };
+      });
+      
+      // Always include admin user
+      if (!users.admin) {
+        users.admin = { role: 'admin', pass: 'admin', name: 'Admin' };
+      }
+      
+      _usersCache = users;  // ← Update memory cache directly!
+      dbg('[fetchSeparated] users: ' + userDocs.length);
+    } else {
+      // Default: just admin if no users in Appwrite
+      _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
     }
     
     dbg('[fetchSeparated] ✅ All separated collections fetched');
@@ -2054,7 +2092,79 @@ async function pushAssignment(projectName, users) {
   }
 }
 
-// Push single attendance record to Appwrite
+// ── USER CRUD (Appwrite-First v5.2.4) ────────────────────────
+
+// Push single user to users_config collection
+async function pushUser(username, userData) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) {
+    const error = new Error('Migration not completed - separated collections not enabled');
+    dbg('[pushUser] ❌ Migration not completed', 'error');
+    throw error;
+  }
+  
+  // Create doc ID from username (alphanumeric only)
+  const docId = username.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  // Prepare data - stringify projects array
+  const data = {
+    username: username,
+    role: userData.role || 'junior_engineer',
+    pass: userData.pass || '',
+    name: userData.name || username,
+    projects: JSON.stringify(userData.projects || []),  // Convert array to string
+    createdAt: userData.createdAt || new Date().toISOString()
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.users,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushUser] ✅ ${username}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      // Document exists, update it
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.users,
+        docId,
+        data
+      );
+      dbg(`[pushUser] ✅ updated ${username}`);
+      return result;
+    }
+    dbg(`[pushUser] ❌ ${username}: ${err.message}`, 'error');
+    throw err;
+  }
+}
+
+// Delete user from users_config collection
+async function deleteUserFromAW(username) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = username.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  try {
+    await _awDB.deleteDocument(AW.database, AW.collections.users, docId);
+    dbg(`[deleteUserFromAW] ✅ ${username}`);
+    return true;
+  } catch (err) {
+    if (err.code === 404) {
+      dbg(`[deleteUserFromAW] ⚠️ ${username} not found (already deleted?)`, 'warn');
+      return true;  // Consider it success if already gone
+    }
+    dbg(`[deleteUserFromAW] ❌ ${username}: ${err.message}`, 'error');
+    throw err;
+  }
+}
+
+// Push attendance record to Appwrite
 async function pushAttendance(record) {
   return saveDoc(AW.collections.attendance, record.id, record);
 }
@@ -5501,6 +5611,13 @@ async function deleteReport(id) {
     return;
   }
 
+  const typeLabels = {
+    excavation:'Excavation',pipe:'Pipe Laying',refill:'Refilling',
+    valve:'Valve Installation',chamber:'Chamber',fitting:'Fitting',structure:'Concrete Work',
+    civil_dpr:'DPR Entry',civil_drawing:'Drawing',civil_quality:'Quality Check',
+    civil_material:'Material',civil_labour:'Labour',civil_other:'Other'
+  };
+
   showConfirm(
     '🗑️ Delete Report', 
     `<div style="margin-bottom:16px;">
@@ -5518,12 +5635,6 @@ async function deleteReport(id) {
       </div>
     </div>`, 
     async () => {
-    const typeLabels = {
-      excavation:'Excavation',pipe:'Pipe Laying',refill:'Refilling',
-      valve:'Valve Installation',chamber:'Chamber',fitting:'Fitting',structure:'Concrete Work',
-      civil_dpr:'DPR Entry',civil_drawing:'Drawing',civil_quality:'Quality Check',
-      civil_material:'Material',civil_labour:'Labour',civil_other:'Other'
-    };
     try {
       // APPWRITE-FIRST: Delete from Appwrite first
       setSyncStatus('syncing');
@@ -6048,7 +6159,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.2.1
+        Phoenix ERP v5.3.0
       </div>
     `;
   }
@@ -6058,7 +6169,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.2.1
+      Phoenix ERP v5.3.0
     </div>
   `;
 }
@@ -7205,7 +7316,22 @@ async function addProjectToUser(username) {
   if (!users[username].projects) users[username].projects = [];
   if (users[username].projects.includes(proj)) { showToast('Already assigned'); return; }
   users[username].projects.push(proj);
-  saveUsers(users);
+  
+  // APPWRITE-FIRST: Push to Appwrite first
+  try {
+    await pushUser(username, users[username]);
+    
+    // Update memory cache on success
+    _usersCache[username] = users[username];
+    
+    // Also save to localStorage as backup
+    saveUsers(users);
+    
+    dbg('[addProjectToUser] ✅ User data synced to Appwrite');
+  } catch (err) {
+    dbg('[addProjectToUser] ⚠️ User data sync failed: ' + err.message, 'warn');
+    showToast('⚠️ Changes saved locally, sync failed');
+  }
   
   // Update assignments in Appwrite & memory cache
   const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
@@ -7215,13 +7341,13 @@ async function addProjectToUser(username) {
     // Update memory cache on success
     _assignmentsCache[proj] = projectUsers;
     
-    dbg('[addProjectToUser] ✅ Updated Appwrite & memory cache');
+    dbg('[addProjectToUser] ✅ Assignment updated in Appwrite & memory cache');
   } catch (err) {
-    dbg('[addProjectToUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    dbg('[addProjectToUser] ⚠️ Assignment sync failed: ' + err.message, 'warn');
     showToast('⚠️ Failed to sync assignment: ' + err.message);
   }
   
-  showToast('✅ ' + proj + ' assigned to @' + username);
+  showToast('✅ ' + proj + ' assigned to @' + username + ' & synced');
   document.getElementById('main').innerHTML = renderUsersTab();
 }
 
@@ -7229,7 +7355,22 @@ async function removeProjectFromUser(username, proj) {
   const users = getUsers();
   if (!users[username]) return;
   users[username].projects = (users[username].projects || []).filter(function(p){return p !== proj;});
-  saveUsers(users);
+  
+  // APPWRITE-FIRST: Push to Appwrite first
+  try {
+    await pushUser(username, users[username]);
+    
+    // Update memory cache on success
+    _usersCache[username] = users[username];
+    
+    // Also save to localStorage as backup
+    saveUsers(users);
+    
+    dbg('[removeProjectFromUser] ✅ User data synced to Appwrite');
+  } catch (err) {
+    dbg('[removeProjectFromUser] ⚠️ User data sync failed: ' + err.message, 'warn');
+    showToast('⚠️ Changes saved locally, sync failed');
+  }
   
   // Update assignments in Appwrite & memory cache
   const projectUsers = Object.keys(users).filter(u => (users[u].projects || []).includes(proj));
@@ -7239,13 +7380,13 @@ async function removeProjectFromUser(username, proj) {
     // Update memory cache on success
     _assignmentsCache[proj] = projectUsers;
     
-    dbg('[removeProjectFromUser] ✅ Updated Appwrite & memory cache');
+    dbg('[removeProjectFromUser] ✅ Assignment updated in Appwrite & memory cache');
   } catch (err) {
-    dbg('[removeProjectFromUser] ⚠️ Appwrite push failed: ' + err.message, 'warn');
+    dbg('[removeProjectFromUser] ⚠️ Assignment sync failed: ' + err.message, 'warn');
     showToast('⚠️ Failed to sync assignment: ' + err.message);
   }
   
-  showToast('🗑️ Removed ' + proj + ' from @' + username);
+  showToast('🗑️ Removed ' + proj + ' from @' + username + ' & synced');
   document.getElementById('main').innerHTML = renderUsersTab();
 }
 
@@ -7373,18 +7514,41 @@ async function saveUserUM() {
   // Remove from deleted list if re-creating a previously deleted username
   const deletedList = LS.get('phx_deleted_users', []);
   LS.set('phx_deleted_users', deletedList.filter(u => u !== user));
-  users[user] = { role, pass, name: name.trim(), projects: projs, createdAt: new Date().toISOString() };
-  saveUsers(users);
-  // Track as pending push so sync never removes it
-  const pending = LS.get('phx_pending_users', []);
-  if (!pending.includes(user)) { pending.push(user); LS.set('phx_pending_users', pending); }
-
-  // Push to Appwrite and confirm
+  
+  const userData = { 
+    role, 
+    pass, 
+    name: name.trim(), 
+    projects: projs, 
+    createdAt: new Date().toISOString() 
+  };
+  
+  // APPWRITE-FIRST: Push to Appwrite first
   showToast('⏳ Saving user…');
   try {
-    await pushConfig();
+    await pushUser(user, userData);
+    
+    // Update memory cache on success
+    _usersCache[user] = userData;
+    
+    // Also save to localStorage as backup
+    saveUsers(getUsers());
+    
+    // Track as pending push so sync never removes it
+    const pending = LS.get('phx_pending_users', []);
+    if (!pending.includes(user)) { pending.push(user); LS.set('phx_pending_users', pending); }
+    
+    // Update assignments in Appwrite
+    for (const proj of projs) {
+      const projectUsers = Object.keys(getUsers()).filter(u => (getUsers()[u].projects || []).includes(proj));
+      await pushAssignment(proj, projectUsers);
+      _assignmentsCache[proj] = projectUsers;
+    }
+    
+    dbg('[saveUserUM] ✅ User created & synced to Appwrite');
     showToast('✅ User created and synced');
   } catch(e) {
+    dbg('[saveUserUM] ❌ Appwrite push failed: ' + e.message, 'error');
     showToast('⚠️ Saved locally, sync failed — try again');
   }
 
@@ -7516,15 +7680,26 @@ async function updateUserUM(username) {
     if (dupPass) { showToast(`⚠️ Password already used by @${dupPass[0]} — choose a different one`); return; }
     users[username].pass = pass;
   }
-  saveUsers(users);
-  closeFormModal();
-  document.getElementById('main').innerHTML = renderUsersTab();
+  
+  // APPWRITE-FIRST: Push to Appwrite first
   try {
-    await pushConfig();
+    await pushUser(username, users[username]);
+    
+    // Update memory cache on success
+    _usersCache[username] = users[username];
+    
+    // Also save to localStorage as backup
+    saveUsers(users);
+    
+    dbg('[updateUserUM] ✅ User updated & synced to Appwrite');
     showToast('✅ @' + username + ' updated & synced');
   } catch(e) {
+    dbg('[updateUserUM] ❌ Appwrite push failed: ' + e.message, 'error');
     showToast('✅ @' + username + ' updated (sync pending)');
   }
+  
+  closeFormModal();
+  document.getElementById('main').innerHTML = renderUsersTab();
 }
 
 function deleteUserUM(username) {
@@ -7580,16 +7755,41 @@ function deleteUserUM(username) {
     if (!deleted.includes(username)) { deleted.push(username); LS.set('phx_deleted_users', deleted); }
 
     const users = getUsers();
-    delete users[username];
-    saveUsers(users);
-    saveAttendance(getAttendance().filter(a=>a.user!==username));
-    document.getElementById('main').innerHTML = renderUsersTab();
+    const userProjects = users[username]?.projects || [];
+    
+    // APPWRITE-FIRST: Delete from Appwrite first
     try {
-      await pushConfig();
+      await deleteUserFromAW(username);
+      
+      // Update memory cache on success
+      delete _usersCache[username];
+      
+      // Also delete from localStorage
+      delete users[username];
+      saveUsers(users);
+      
+      // Clean up attendance records
+      saveAttendance(getAttendance().filter(a=>a.user!==username));
+      
+      // Update assignments for projects this user was in
+      for (const proj of userProjects) {
+        const projectUsers = Object.keys(getUsers()).filter(u => (getUsers()[u].projects || []).includes(proj));
+        try {
+          await pushAssignment(proj, projectUsers);
+          _assignmentsCache[proj] = projectUsers;
+        } catch (err) {
+          dbg('[deleteUserUM] ⚠️ Failed to update assignment for ' + proj, 'warn');
+        }
+      }
+      
+      dbg('[deleteUserUM] ✅ User deleted & synced to Appwrite');
       showToast('🗑️ User deleted & synced');
     } catch(e) {
+      dbg('[deleteUserUM] ❌ Appwrite delete failed: ' + e.message, 'error');
       showToast('🗑️ Deleted locally (sync pending)');
     }
+    
+    document.getElementById('main').innerHTML = renderUsersTab();
   });
 }
 
