@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.3.3
+      Version 5.4.0
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.3.3 - Users Cache Preservation Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.4.0 - Attendance Appwrite-First Architecture', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.3.3'; // Users Cache Preservation Fix
+const APP_VERSION = '5.4.0'; // Attendance Appwrite-First Architecture
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -1199,11 +1199,40 @@ async function fetchAllOtherCollections() {
       _machIssuesCache = [];
     }
     
-    // Fetch Attendance
+    // Fetch Attendance - handle both old JSON format and new individual fields
     const attendanceDocs = await awList(AW.collections.attendance, ["limit(5000)"]);
     if (attendanceDocs && attendanceDocs.length) {
       const attendance = attendanceDocs.map(d => {
-        try { return JSON.parse(d.data); } catch(e) { return null; }
+        try {
+          // NEW FORMAT: Individual fields (Appwrite-First)
+          if (d.recordId) {
+            return {
+              id: d.recordId,
+              user: d.user || '',
+              userName: d.userName || d.user || '',
+              project: d.project || '',
+              atype: d.atype || 'attendance',
+              date: d.date || '',
+              status: d.status || '',
+              pmUser: d.pmUser || '',
+              pmName: d.pmName || '',
+              isBackfill: d.isBackfill || false,
+              pmStatus: d.pmStatus || 'pending',
+              adminStatus: d.adminStatus || 'pending',
+              markedBy: d.markedBy || '',
+              markedByName: d.markedByName || '',
+              timestamp: d.timestamp || ''
+            };
+          }
+          // OLD FORMAT: JSON blob in 'data' field (backwards compatibility)
+          else if (d.data) {
+            return JSON.parse(d.data);
+          }
+          return null;
+        } catch(e) {
+          dbg('[fetchOther] Failed to parse attendance ' + d.$id + ': ' + e.message, 'warn');
+          return null;
+        }
       }).filter(Boolean);
       _attendanceCache = attendance;
       dbg('[fetchOther] attendance: ' + attendance.length);
@@ -2259,9 +2288,90 @@ async function deleteUserFromAW(username) {
   }
 }
 
-// Push attendance record to Appwrite
+// ── ATTENDANCE CRUD (Appwrite-First v5.4.0) ──────────────────────
+
+// Push single attendance record to attendance collection (Appwrite-First)
 async function pushAttendance(record) {
-  return saveDoc(AW.collections.attendance, record.id, record);
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) {
+    // Fallback to old pattern if migration not complete
+    return saveDoc(AW.collections.attendance, record.id, record);
+  }
+  
+  // Create doc ID from record ID
+  const docId = String(record.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  // Prepare data - save individual fields (not JSON blob)
+  const data = {
+    recordId: record.id,
+    user: record.user || '',
+    userName: record.userName || record.user || '',
+    project: record.project || '',
+    atype: record.atype || 'attendance',
+    date: record.date || '',
+    status: record.status || '',
+    pmUser: record.pmUser || '',
+    pmName: record.pmName || '',
+    isBackfill: record.isBackfill || false,
+    pmStatus: record.pmStatus || 'pending',
+    adminStatus: record.adminStatus || 'pending',
+    markedBy: record.markedBy || '',
+    markedByName: record.markedByName || '',
+    timestamp: record.timestamp || new Date().toISOString()
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.attendance,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushAttendance] ✅ ${record.id}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      // Document exists, update it
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.attendance,
+        docId,
+        data
+      );
+      dbg(`[pushAttendance] ✅ updated ${record.id}`);
+      return result;
+    }
+    dbg(`[pushAttendance] ❌ ${record.id}: ${err.message}`, 'error');
+    throw err;
+  }
+}
+
+// Delete attendance record from Appwrite
+async function deleteAttendanceFromAW(recordId) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return;
+  
+  const docId = String(recordId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  try {
+    await _awDB.deleteDocument(AW.database, AW.collections.attendance, docId);
+    dbg(`[deleteAttendanceFromAW] ✅ ${recordId}`);
+    return true;
+  } catch (err) {
+    if (err.code === 404) {
+      dbg(`[deleteAttendanceFromAW] ⚠️ ${recordId} not found (already deleted?)`, 'warn');
+      return true;  // Consider it success if already gone
+    }
+    dbg(`[deleteAttendanceFromAW] ❌ ${recordId}: ${err.message}`, 'error');
+    throw err;
+  }
+}
+
+// Save attendance to localStorage (backup only)
+function saveAttendance(records) {
+  _attendanceCache = records;
+  // No localStorage save - cache only (Appwrite is source of truth)
 }
 
 // Push single store item
@@ -6254,7 +6364,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.3.3
+        Phoenix ERP v5.4.0
       </div>
     `;
   }
@@ -6264,7 +6374,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.3.3
+      Phoenix ERP v5.4.0
     </div>
   `;
 }
@@ -6412,6 +6522,10 @@ function deleteProject(name) {
       saveStoreTxns(getStoreTxns().filter(t => t.project !== name && t.fromProject !== name));
 
       // 6. Remove attendance records for this project
+      const projectAttendance = getAttendance().filter(a => a.project === name);
+      for (const att of projectAttendance) {
+        deleteAttendanceFromAW(att.id).catch(() => {});
+      }
       saveAttendance(getAttendance().filter(a => a.project !== name));
 
       // 7. Remove project from user assignments
@@ -7863,7 +7977,11 @@ function deleteUserUM(username) {
       delete users[username];
       saveUsers(users);
       
-      // Clean up attendance records
+      // Clean up attendance records from Appwrite
+      const userAttendance = getAttendance().filter(a => a.user === username);
+      for (const att of userAttendance) {
+        deleteAttendanceFromAW(att.id).catch(() => {});
+      }
       saveAttendance(getAttendance().filter(a=>a.user!==username));
       
       // Update assignments for projects this user was in
@@ -8182,7 +8300,7 @@ function markAttendanceFor(status, date, targetUser) {
     }
   }
 
-  all.push({
+  const newRecord = {
     id: 'ATT_'+Date.now(), user: targetUser,
     userName: targetUserData?.name||targetUser,
     project: myProj, atype: 'attendance', date, status,
@@ -8190,11 +8308,26 @@ function markAttendanceFor(status, date, targetUser) {
     pmStatus, adminStatus,
     markedBy: currentUser, markedByName: users[currentUser]?.name||currentUser,
     timestamp: new Date().toISOString()
-  });
-  saveAttendance(all);
-  pushAttendance(all[all.length-1]).catch(()=>{});
-  pushConfig();
-  showToast(`✅ ${status==='present'?'Present':'Absent'} marked for ${targetUserData?.name||targetUser} on ${date}`);
+  };
+  
+  // APPWRITE-FIRST: Push to Appwrite first
+  try {
+    await pushAttendance(newRecord);
+    
+    // Update memory cache on success
+    all.push(newRecord);
+    saveAttendance(all);
+    
+    dbg('[markAttendanceForUser] ✅ Attendance synced to Appwrite');
+    showToast(`✅ ${status==='present'?'Present':'Absent'} marked for ${targetUserData?.name||targetUser} on ${date}`);
+  } catch(e) {
+    dbg('[markAttendanceForUser] ❌ Appwrite push failed: ' + e.message, 'error');
+    // Fallback: save to cache anyway
+    all.push(newRecord);
+    saveAttendance(all);
+    showToast(`⚠️ ${status==='present'?'Present':'Absent'} marked locally (sync pending)`);
+  }
+  
   renderCurrentTab();
 }
 
@@ -8208,12 +8341,27 @@ function markAttendanceDate(status, date) {
   const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
   const pmUser = pmEntry?.[0]||'';
   const pmName = pmEntry?.[1]?.name||pmUser;
-  all.push({ id:'ATT_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
+  
+  const newRecord = { 
+    id:'ATT_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
     project:myProj, atype:'attendance', date, status,
     pmUser, pmName, isBackfill:true,
-    pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() });
-  saveAttendance(all); pushAttendance(all[all.length-1]).catch(()=>{}); pushConfig();
-  showToast('✅ Attendance marked for ' + date);
+    pmStatus:'pending', adminStatus:'pending', timestamp:new Date().toISOString() 
+  };
+  
+  // APPWRITE-FIRST: Push to Appwrite first
+  pushAttendance(newRecord).then(() => {
+    all.push(newRecord);
+    saveAttendance(all);
+    dbg('[markAttendanceDate] ✅ Attendance synced');
+    showToast('✅ Attendance marked for ' + date);
+  }).catch(e => {
+    dbg('[markAttendanceDate] ❌ Appwrite failed: ' + e.message, 'error');
+    all.push(newRecord);
+    saveAttendance(all);
+    showToast('⚠️ Marked locally (sync pending)');
+  });
+  
   renderCurrentTab();
 }
 
@@ -8228,13 +8376,29 @@ function markAttendance(status) {
   const pmName = pmEntry?.[1]?.name||pmUser;
   // If current user IS the PM for this project, auto-approve pmStatus
   const isPM = currentRole === 'pm' || pmUser === currentUser;
-  all.push({ id:'ATT_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
+  
+  const newRecord = { 
+    id:'ATT_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
     project: myProj, atype:'attendance', date:today, status,
     pmUser, pmName,
     pmStatus: isPM ? 'approved' : 'pending',
-    adminStatus: 'pending', timestamp:new Date().toISOString() });
-  saveAttendance(all); pushAttendance(all[all.length-1]).catch(()=>{}); pushConfig();
-  showToast('✅ Attendance marked'); renderCurrentTab();
+    adminStatus: 'pending', timestamp:new Date().toISOString() 
+  };
+  
+  // APPWRITE-FIRST: Push to Appwrite first
+  pushAttendance(newRecord).then(() => {
+    all.push(newRecord);
+    saveAttendance(all);
+    dbg('[markAttendance] ✅ Attendance synced');
+    showToast('✅ Attendance marked');
+  }).catch(e => {
+    dbg('[markAttendance] ❌ Appwrite failed: ' + e.message, 'error');
+    all.push(newRecord);
+    saveAttendance(all);
+    showToast('⚠️ Marked locally (sync pending)');
+  });
+  
+  renderCurrentTab();
 }
 
 function applyLeave() {
@@ -8765,16 +8929,30 @@ function attendanceCard(a, role) {
   </div>`;
 }
 
-function reviewAttendance(id, role, decision) {
+async function reviewAttendance(id, role, decision) {
   const all = getAttendance();
   const rec = all.find(a=>a.id===id);
   if (!rec) return;
+  
   if (role==='pm') rec.pmStatus = decision;
   else rec.adminStatus = decision;
-  saveAttendance(all);
-  pushAttendance(rec).catch(()=>{});
-  pushConfig();
-  showToast(decision==='approved'?'✅ Approved':'❌ Rejected');
+  
+  // APPWRITE-FIRST: Push to Appwrite first
+  try {
+    await pushAttendance(rec);
+    
+    // Update memory cache on success
+    saveAttendance(all);
+    
+    dbg('[reviewAttendance] ✅ Review synced to Appwrite');
+    showToast(decision==='approved'?'✅ Approved':'❌ Rejected');
+  } catch(e) {
+    dbg('[reviewAttendance] ❌ Appwrite push failed: ' + e.message, 'error');
+    // Fallback: save to cache anyway
+    saveAttendance(all);
+    showToast(decision==='approved'?'✅ Approved (sync pending)':'❌ Rejected (sync pending)');
+  }
+  
   renderCurrentTab();
 }
 
