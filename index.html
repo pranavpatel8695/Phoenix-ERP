@@ -7383,7 +7383,7 @@ function renderUsersTab() {
             ? ap.map(p => `
                 <div class="flex items-center justify-between" style="padding:5px 0;border-bottom:1px solid var(--border)">
                   <span style="font-size:12px">📁 ${p}</span>
-                  <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px" onclick="removeProjectFromUser('${username}','${p.replace(/'/g,"\\'")}')">✕</button>
+                  <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px" onclick="confirmRemoveProjectFromUser('${username}','${p.replace(/'/g,"\\'")}')">✕</button>
                 </div>`).join('')
             : '<div class="text-xs text-muted">No projects assigned yet</div>'
           }
@@ -7482,7 +7482,7 @@ function switchUserMgmtTab(role, el) {
             ? ap.map(p => `
                 <div class="flex items-center justify-between" style="padding:5px 0;border-bottom:1px solid var(--border)">
                   <span style="font-size:12px">📁 ${p}</span>
-                  <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px" onclick="removeProjectFromUser('${username}','${p.replace(/'/g,"\\'")}')">✕</button>
+                  <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px" onclick="confirmRemoveProjectFromUser('${username}','${p.replace(/'/g,"\\'")}')">✕</button>
                 </div>`).join('')
             : '<div class="text-xs text-muted">No projects assigned yet</div>'
           }
@@ -7525,7 +7525,10 @@ async function addProjectToUser(username) {
   }
 
   if (!users[username].projects) users[username].projects = [];
-  if (users[username].projects.includes(proj)) { showToast('Already assigned'); return; }
+  if (users[username].projects.includes(proj)) { showToast('⚠️ Already assigned'); return; }
+  
+  // Show loading toast
+  showToast('⏳ Adding project...', 'info');
   
   // Store original projects for rollback
   const originalProjects = [...users[username].projects];
@@ -7547,7 +7550,7 @@ async function addProjectToUser(username) {
     users[username].projects = originalProjects;
     _usersCache[username] = users[username];
     
-    showToast('❌ Failed to sync changes: ' + err.message);
+    showToast('❌ Failed to add: ' + err.message);
     document.getElementById('main').innerHTML = renderUsersTab();
     return; // ← Stop here if push failed
   }
@@ -7563,16 +7566,31 @@ async function addProjectToUser(username) {
     dbg('[addProjectToUser] ✅ Assignment updated in Appwrite & memory cache');
   } catch (err) {
     dbg('[addProjectToUser] ⚠️ Assignment sync failed: ' + err.message, 'warn');
-    showToast('⚠️ Failed to sync assignment: ' + err.message);
+    showToast('⚠️ Project added but assignment sync failed');
   }
   
-  showToast('✅ ' + proj + ' assigned to @' + username + ' & synced');
+  showToast('✅ Project added successfully');
   document.getElementById('main').innerHTML = renderUsersTab();
+}
+
+// Confirmation wrapper for removing project from user
+function confirmRemoveProjectFromUser(username, proj) {
+  const users = getUsers();
+  const userName = users[username]?.name || username;
+  
+  showConfirm(
+    '⚠️ Remove Project?',
+    `Remove "${proj}" from @${username} (${userName})?<br><br>This will unassign them from all tasks in this project.`,
+    () => removeProjectFromUser(username, proj)
+  );
 }
 
 async function removeProjectFromUser(username, proj) {
   const users = getUsers();
   if (!users[username]) return;
+  
+  // Show loading toast
+  showToast('⏳ Removing project...', 'info');
   
   // Store original projects for rollback
   const originalProjects = [...(users[username].projects || [])];
@@ -7595,7 +7613,7 @@ async function removeProjectFromUser(username, proj) {
     users[username].projects = originalProjects;
     _usersCache[username] = users[username];
     
-    showToast('❌ Failed to sync changes: ' + err.message);
+    showToast('❌ Failed to remove: ' + err.message);
     document.getElementById('main').innerHTML = renderUsersTab();
     return; // ← Stop here if push failed
   }
@@ -7611,10 +7629,10 @@ async function removeProjectFromUser(username, proj) {
     dbg('[removeProjectFromUser] ✅ Assignment updated in Appwrite & memory cache');
   } catch (err) {
     dbg('[removeProjectFromUser] ⚠️ Assignment sync failed: ' + err.message, 'warn');
-    showToast('⚠️ User updated but assignment sync failed: ' + err.message);
+    showToast('⚠️ Project removed but assignment sync failed');
   }
   
-  showToast('✅ Removed ' + proj + ' from @' + username);
+  showToast('✅ Project removed successfully');
   document.getElementById('main').innerHTML = renderUsersTab();
 }
 
