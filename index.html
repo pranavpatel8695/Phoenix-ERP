@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.3.1
+      Version 5.3.2
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.3.1 - Users LocalStorage→Appwrite Migration', 'info');
+    dbg('[VERSION] Phoenix ERP v5.3.2 - Users Migration Fixed (Skip mergeUsers)', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.3.1'; // Users LocalStorage→Appwrite Migration
+const APP_VERSION = '5.3.2'; // Users Migration Fixed (Skip mergeUsers)
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -484,6 +484,17 @@ let _assignmentsCache = {};
 let _fittingsCache = {};
 let _valvesCache = {};
 let _usersCache = {};  // NEW: Users cache (v5.2.4)
+
+// Initialize users cache from localStorage immediately (will be updated from Appwrite on fetch)
+try {
+  const localUsers = LS.get('phx_users', {});
+  if (Object.keys(localUsers).length > 0) {
+    _usersCache = localUsers;
+    dbg('[INIT] Users cache initialized from localStorage: ' + Object.keys(localUsers).length + ' users');
+  }
+} catch (e) {
+  dbg('[INIT] Failed to initialize users cache from localStorage: ' + e.message, 'warn');
+}
 
 // In-memory cache for machinery collections (v5.1.0)
 let _machineryCache = [];
@@ -874,8 +885,8 @@ async function fetchConfig() {
       
       // NOTE: In v5.0+, we fetch from separated collections, not from config
       // Keep this for backwards compatibility with old deployments only
-      // Users data still uses config for now
-      if (d.users) mergeUsers(d.users, d.deletedUsers||[]);
+      // Users migrated to separated collection in v5.3.0 - skip mergeUsers
+      // if (d.users) mergeUsers(d.users, d.deletedUsers||[]);
       
       // CRITICAL: REPLACE deleted lists with what's in Appwrite (don't merge!)
       // This allows cross-device sync when items are removed from deleted list
@@ -6229,7 +6240,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.3.1
+        Phoenix ERP v5.3.2
       </div>
     `;
   }
@@ -6239,7 +6250,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.3.1
+      Phoenix ERP v5.3.2
     </div>
   `;
 }
