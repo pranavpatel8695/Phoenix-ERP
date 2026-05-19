@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.3.0 - Users Appwrite-First Architecture Complete', 'info');
+    dbg('[VERSION] Phoenix ERP v5.3.0 - Users Appwrite-First (Collection Auto-Create)', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.3.0'; // Users Appwrite-First Architecture Complete
+const APP_VERSION = '5.3.0'; // Users Appwrite-First (Collection Auto-Create)
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -979,38 +979,44 @@ async function fetchSeparatedCollections() {
       _assignmentsCache = {};  // Empty cache if no assignments
     }
     
-    // Fetch Users
-    const userDocs = await awList(AW.collections.users, ["limit(1000)"]);
-    if (userDocs && userDocs.length) {
-      const users = {};
-      userDocs.forEach(u => {
-        // Parse projects from JSON string back to array
-        let projects = [];
-        try {
-          projects = u.projects ? JSON.parse(u.projects) : [];
-        } catch (e) {
-          dbg('[fetchSeparated] ⚠️ Failed to parse projects for user: ' + u.username, 'warn');
-          projects = [];
+    // Fetch Users - handle gracefully if collection doesn't exist yet
+    try {
+      const userDocs = await awList(AW.collections.users, ["limit(1000)"]);
+      if (userDocs && userDocs.length) {
+        const users = {};
+        userDocs.forEach(u => {
+          // Parse projects from JSON string back to array
+          let projects = [];
+          try {
+            projects = u.projects ? JSON.parse(u.projects) : [];
+          } catch (e) {
+            dbg('[fetchSeparated] ⚠️ Failed to parse projects for user: ' + u.username, 'warn');
+            projects = [];
+          }
+          
+          users[u.username] = {
+            role: u.role || 'junior_engineer',
+            pass: u.pass || '',
+            name: u.name || u.username,
+            projects: projects,  // ← Now an array!
+            createdAt: u.createdAt || new Date().toISOString()
+          };
+        });
+        
+        // Always include admin user
+        if (!users.admin) {
+          users.admin = { role: 'admin', pass: 'admin', name: 'Admin' };
         }
         
-        users[u.username] = {
-          role: u.role || 'junior_engineer',
-          pass: u.pass || '',
-          name: u.name || u.username,
-          projects: projects,  // ← Now an array!
-          createdAt: u.createdAt || new Date().toISOString()
-        };
-      });
-      
-      // Always include admin user
-      if (!users.admin) {
-        users.admin = { role: 'admin', pass: 'admin', name: 'Admin' };
+        _usersCache = users;  // ← Update memory cache directly!
+        dbg('[fetchSeparated] users: ' + userDocs.length);
+      } else {
+        // Default: just admin if no users in Appwrite
+        _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
       }
-      
-      _usersCache = users;  // ← Update memory cache directly!
-      dbg('[fetchSeparated] users: ' + userDocs.length);
-    } else {
-      // Default: just admin if no users in Appwrite
+    } catch (err) {
+      // Collection doesn't exist yet or other error - use default admin
+      dbg('[fetchSeparated] ⚠️ Users collection not ready, using default admin: ' + err.message, 'warn');
       _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
     }
     
