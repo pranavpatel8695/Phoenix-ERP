@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.4.3
+      Version 5.4.4
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.4.3 - CRITICAL: Login Fix (Pure Appwrite-First)', 'info');
+    dbg('[VERSION] Phoenix ERP v5.4.4 - CRITICAL: Login Flow Fixed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.4.3'; // CRITICAL: Login Fix (Pure Appwrite-First)
+const APP_VERSION = '5.4.4'; // CRITICAL: Login Flow Fixed
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -2626,9 +2626,14 @@ async function doLogin() {
     return;
   }
 
-  // Not found locally — pull from Appwrite (handles users created on other devices)
+  // Not found locally — fetch users from Appwrite (handles users created on other devices)
   showLoader('Signing in…');
-  try { await fetchConfig(); } catch(e) {}
+  try { 
+    // Fetch users from separated collection (not from config!)
+    await fetchSeparatedCollections();  // This loads users into _usersCache
+  } catch(e) {
+    dbg('[login] Failed to fetch users: ' + e.message, 'error');
+  }
   const freshUsers = getUsers();
   if (freshUsers[user] && freshUsers[user].pass === pass) {
     await loginSuccess(user, freshUsers[user]);
@@ -6370,7 +6375,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.4.3
+        Phoenix ERP v5.4.4
       </div>
     `;
   }
@@ -6380,7 +6385,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.4.3
+      Phoenix ERP v5.4.4
     </div>
   `;
 }
