@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.4.4
+      Version 5.4.5
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.4.4 - CRITICAL: Login Flow Fixed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.4.5 - Enhanced Debug Logging for Project Sync', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.4.4'; // CRITICAL: Login Flow Fixed
+const APP_VERSION = '5.4.5'; // Enhanced Debug Logging
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -7598,6 +7598,9 @@ async function removeProjectFromUser(username, proj) {
   const users = getUsers();
   if (!users[username]) return;
   
+  dbg(`[removeProjectFromUser] 🔍 Starting removal: ${proj} from ${username}`);
+  dbg(`[removeProjectFromUser] 📋 Current projects: ${JSON.stringify(users[username].projects)}`);
+  
   // Show loading toast
   showToast('⏳ Removing project...', 'info');
   
@@ -7607,14 +7610,20 @@ async function removeProjectFromUser(username, proj) {
   // Remove project locally
   users[username].projects = (users[username].projects || []).filter(function(p){return p !== proj;});
   
+  dbg(`[removeProjectFromUser] 📋 New projects after filter: ${JSON.stringify(users[username].projects)}`);
+  
   // APPWRITE-FIRST: Push to Appwrite first
   try {
-    await pushUser(username, users[username]);
+    dbg(`[removeProjectFromUser] ☁️ Pushing to Appwrite...`);
+    const result = await pushUser(username, users[username]);
+    
+    // Verify the update by reading back
+    dbg(`[removeProjectFromUser] ✅ Push succeeded, result: ${result?.$id}`);
     
     // Update memory cache on success (NO localStorage!)
     _usersCache[username] = users[username];
     
-    dbg('[removeProjectFromUser] ✅ User data synced to Appwrite');
+    dbg(`[removeProjectFromUser] ✅ Cache updated. Final projects: ${JSON.stringify(_usersCache[username].projects)}`);
   } catch (err) {
     dbg('[removeProjectFromUser] ❌ User data sync failed: ' + err.message, 'error');
     
@@ -7622,6 +7631,7 @@ async function removeProjectFromUser(username, proj) {
     users[username].projects = originalProjects;
     _usersCache[username] = users[username];
     
+    dbg(`[removeProjectFromUser] 🔄 Rolled back to: ${JSON.stringify(originalProjects)}`);
     showToast('❌ Failed to remove: ' + err.message);
     document.getElementById('main').innerHTML = renderUsersTab();
     return; // ← Stop here if push failed
@@ -7643,6 +7653,35 @@ async function removeProjectFromUser(username, proj) {
   
   showToast('✅ Project removed successfully');
   document.getElementById('main').innerHTML = renderUsersTab();
+}
+
+// DEBUG: Check what's actually in Appwrite for a user
+async function debugCheckUserInAppwrite(username) {
+  const docId = username.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  try {
+    const doc = await _awDB.getDocument(AW.database, AW.collections.users, docId);
+    console.log('=== USER IN APPWRITE ===');
+    console.log('Username:', doc.username);
+    console.log('Projects (raw):', doc.projects);
+    console.log('Projects (parsed):', JSON.parse(doc.projects || '[]'));
+    console.log('Full doc:', doc);
+    return doc;
+  } catch (err) {
+    console.error('Failed to fetch user from Appwrite:', err);
+  }
+}
+
+// DEBUG: Compare cache vs Appwrite
+async function debugCompareUserData(username) {
+  const cacheUser = _usersCache[username];
+  const awUser = await debugCheckUserInAppwrite(username);
+  
+  console.log('=== COMPARISON ===');
+  console.log('Cache projects:', cacheUser?.projects);
+  console.log('Appwrite projects:', JSON.parse(awUser?.projects || '[]'));
+  
+  const match = JSON.stringify(cacheUser?.projects) === awUser?.projects;
+  console.log('Match:', match ? '✅ YES' : '❌ NO - DATA MISMATCH!');
 }
 
 function openAddUserUM() {
