@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.4.5
+      Version 5.5.0
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.4.5 - Enhanced Debug Logging for Project Sync', 'info');
+    dbg('[VERSION] Phoenix ERP v5.5.0 - Store Management Appwrite-First', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.4.5'; // Enhanced Debug Logging
+const APP_VERSION = '5.5.0'; // Store Management Appwrite-First
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -1226,27 +1226,99 @@ async function fetchAllOtherCollections() {
       _attendanceCache = [];  // Set empty cache, don't block app load
     }
     
-    // Fetch Store Items
-    const itemDocs = await awList(AW.collections.storeItems, ["limit(5000)"]);
-    if (itemDocs && itemDocs.length) {
-      const items = itemDocs.map(d => {
-        try { return JSON.parse(d.data); } catch(e) { return null; }
-      }).filter(Boolean);
-      _storeItemsCache = items;
-      dbg('[fetchOther] store_items: ' + items.length);
-    } else {
+    // Fetch Store Items - handle both old JSON format and new individual fields
+    try {
+      const itemDocs = await awList(AW.collections.storeItems, ["limit(5000)"]);
+      if (itemDocs && itemDocs.length) {
+        const items = itemDocs.map(d => {
+          try {
+            // NEW FORMAT: Individual fields (Appwrite-First)
+            if (d.itemId) {
+              return {
+                id: d.itemId,
+                description: d.description || '',
+                qty: d.qty || 0,
+                unit: d.unit || '',
+                location: d.location || '',
+                site: d.site || '',
+                condition: d.condition || 'good',
+                photo: d.photo || '',
+                addedBy: d.addedBy || '',
+                addedByName: d.addedByName || '',
+                addedDate: d.addedDate || '',
+                lastUpdated: d.lastUpdated || '',
+                updatedBy: d.updatedBy || '',
+                updatedByName: d.updatedByName || ''
+              };
+            }
+            // OLD FORMAT: JSON blob in 'data' field (backwards compatibility)
+            else if (d.data) {
+              return JSON.parse(d.data);
+            }
+            return null;
+          } catch(e) {
+            dbg('[fetchOther] Failed to parse store item ' + d.$id + ': ' + e.message, 'warn');
+            return null;
+          }
+        }).filter(Boolean);
+        _storeItemsCache = items;
+        dbg('[fetchOther] store_items: ' + items.length);
+      } else {
+        _storeItemsCache = [];
+      }
+    } catch(err) {
+      dbg('[fetchOther] ⚠️ Store items fetch failed: ' + err.message, 'warn');
       _storeItemsCache = [];
     }
     
-    // Fetch Store Transactions
-    const txnDocs = await awList(AW.collections.storeTxns, ["limit(5000)"]);
-    if (txnDocs && txnDocs.length) {
-      const txns = txnDocs.map(d => {
-        try { return JSON.parse(d.data); } catch(e) { return null; }
-      }).filter(Boolean);
-      _storeTxnsCache = txns;
-      dbg('[fetchOther] store_txns: ' + txns.length);
-    } else {
+    // Fetch Store Transactions - handle both old JSON format and new individual fields
+    try {
+      const txnDocs = await awList(AW.collections.storeTxns, ["limit(5000)"]);
+      if (txnDocs && txnDocs.length) {
+        const txns = txnDocs.map(d => {
+          try {
+            // NEW FORMAT: Individual fields (Appwrite-First)
+            if (d.txnId) {
+              return {
+                id: d.txnId,
+                type: d.type || 'issue',
+                itemId: d.itemId || '',
+                itemDescription: d.itemDescription || '',
+                fromSite: d.fromSite || '',
+                fromLocation: d.fromLocation || '',
+                toSite: d.toSite || '',
+                toLocation: d.toLocation || '',
+                qty: d.qty || 0,
+                unit: d.unit || '',
+                date: d.date || '',
+                remarks: d.remarks || '',
+                // Support different transaction types
+                transferredBy: d.user || '',
+                transferredByName: d.userName || '',
+                issuedBy: d.user || '',
+                issuedByName: d.userName || '',
+                returnedBy: d.user || '',
+                returnedByName: d.userName || '',
+                timestamp: d.timestamp || ''
+              };
+            }
+            // OLD FORMAT: JSON blob in 'data' field (backwards compatibility)
+            else if (d.data) {
+              return JSON.parse(d.data);
+            }
+            return null;
+          } catch(e) {
+            dbg('[fetchOther] Failed to parse store txn ' + d.$id + ': ' + e.message, 'warn');
+            return null;
+          }
+        }).filter(Boolean);
+        _storeTxnsCache = txns;
+        dbg('[fetchOther] store_txns: ' + txns.length);
+      } else {
+        _storeTxnsCache = [];
+      }
+    } catch(err) {
+      dbg('[fetchOther] ⚠️ Store transactions fetch failed: ' + err.message, 'warn');
       _storeTxnsCache = [];
     }
     
@@ -2366,25 +2438,184 @@ function saveAttendance(records) {
 }
 
 // Push single store item
+// ── STORE ITEMS CRUD (Appwrite-First v5.5.0) ──────────────────────
+
+// Push single store item to storeItems collection (Appwrite-First)
 async function pushStoreItem(item) {
-  return saveDoc(AW.collections.storeItems, item.id, item);
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) {
+    // Fallback to old pattern if migration not complete
+    return saveDoc(AW.collections.storeItems, item.id, item);
+  }
+  
+  // Create doc ID from item ID
+  const docId = String(item.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  // Prepare data - save individual fields (not JSON blob)
+  const data = {
+    itemId: item.id,
+    description: item.description || '',
+    qty: item.qty || 0,
+    unit: item.unit || '',
+    location: item.location || '',
+    site: item.site || '',
+    condition: item.condition || 'good',
+    photo: item.photo || '',
+    addedBy: item.addedBy || '',
+    addedByName: item.addedByName || '',
+    addedDate: item.addedDate || new Date().toISOString(),
+    lastUpdated: item.lastUpdated || new Date().toISOString(),
+    updatedBy: item.updatedBy || '',
+    updatedByName: item.updatedByName || ''
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.storeItems,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushStoreItem] ✅ ${item.id}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      // Document exists, update it
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.storeItems,
+        docId,
+        data
+      );
+      dbg(`[pushStoreItem] ✅ updated ${item.id}`);
+      return result;
+    }
+    // If attribute error (new fields don't exist), fall back to old format
+    if (err.message && (err.message.includes('attribute') || err.message.includes('Attribute'))) {
+      dbg(`[pushStoreItem] ⚠️ New attributes not found, using old format`, 'warn');
+      return saveDoc(AW.collections.storeItems, item.id, item);
+    }
+    dbg(`[pushStoreItem] ❌ ${item.id}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Delete store item from Appwrite
 async function deleteStoreItemFromAW(id) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return true;
+  
   const docId = String(id).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,36);
-  return awDelete(AW.collections.storeItems, docId);
+  
+  try {
+    await _awDB.deleteDocument(AW.database, AW.collections.storeItems, docId);
+    dbg(`[deleteStoreItemFromAW] ✅ ${id}`);
+    return true;
+  } catch (err) {
+    if (err.code === 404) {
+      dbg(`[deleteStoreItemFromAW] ⚠️ ${id} not found (already deleted?)`, 'warn');
+      return true;
+    }
+    dbg(`[deleteStoreItemFromAW] ❌ ${id}: ${err.message}`, 'error');
+    throw err;
+  }
+}
+
+// Save store items to memory cache (NO localStorage!)
+function saveStoreItems(items) {
+  _storeItemsCache = items;
+  // No localStorage save - cache only (Appwrite is source of truth)
 }
 
 // Push store transaction
+// Save store transactions to memory cache (NO localStorage!)
+function saveStoreTxns(txns) {
+  _storeTxnsCache = txns;
+  // No localStorage save - cache only (Appwrite is source of truth)
+}
+
+// Push store transaction to storeTxns collection (Appwrite-First)
 async function pushStoreTxn(txn) {
-  return saveDoc(AW.collections.storeTxns, txn.id, txn);
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) {
+    // Fallback to old pattern if migration not complete
+    return saveDoc(AW.collections.storeTxns, txn.id, txn);
+  }
+  
+  // Create doc ID from transaction ID
+  const docId = String(txn.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  
+  // Prepare data - save individual fields (not JSON blob)
+  const data = {
+    txnId: txn.id,
+    type: txn.type || 'issue',
+    itemId: txn.itemId || '',
+    itemDescription: txn.itemDescription || '',
+    fromSite: txn.fromSite || '',
+    fromLocation: txn.fromLocation || '',
+    toSite: txn.toSite || '',
+    toLocation: txn.toLocation || '',
+    qty: txn.qty || 0,
+    unit: txn.unit || '',
+    date: txn.date || new Date().toISOString().slice(0,10),
+    remarks: txn.remarks || '',
+    user: txn.transferredBy || txn.issuedBy || txn.returnedBy || '',
+    userName: txn.transferredByName || txn.issuedByName || txn.returnedByName || '',
+    timestamp: txn.timestamp || new Date().toISOString()
+  };
+  
+  try {
+    const result = await _awDB.createDocument(
+      AW.database,
+      AW.collections.storeTxns,
+      docId,
+      data,
+      ['read("any")', 'update("any")', 'delete("any")']
+    );
+    dbg(`[pushStoreTxn] ✅ ${txn.id}`);
+    return result;
+  } catch (err) {
+    if (err.code === 409) {
+      // Document exists, update it
+      const result = await _awDB.updateDocument(
+        AW.database,
+        AW.collections.storeTxns,
+        docId,
+        data
+      );
+      dbg(`[pushStoreTxn] ✅ updated ${txn.id}`);
+      return result;
+    }
+    // If attribute error (new fields don't exist), fall back to old format
+    if (err.message && (err.message.includes('attribute') || err.message.includes('Attribute'))) {
+      dbg(`[pushStoreTxn] ⚠️ New attributes not found, using old format`, 'warn');
+      return saveDoc(AW.collections.storeTxns, txn.id, txn);
+    }
+    dbg(`[pushStoreTxn] ❌ ${txn.id}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Delete store transaction
 async function deleteStoreTxnFromAW(id) {
+  const migrationCompleted = LS.get('phx_migration_completed', false);
+  if (!migrationCompleted) return true;
+  
   const docId = String(id).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,36);
-  return awDelete(AW.collections.storeTxns, docId);
+  
+  try {
+    await _awDB.deleteDocument(AW.database, AW.collections.storeTxns, docId);
+    dbg(`[deleteStoreTxnFromAW] ✅ ${id}`);
+    return true;
+  } catch (err) {
+    if (err.code === 404) {
+      dbg(`[deleteStoreTxnFromAW] ⚠️ ${id} not found (already deleted?)`, 'warn');
+      return true;
+    }
+    dbg(`[deleteStoreTxnFromAW] ❌ ${id}: ${err.message}`, 'error');
+    throw err;
+  }
 }
 
 // Push machinery record
@@ -10292,9 +10523,19 @@ function saveStoreItem(editId) {
     item.updatedBy = currentUser;
     item.updatedByName = users[currentUser]?.name || currentUser;
     
+    // OPTIMISTIC UPDATE: Update cache immediately
     saveStoreItems(items);
-    pushStoreItem(item).catch(()=>{});
-    showToast('✅ Item updated');
+    closeFormModal();
+    showToast('⏳ Updating item...', 'info');
+    renderCurrentTab();  // ← Update UI immediately!
+    
+    // Push to Appwrite in background
+    pushStoreItem(item).then(() => {
+      showToast('✅ Item updated');
+    }).catch(e => {
+      dbg('[saveStoreItem] ❌ Update failed: ' + e.message, 'error');
+      showToast('⚠️ Updated locally (will sync later)');
+    });
   } else {
     // Add new item
     const newItem = {
@@ -10312,15 +10553,21 @@ function saveStoreItem(editId) {
       lastUpdated: new Date().toISOString()
     };
     
+    // OPTIMISTIC UPDATE: Add to cache immediately
     items.push(newItem);
     saveStoreItems(items);
-    pushStoreItem(newItem).catch(()=>{});
-    showToast('✅ Item added');
+    closeFormModal();
+    showToast('⏳ Adding item...', 'info');
+    renderCurrentTab();  // ← Update UI immediately!
+    
+    // Push to Appwrite in background
+    pushStoreItem(newItem).then(() => {
+      showToast('✅ Item added');
+    }).catch(e => {
+      dbg('[saveStoreItem] ❌ Add failed: ' + e.message, 'error');
+      showToast('⚠️ Added locally (will sync later)');
+    });
   }
-  
-  pushConfig();
-  closeFormModal();
-  renderCurrentTab();
 }
 
 function openTransferItem(itemId) {
@@ -10405,6 +10652,9 @@ function saveTransfer(itemId) {
   
   const users = getUsers();
   
+  // Store original state for rollback
+  const originalSourceQty = sourceItem.qty;
+  
   // Deduct from source
   sourceItem.qty = sourceItem.qty - qty;
   sourceItem.lastUpdated = new Date().toISOString();
@@ -10418,6 +10668,7 @@ function saveTransfer(itemId) {
     i.unit === sourceItem.unit
   );
   
+  let isNewDestItem = false;
   if (destItem) {
     // Add to existing item at destination
     destItem.qty = destItem.qty + qty;
@@ -10426,6 +10677,7 @@ function saveTransfer(itemId) {
     destItem.updatedByName = users[currentUser]?.name || currentUser;
   } else {
     // Create new item at destination
+    isNewDestItem = true;
     destItem = {
       id: 'SI_' + Date.now(),
       description: sourceItem.description,
@@ -10445,15 +10697,12 @@ function saveTransfer(itemId) {
   
   // Remove source item if qty is 0
   const updatedItems = items.filter(i=>!(i.id===itemId && i.qty <= 0));
-  saveStoreItems(updatedItems);
   
-  // Push updates to Appwrite
-  if (sourceItem.qty > 0) {
-    pushStoreItem(sourceItem).catch(()=>{});
-  } else {
-    deleteStoreItemFromAW(itemId).catch(()=>{});
-  }
-  pushStoreItem(destItem).catch(()=>{});
+  // OPTIMISTIC UPDATE: Update cache immediately
+  saveStoreItems(updatedItems);
+  closeFormModal();
+  showToast(`⏳ Transferring ${qty} ${sourceItem.unit}...`, 'info');
+  renderCurrentTab();  // ← Update UI immediately!
   
   // Create transfer record
   const transfer = {
@@ -10477,33 +10726,58 @@ function saveTransfer(itemId) {
   const txns = getStoreTxns();
   txns.push(transfer);
   saveStoreTxns(txns);
-  pushStoreTxn(transfer).catch(()=>{});
   
-  pushConfig();
-  showToast(`✅ Transferred ${qty} ${sourceItem.unit} to ${toSite}`);
-  closeFormModal();
-  renderCurrentTab();
+  // Push updates to Appwrite in background
+  Promise.all([
+    sourceItem.qty > 0 ? pushStoreItem(sourceItem) : deleteStoreItemFromAW(itemId),
+    pushStoreItem(destItem),
+    pushStoreTxn(transfer)
+  ]).then(() => {
+    showToast(`✅ Transferred ${qty} ${sourceItem.unit} to ${toSite}`);
+  }).catch(e => {
+    dbg('[saveTransfer] ❌ Transfer failed: ' + e.message, 'error');
+    showToast('⚠️ Transferred locally (will sync later)');
+  });
 }
 
 function deleteStoreItem(id) {
-  if (!confirm('Delete this item?')) return;
+  const item = getStoreItems().find(i=>i.id===id);
+  if (!item) return;
   
-  const items = getStoreItems();
-  const updated = items.filter(i=>i.id!==id);
-  saveStoreItems(updated);
-  
-  // Track deletion
-  const deletedItems = LS.get('phx_deleted_store_items', []);
-  if (!deletedItems.includes(id)) {
-    deletedItems.push(id);
-    LS.set('phx_deleted_store_items', deletedItems);
-  }
-  
-  deleteStoreItemFromAW(id).catch(()=>{});
-  pushConfig();
-  showToast('✅ Item deleted');
-  closeFormModal();
-  renderCurrentTab();
+  showConfirm(
+    '🗑️ Delete Store Item?',
+    `Delete "${item.description}"?<br><br>Quantity: ${item.qty} ${item.unit}<br>Site: ${item.site}`,
+    async () => {
+      const items = getStoreItems();
+      
+      // OPTIMISTIC UPDATE: Remove immediately
+      const updated = items.filter(i=>i.id!==id);
+      saveStoreItems(updated);
+      closeFormModal();
+      showToast('⏳ Deleting item...', 'info');
+      renderCurrentTab();  // ← Update UI immediately!
+      
+      // Track deletion
+      const deletedItems = LS.get('phx_deleted_store_items', []);
+      if (!deletedItems.includes(id)) {
+        deletedItems.push(id);
+        LS.set('phx_deleted_store_items', deletedItems);
+      }
+      
+      // Delete from Appwrite in background
+      try {
+        await deleteStoreItemFromAW(id);
+        showToast('✅ Item deleted');
+      } catch(e) {
+        // ROLLBACK: Restore if delete failed
+        items.push(item);
+        saveStoreItems(items);
+        renderCurrentTab();
+        dbg('[deleteStoreItem] ❌ Delete failed: ' + e.message, 'error');
+        showToast('❌ Failed to delete: ' + e.message);
+      }
+    }
+  );
 }
 
 function handleStorePhotoUpload(input) {
