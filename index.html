@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.4.2
+      Version 5.4.3
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.4.2 - Pure Appwrite-First (No localStorage)', 'info');
+    dbg('[VERSION] Phoenix ERP v5.4.3 - CRITICAL: Login Fix (Pure Appwrite-First)', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.4.2'; // Pure Appwrite-First (No localStorage)
+const APP_VERSION = '5.4.3'; // CRITICAL: Login Fix (Pure Appwrite-First)
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -1078,27 +1078,16 @@ async function fetchSeparatedCollections() {
         _usersCache = users;  // ← Update memory cache directly!
         dbg('[fetchSeparated] users: ' + userDocs.length);
       } else {
-        // No users in Appwrite - check if we have users from localStorage
-        if (Object.keys(_usersCache).length === 0) {
-          // Cache is empty, set default admin
-          _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
-          dbg('[fetchSeparated] No users in Appwrite, set default admin');
-        } else {
-          // Keep existing users from localStorage
-          dbg('[fetchSeparated] No users in Appwrite, keeping ' + Object.keys(_usersCache).length + ' users from localStorage');
-        }
+        // No users in Appwrite - set default admin only
+        _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
+        dbg('[fetchSeparated] No users in Appwrite, set default admin');
       }
     } catch (err) {
       // Collection doesn't exist yet or other error
-      // DON'T overwrite _usersCache if it already has users from localStorage!
       dbg('[fetchSeparated] ⚠️ Users collection not ready: ' + err.message, 'warn');
-      if (Object.keys(_usersCache).length === 0) {
-        // Only set default admin if cache is completely empty
-        _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
-        dbg('[fetchSeparated] Set default admin user');
-      } else {
-        dbg('[fetchSeparated] Keeping existing users from localStorage: ' + Object.keys(_usersCache).length);
-      }
+      // Set default admin user
+      _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
+      dbg('[fetchSeparated] Set default admin user due to error');
     }
     
     dbg('[fetchSeparated] ✅ All separated collections fetched');
@@ -6381,7 +6370,7 @@ function renderSettingsTab() {
       ${tabs}
       <div id="settingsContent">${content}</div>
       <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-        Phoenix ERP v5.4.2
+        Phoenix ERP v5.4.3
       </div>
     `;
   }
@@ -6391,7 +6380,7 @@ function renderSettingsTab() {
     ${tabs}
     <div id="settingsContent">${content}</div>
     <div style="text-align:center;margin-top:24px;padding:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);">
-      Phoenix ERP v5.4.2
+      Phoenix ERP v5.4.3
     </div>
   `;
 }
