@@ -203,16 +203,18 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <div class="field-group">
       <label>Username</label>
-      <input type="text" id="loginUser" placeholder="Enter username" autocomplete="username">
+      <input type="text" id="loginUser" placeholder="Enter username" 
+        autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
     </div>
     <div class="field-group">
       <label>Password</label>
-      <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password"
+      <input type="password" id="loginPass" placeholder="Enter password" 
+        autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false"
         onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.5.3
+      Version 5.5.4
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +357,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.5.3 - Auto-Update System', 'info');
+    dbg('[VERSION] Phoenix ERP v5.5.4 - Mobile Keyboard Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.5.3'; // Auto-Update System
+const APP_VERSION = '5.5.4'; // Mobile Keyboard Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2914,12 +2916,19 @@ function setSyncStatus(s) {
 
 // ── AUTH ─────────────────────────────────────────────────────
 async function doLogin() {
-  const user = document.getElementById('loginUser').value.trim().toLowerCase();
-  const pass = document.getElementById('loginPass').value;
+  // MOBILE FIX: Trim and clean inputs to handle mobile keyboard issues
+  const userRaw = document.getElementById('loginUser').value;
+  const passRaw = document.getElementById('loginPass').value;
+  
+  // Remove all whitespace (leading, trailing, and any accidental spaces)
+  const user = userRaw.trim().toLowerCase().replace(/\s+/g, '');
+  const pass = passRaw.trim();
+  
   const errEl = document.getElementById('loginError');
   errEl.classList.add('hidden');
 
   dbg('[doLogin] 🔐 Attempting login for user: ' + user);
+  dbg('[doLogin] 📱 Raw input - User: "' + userRaw + '", Pass length: ' + passRaw.length);
   
   if (!user || !pass) { 
     dbg('[doLogin] ❌ Missing username or password', 'error');
@@ -2934,9 +2943,18 @@ async function doLogin() {
   
   if (localUsers[user]) {
     dbg('[doLogin] 🔑 User found! Checking password...');
-    dbg('[doLogin] 📝 Stored password: ' + localUsers[user].pass);
-    dbg('[doLogin] 📝 Entered password: ' + pass);
+    dbg('[doLogin] 📝 Stored password: "' + localUsers[user].pass + '"');
+    dbg('[doLogin] 📝 Entered password: "' + pass + '"');
     dbg('[doLogin] ✓ Match: ' + (localUsers[user].pass === pass ? 'YES' : 'NO'));
+    
+    // EXTRA DEBUG: Character comparison for mobile debugging
+    if (localUsers[user].pass !== pass) {
+      dbg('[doLogin] 🔍 Password mismatch details:', 'warn');
+      dbg('[doLogin]   Expected length: ' + localUsers[user].pass.length, 'warn');
+      dbg('[doLogin]   Received length: ' + pass.length, 'warn');
+      dbg('[doLogin]   Expected bytes: [' + Array.from(localUsers[user].pass).map(c => c.charCodeAt(0)).join(',') + ']', 'warn');
+      dbg('[doLogin]   Received bytes: [' + Array.from(pass).map(c => c.charCodeAt(0)).join(',') + ']', 'warn');
+    }
   }
   
   if (localUsers[user] && localUsers[user].pass === pass) {
