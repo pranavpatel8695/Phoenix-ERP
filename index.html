@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.6.1
+      Version 5.6.2
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.6.1 - User Count Diagnostic', 'info');
+    dbg('[VERSION] Phoenix ERP v5.6.2 - SDK Ready Wait Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.6.1'; // User Count Diagnostic
+const APP_VERSION = '5.6.2'; // SDK Ready Wait Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -8488,7 +8488,30 @@ async function init() {
     return; // Stop initialization, page will reload
   }
   
-  initSDK(); // Initialize Appwrite SDK after all declarations are ready
+  // Initialize Appwrite SDK
+  const sdkReady = initSDK();
+  if (!sdkReady) {
+    alert('Failed to initialize Appwrite SDK. Please refresh the page.');
+    return;
+  }
+  
+  // WAIT for SDK to be fully ready (especially important on mobile)
+  await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+  
+  // Verify _awDB is actually set
+  if (!_awDB) {
+    dbg('[init] ❌ Database not initialized after SDK setup!', 'error');
+    const countEl = document.getElementById('userCountDisplay');
+    if (countEl) {
+      countEl.textContent = '❌ SDK failed - please refresh';
+      countEl.style.color = 'rgba(255,0,0,0.6)';
+    }
+    hideLoader();
+    document.getElementById('loginScreen').classList.remove('hidden');
+    return;
+  }
+  
+  dbg('[init] ✅ SDK ready, _awDB initialized');
   
   // PRE-LOAD USERS - Fetch users before showing login screen
   // This ensures all users are available for login attempts
@@ -8501,15 +8524,24 @@ async function init() {
     // DISPLAY user count on login screen for debugging
     const countEl = document.getElementById('userCountDisplay');
     if (countEl) {
-      countEl.textContent = '👥 ' + userCount + ' users loaded';
-      countEl.style.color = userCount > 1 ? 'rgba(0,255,0,0.4)' : 'rgba(255,165,0,0.4)';
+      if (userCount === 0) {
+        countEl.textContent = '❌ 0 users loaded - fetch failed!';
+        countEl.style.color = 'rgba(255,0,0,0.6)';
+      } else if (userCount === 1) {
+        countEl.textContent = '⚠️ ' + userCount + ' user loaded (admin only)';
+        countEl.style.color = 'rgba(255,165,0,0.5)';
+      } else {
+        countEl.textContent = '👥 ' + userCount + ' users loaded';
+        countEl.style.color = 'rgba(0,255,0,0.4)';
+      }
     }
   } catch (e) {
     dbg('[init] ⚠️ Failed to pre-load users: ' + e.message, 'warn');
+    console.error('[init] Full error:', e);
     // Display error on login screen
     const countEl = document.getElementById('userCountDisplay');
     if (countEl) {
-      countEl.textContent = '⚠️ User load failed - only admin available';
+      countEl.textContent = '⚠️ User load failed: ' + e.message;
       countEl.style.color = 'rgba(255,0,0,0.4)';
     }
     // Continue anyway with default admin
