@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.5.2
+      Version 5.5.3
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,70 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.5.2 - Critical: Complete Login Debug', 'info');
+    dbg('[VERSION] Phoenix ERP v5.5.3 - Auto-Update System', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.5.2'; // Critical: Complete Login Debug
+const APP_VERSION = '5.5.3'; // Auto-Update System
+
+// ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
+// Automatically updates users to latest version
+function checkAndUpdateVersion() {
+  const CURRENT_VERSION = APP_VERSION;
+  const STORED_VERSION = localStorage.getItem('phx_app_version');
+  const UPDATE_IN_PROGRESS = sessionStorage.getItem('phx_updating');
+  
+  // Check if this is a reload triggered by update
+  if (UPDATE_IN_PROGRESS === 'true') {
+    sessionStorage.removeItem('phx_updating');
+    dbg('[AutoUpdate] ✅ Update completed to v' + CURRENT_VERSION, 'info');
+    return; // Don't check again this session
+  }
+  
+  // Check if version mismatch
+  if (STORED_VERSION && STORED_VERSION !== CURRENT_VERSION) {
+    dbg('[AutoUpdate] 🔄 Version mismatch! Stored: ' + STORED_VERSION + ', Current: ' + CURRENT_VERSION, 'info');
+    
+    // Show update message
+    const loginScreen = document.getElementById('loginScreen');
+    if (loginScreen) {
+      loginScreen.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:16px;">⚡</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;">Updating Phoenix ERP</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">v${STORED_VERSION} → v${CURRENT_VERSION}</div>
+          <div style="font-size:12px;color:var(--muted);">Please wait...</div>
+          <div class="loader" style="margin-top:24px;border:3px solid rgba(10,132,255,0.2);border-top-color:#0a84ff;border-radius:50%;width:32px;height:32px;animation:spin 1s linear infinite;"></div>
+        </div>
+      `;
+    }
+    
+    // Mark update in progress
+    sessionStorage.setItem('phx_updating', 'true');
+    localStorage.setItem('phx_app_version', CURRENT_VERSION);
+    
+    // Force hard reload after brief delay (so user sees message)
+    setTimeout(() => {
+      dbg('[AutoUpdate] 🔄 Forcing reload to get latest version...', 'info');
+      location.reload(true); // Hard reload, bypasses cache
+    }, 1500);
+    
+    return true; // Update in progress
+  }
+  
+  // First time or version matches
+  if (!STORED_VERSION) {
+    dbg('[AutoUpdate] 📝 First load, setting version to ' + CURRENT_VERSION, 'info');
+  } else {
+    dbg('[AutoUpdate] ✅ Version up to date: ' + CURRENT_VERSION, 'info');
+  }
+  
+  localStorage.setItem('phx_app_version', CURRENT_VERSION);
+  return false; // No update needed
+}
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -8400,6 +8456,12 @@ function hideLoader() {
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
+  // CHECK VERSION FIRST - Auto-update if needed
+  const updateInProgress = checkAndUpdateVersion();
+  if (updateInProgress) {
+    return; // Stop initialization, page will reload
+  }
+  
   initSDK(); // Initialize Appwrite SDK after all declarations are ready
   
   // Fresh start — clear all old data on first load of v4.0
