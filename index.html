@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.5.1
+      Version 5.5.2
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.5.1 - Critical: Login Debug Logging', 'info');
+    dbg('[VERSION] Phoenix ERP v5.5.2 - Critical: Complete Login Debug', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.5.1'; // Critical: Login Debug Logging
+const APP_VERSION = '5.5.2'; // Critical: Complete Login Debug
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -2863,28 +2863,50 @@ async function doLogin() {
   const errEl = document.getElementById('loginError');
   errEl.classList.add('hidden');
 
-  if (!user || !pass) { showLoginError('Enter username and password'); return; }
+  dbg('[doLogin] 🔐 Attempting login for user: ' + user);
+  
+  if (!user || !pass) { 
+    dbg('[doLogin] ❌ Missing username or password', 'error');
+    showLoginError('Enter username and password'); 
+    return; 
+  }
 
   // Check local first (handles newly created users before push completes)
   const localUsers = getUsers();
+  dbg('[doLogin] 📋 Got users from cache: ' + Object.keys(localUsers).length + ' users');
+  dbg('[doLogin] 🔍 Checking if user exists: ' + (localUsers[user] ? 'YES' : 'NO'));
+  
+  if (localUsers[user]) {
+    dbg('[doLogin] 🔑 User found! Checking password...');
+    dbg('[doLogin] 📝 Stored password: ' + localUsers[user].pass);
+    dbg('[doLogin] 📝 Entered password: ' + pass);
+    dbg('[doLogin] ✓ Match: ' + (localUsers[user].pass === pass ? 'YES' : 'NO'));
+  }
+  
   if (localUsers[user] && localUsers[user].pass === pass) {
+    dbg('[doLogin] ✅ Password match! Logging in...');
     showLoader('Signing in…');
     await loginSuccess(user, localUsers[user]);
     return;
   }
 
+  dbg('[doLogin] 🔄 User not found in cache, fetching from Appwrite...');
   // Not found locally — fetch users from Appwrite (handles users created on other devices)
   showLoader('Signing in…');
   try { 
     // Fetch users from separated collection (not from config!)
     await fetchSeparatedCollections();  // This loads users into _usersCache
   } catch(e) {
-    dbg('[login] Failed to fetch users: ' + e.message, 'error');
+    dbg('[login] ❌ Failed to fetch users: ' + e.message, 'error');
   }
   const freshUsers = getUsers();
+  dbg('[doLogin] 🔄 After fetch, got users: ' + Object.keys(freshUsers).length);
+  
   if (freshUsers[user] && freshUsers[user].pass === pass) {
+    dbg('[doLogin] ✅ Login successful after fetch!');
     await loginSuccess(user, freshUsers[user]);
   } else {
+    dbg('[doLogin] ❌ Login failed - user: ' + (freshUsers[user] ? 'exists' : 'NOT FOUND') + ', password: ' + (freshUsers[user]?.pass === pass ? 'match' : 'NO MATCH'), 'error');
     hideLoader();
     showLoginError('Incorrect username or password');
   }
