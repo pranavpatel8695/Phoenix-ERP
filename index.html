@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.7.0
+      Version 5.7.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.7.0 - CRITICAL: Migration Flag Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.7.1 - Store Old Format (Temp Fix)', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.7.0'; // CRITICAL: Migration Flag Fix
+const APP_VERSION = '5.7.1'; // Store Old Format (Temp Fix)
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2524,6 +2524,12 @@ function saveAttendance(records) {
 
 // Push single store item to storeItems collection (Appwrite-First)
 async function pushStoreItem(item) {
+  // TEMPORARILY: Use old format until Appwrite attributes are added
+  // TODO: After adding itemId, description, qty, unit, location, site, condition, photo, 
+  // addedBy, addedByName, addedDate, lastUpdated, updatedBy, updatedByName attributes
+  // to store_items collection, remove this return and enable migration
+  return saveDoc(AW.collections.storeItems, item.id, item);
+  
   const migrationCompleted = LS.get('phx_migration_completed', false);
   if (!migrationCompleted) {
     // Fallback to old pattern if migration not complete
@@ -2619,6 +2625,9 @@ function saveStoreTxns(txns) {
 
 // Push store transaction to storeTxns collection (Appwrite-First)
 async function pushStoreTxn(txn) {
+  // TEMPORARILY: Use old format until Appwrite attributes are added
+  return saveDoc(AW.collections.storeTxns, txn.id, txn);
+  
   const migrationCompleted = LS.get('phx_migration_completed', false);
   if (!migrationCompleted) {
     // Fallback to old pattern if migration not complete
