@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.7.4
+      Version 5.7.5
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.7.4 - Store Config Fallback', 'info');
+    dbg('[VERSION] Phoenix ERP v5.7.5 - Store Config Fallback (Fixed)', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.7.4'; // Store Config Fallback
+const APP_VERSION = '5.7.5'; // Store Config Fallback (Fixed)
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2530,29 +2530,31 @@ function saveAttendance(records) {
 // Push single store item to storeItems collection (Appwrite-First)
 async function pushStoreItem(item) {
   // TEMPORARILY: Use old format until Appwrite attributes are added
-  // TODO: After adding itemId, description, qty, unit, location, site, condition, photo, 
-  // addedBy, addedByName, addedDate, lastUpdated, updatedBy, updatedByName attributes
-  // to store_items collection, remove this return and enable migration
   dbg('[pushStoreItem] 🔍 Using old format (saveDoc) for: ' + item.id, 'info');
   dbg('[pushStoreItem] 📦 Item data: ' + JSON.stringify(item).substring(0, 200), 'info');
   
-  try {
-    const result = await saveDoc(AW.collections.storeItems, item.id, item);
-    return result;
-  } catch (e) {
-    // If collection has required attributes, fall back to config collection
-    if (e.message && e.message.includes('required attribute')) {
-      dbg('[pushStoreItem] ⚠️ Collection has required attributes, using config fallback', 'warn');
-      // Store in config collection as workaround
+  const result = await saveDoc(AW.collections.storeItems, item.id, item);
+  
+  // Check if save failed (returns null on error)
+  if (!result) {
+    dbg('[pushStoreItem] ⚠️ Main collection failed, using config fallback', 'warn');
+    // Store in config collection as workaround
+    try {
       const configDoc = await awGet(AW.collections.config, 'storeItems_backup');
       const storeData = configDoc?.value ? JSON.parse(configDoc.value) : {};
       storeData[item.id] = item;
       await awUpdate(AW.collections.config, 'storeItems_backup', { value: JSON.stringify(storeData) });
       dbg('[pushStoreItem] ✅ Saved to config backup', 'info');
+      showToast('✅ Item saved (backup storage)');
       return { success: true };
+    } catch (e) {
+      dbg('[pushStoreItem] ❌ Config fallback also failed: ' + e.message, 'error');
+      showToast('⚠️ Saved locally only');
+      return null;
     }
-    throw e;
   }
+  
+  return result;
   
   const migrationCompleted = LS.get('phx_migration_completed', false);
   if (!migrationCompleted) {
