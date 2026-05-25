@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.7.3
+      Version 5.7.4
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.7.3 - Debug Logging for Store Issue', 'info');
+    dbg('[VERSION] Phoenix ERP v5.7.4 - Store Config Fallback', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.7.3'; // Debug Logging for Store Issue
+const APP_VERSION = '5.7.4'; // Store Config Fallback
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2535,7 +2535,24 @@ async function pushStoreItem(item) {
   // to store_items collection, remove this return and enable migration
   dbg('[pushStoreItem] 🔍 Using old format (saveDoc) for: ' + item.id, 'info');
   dbg('[pushStoreItem] 📦 Item data: ' + JSON.stringify(item).substring(0, 200), 'info');
-  return saveDoc(AW.collections.storeItems, item.id, item);
+  
+  try {
+    const result = await saveDoc(AW.collections.storeItems, item.id, item);
+    return result;
+  } catch (e) {
+    // If collection has required attributes, fall back to config collection
+    if (e.message && e.message.includes('required attribute')) {
+      dbg('[pushStoreItem] ⚠️ Collection has required attributes, using config fallback', 'warn');
+      // Store in config collection as workaround
+      const configDoc = await awGet(AW.collections.config, 'storeItems_backup');
+      const storeData = configDoc?.value ? JSON.parse(configDoc.value) : {};
+      storeData[item.id] = item;
+      await awUpdate(AW.collections.config, 'storeItems_backup', { value: JSON.stringify(storeData) });
+      dbg('[pushStoreItem] ✅ Saved to config backup', 'info');
+      return { success: true };
+    }
+    throw e;
+  }
   
   const migrationCompleted = LS.get('phx_migration_completed', false);
   if (!migrationCompleted) {
