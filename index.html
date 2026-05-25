@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.8.0
+      Version 5.8.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.8.0 - Clean Store Solution', 'info');
+    dbg('[VERSION] Phoenix ERP v5.8.1 - Fast Login Performance', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.8.0'; // Clean Store Solution
+const APP_VERSION = '5.8.1'; // Fast Login Performance
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -3029,17 +3029,23 @@ async function loginSuccess(user, userRecord) {
   document.getElementById('navUsers').classList.toggle('hidden', currentRole !== 'admin');
   document.getElementById('navAttendance')?.classList.toggle('hidden', false);
 
+  // PERFORMANCE: Show UI immediately with cached data
   switchTab('home');
+  renderCurrentTab(); // ← Render immediately with cached data
+  hideLoader(); // ← Hide loader so user sees the app
 
-  // Fetch latest data + start Realtime
+  // Fetch latest data in BACKGROUND (non-blocking)
   setSyncStatus('syncing');
   fetchAllData().then(() => {
+    renderCurrentTab(); // ← Re-render with fresh data
     startRealtime();
-    renderCurrentTab();
+    setSyncStatus('synced');
     if (currentRole === 'admin') {
       pushConfig();
-
     }
+  }).catch(err => {
+    dbg('[loginSuccess] Fetch failed: ' + err.message, 'error');
+    setSyncStatus('offline');
   });
 }
 
