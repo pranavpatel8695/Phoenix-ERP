@@ -212,7 +212,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.5.0
+      Version 5.5.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -355,14 +355,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.5.0 - Store Management Appwrite-First', 'info');
+    dbg('[VERSION] Phoenix ERP v5.5.1 - Critical: Login Debug Logging', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.5.0'; // Store Management Appwrite-First
+const APP_VERSION = '5.5.1'; // Critical: Login Debug Logging
 
 // ── DEBUG LOG ────────────────────────────────────────────────
 let _debugLog = [];
@@ -619,11 +619,18 @@ async function awGet(collectionId, docId) {
 }
 
 async function awList(collectionId, queries=[]) {
-  if (!_awDB) return [];
+  if (!_awDB) {
+    dbg('[awList] ❌ Database not initialized', 'error');
+    return [];
+  }
   try {
     const res = await _awDB.listDocuments(AW.database, collectionId, queries);
     return res.documents || [];
-  } catch(e) { console.warn('awList error:', collectionId, e.message); return []; }
+  } catch(e) {
+    dbg(`[awList] ❌ ${collectionId}: ${e.message}`, 'error');
+    console.error('awList error details:', {collection: collectionId, error: e});
+    return [];
+  }
 }
 
 async function awCreate(collectionId, docId, data) {
@@ -1048,8 +1055,14 @@ async function fetchSeparatedCollections() {
     
     // Fetch Users - handle gracefully if collection doesn't exist yet
     try {
+      dbg('[fetchSeparated] 🔍 Fetching users from: ' + AW.collections.users);
       const userDocs = await awList(AW.collections.users, ["limit(1000)"]);
+      
+      dbg('[fetchSeparated] 📊 User fetch result - Type: ' + typeof userDocs + ', Length: ' + (userDocs?.length || 'undefined'));
+      
       if (userDocs && userDocs.length) {
+        dbg('[fetchSeparated] ✅ Got ' + userDocs.length + ' user documents');
+        
         const users = {};
         userDocs.forEach(u => {
           // Parse projects from JSON string back to array
@@ -1076,15 +1089,18 @@ async function fetchSeparatedCollections() {
         }
         
         _usersCache = users;  // ← Update memory cache directly!
-        dbg('[fetchSeparated] users: ' + userDocs.length);
+        dbg('[fetchSeparated] users: ' + Object.keys(users).length + ' (from ' + userDocs.length + ' documents)');
       } else {
         // No users in Appwrite - set default admin only
+        dbg('[fetchSeparated] ⚠️ No user documents returned! userDocs: ' + JSON.stringify(userDocs), 'warn');
         _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
         dbg('[fetchSeparated] No users in Appwrite, set default admin');
       }
     } catch (err) {
       // Collection doesn't exist yet or other error
-      dbg('[fetchSeparated] ⚠️ Users collection not ready: ' + err.message, 'warn');
+      dbg('[fetchSeparated] ❌ Users fetch error: ' + err.message, 'error');
+      dbg('[fetchSeparated] Error code: ' + err.code, 'error');
+      console.error('[fetchSeparated] Full user fetch error:', err);
       // Set default admin user
       _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
       dbg('[fetchSeparated] Set default admin user due to error');
