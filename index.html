@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.7.2
+      Version 5.7.3
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.7.2 - Store Photo Fix (Auto-Update Trigger)', 'info');
+    dbg('[VERSION] Phoenix ERP v5.7.3 - Debug Logging for Store Issue', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.7.2'; // Store Photo Fix (Auto-Update Trigger)
+const APP_VERSION = '5.7.3'; // Debug Logging for Store Issue
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -713,6 +713,8 @@ async function awCreate(collectionId, docId, data) {
 }
 
 async function awUpdate(collectionId, docId, data) {
+  dbg('[awUpdate] 🔍 Updating ' + collectionId + '/' + docId, 'info');
+  dbg('[awUpdate] 📦 Data keys: ' + Object.keys(data).join(', '), 'info');
   try {
     const result = await _awDB.updateDocument(AW.database, collectionId, docId, data);
     dbg(`[awUpdate] ✅ ${collectionId}/${docId}`);
@@ -738,6 +740,9 @@ async function awDelete(collectionId, docId) {
 async function saveDoc(collectionId, id, record) {
   const docId = String(id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
   const data = { data: JSON.stringify(record) };
+  dbg('[saveDoc] 🔍 Collection: ' + collectionId + ', DocId: ' + docId, 'info');
+  dbg('[saveDoc] 📦 Data keys: ' + Object.keys(data).join(', '), 'info');
+  dbg('[saveDoc] 📦 Data.data length: ' + data.data.length, 'info');
   return await awUpdate(collectionId, docId, data);
 }
 
@@ -2528,6 +2533,8 @@ async function pushStoreItem(item) {
   // TODO: After adding itemId, description, qty, unit, location, site, condition, photo, 
   // addedBy, addedByName, addedDate, lastUpdated, updatedBy, updatedByName attributes
   // to store_items collection, remove this return and enable migration
+  dbg('[pushStoreItem] 🔍 Using old format (saveDoc) for: ' + item.id, 'info');
+  dbg('[pushStoreItem] 📦 Item data: ' + JSON.stringify(item).substring(0, 200), 'info');
   return saveDoc(AW.collections.storeItems, item.id, item);
   
   const migrationCompleted = LS.get('phx_migration_completed', false);
