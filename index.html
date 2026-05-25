@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.8.1
+      Version 5.8.2
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.8.1 - Fast Login Performance', 'info');
+    dbg('[VERSION] Phoenix ERP v5.8.2 - Enhanced Auto-Update', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.8.1'; // Fast Login Performance
+const APP_VERSION = '5.8.2'; // Enhanced Auto-Update
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -411,9 +411,29 @@ function checkAndUpdateVersion() {
     localStorage.setItem('phx_app_version', CURRENT_VERSION);
     
     // Force hard reload after brief delay (so user sees message)
-    setTimeout(() => {
+    setTimeout(async () => {
       dbg('[AutoUpdate] 🔄 Forcing reload to get latest version...', 'info');
-      location.reload(true); // Hard reload, bypasses cache
+      
+      // 1. Unregister service workers (if any)
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const registration of registrations) {
+            await registration.unregister();
+            dbg('[AutoUpdate] 🗑️ Unregistered service worker', 'info');
+          }
+        } catch (e) {
+          dbg('[AutoUpdate] ⚠️ Service worker unregister failed: ' + e.message, 'warn');
+        }
+      }
+      
+      // 2. Add cache-busting parameter and force reload
+      const url = new URL(window.location.href);
+      url.searchParams.set('v', CURRENT_VERSION);
+      url.searchParams.set('_t', Date.now()); // Timestamp for extra cache busting
+      
+      // 3. Force hard reload with cache busting
+      window.location.href = url.toString();
     }, 1500);
     
     return true; // Update in progress
