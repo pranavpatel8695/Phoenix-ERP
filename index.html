@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.6.2
+      Version 5.6.3
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.6.2 - SDK Ready Wait Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.6.3 - Detailed Error Reporting', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.6.2'; // SDK Ready Wait Fix
+const APP_VERSION = '5.6.3'; // Detailed Error Reporting
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -8517,9 +8517,13 @@ async function init() {
   // This ensures all users are available for login attempts
   dbg('[init] 📥 Pre-loading users from Appwrite...', 'info');
   try {
+    dbg('[init] 🔍 Starting fetchSeparatedCollections...');
     await fetchSeparatedCollections(); // Load users into _usersCache
+    dbg('[init] 🔍 fetchSeparatedCollections completed');
+    
     const userCount = Object.keys(_usersCache).length;
     dbg('[init] ✅ Pre-loaded ' + userCount + ' users', 'info');
+    dbg('[init] 📋 Users in cache: ' + Object.keys(_usersCache).join(', '));
     
     // DISPLAY user count on login screen for debugging
     const countEl = document.getElementById('userCountDisplay');
@@ -8527,6 +8531,20 @@ async function init() {
       if (userCount === 0) {
         countEl.textContent = '❌ 0 users loaded - fetch failed!';
         countEl.style.color = 'rgba(255,0,0,0.6)';
+        // Also show we can try to re-fetch
+        countEl.onclick = async function() {
+          countEl.textContent = '🔄 Re-fetching users...';
+          try {
+            await fetchSeparatedCollections();
+            const count = Object.keys(_usersCache).length;
+            countEl.textContent = '👥 ' + count + ' users loaded';
+            countEl.style.color = 'rgba(0,255,0,0.4)';
+            alert('Loaded ' + count + ' users. Try logging in now.');
+          } catch(e) {
+            countEl.textContent = '❌ Re-fetch failed: ' + e.message;
+            alert('Fetch failed: ' + e.message);
+          }
+        };
       } else if (userCount === 1) {
         countEl.textContent = '⚠️ ' + userCount + ' user loaded (admin only)';
         countEl.style.color = 'rgba(255,165,0,0.5)';
@@ -8537,14 +8555,28 @@ async function init() {
     }
   } catch (e) {
     dbg('[init] ⚠️ Failed to pre-load users: ' + e.message, 'warn');
+    dbg('[init] Error details: ' + JSON.stringify(e), 'error');
     console.error('[init] Full error:', e);
-    // Display error on login screen
+    console.error('[init] Error stack:', e.stack);
+    
+    // Display error on login screen with details
     const countEl = document.getElementById('userCountDisplay');
     if (countEl) {
-      countEl.textContent = '⚠️ User load failed: ' + e.message;
+      countEl.textContent = '⚠️ Fetch error: ' + e.message;
       countEl.style.color = 'rgba(255,0,0,0.4)';
+      countEl.style.fontSize = '9px';
+      countEl.style.cursor = 'pointer';
+      countEl.title = 'Click to see full error';
+      countEl.onclick = function() {
+        alert('Fetch Error:\n\n' + e.message + '\n\nError: ' + e.toString() + '\n\nCheck console for full details');
+      };
     }
-    // Continue anyway with default admin
+    
+    // Set default admin so at least admin can login
+    if (Object.keys(_usersCache).length === 0) {
+      _usersCache = { admin: { role: 'admin', pass: 'admin', name: 'Admin' } };
+      dbg('[init] Set fallback admin user');
+    }
   }
   
   // Fresh start — clear all old data on first load of v4.0
