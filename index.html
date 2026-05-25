@@ -208,13 +208,18 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
     </div>
     <div class="field-group">
       <label>Password</label>
-      <input type="password" id="loginPass" placeholder="Enter password" 
-        autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false"
-        onkeydown="if(event.key==='Enter')doLogin()">
+      <div style="position:relative;">
+        <input type="password" id="loginPass" placeholder="Enter password" 
+          autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false"
+          onkeydown="if(event.key==='Enter')doLogin()" style="padding-right:40px;">
+        <button type="button" onclick="const p=document.getElementById('loginPass');p.type=p.type==='password'?'text':'password';this.textContent=p.type==='password'?'👁️':'🙈';" 
+          style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;padding:4px 8px;cursor:pointer;font-size:16px;color:var(--muted);"
+          title="Show/Hide password">👁️</button>
+      </div>
     </div>
     <button class="btn btn-primary w-full" onclick="doLogin()">Sign In</button>
     <div style="text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.5.4
+      Version 5.6.0
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -357,14 +362,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.5.4 - Mobile Keyboard Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.6.0 - CRITICAL: Pre-Load Users Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.5.4'; // Mobile Keyboard Fix
+const APP_VERSION = '5.6.0'; // CRITICAL: Pre-Load Users Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -8481,6 +8486,18 @@ async function init() {
   }
   
   initSDK(); // Initialize Appwrite SDK after all declarations are ready
+  
+  // PRE-LOAD USERS - Fetch users before showing login screen
+  // This ensures all users are available for login attempts
+  dbg('[init] 📥 Pre-loading users from Appwrite...', 'info');
+  try {
+    await fetchSeparatedCollections(); // Load users into _usersCache
+    const userCount = Object.keys(_usersCache).length;
+    dbg('[init] ✅ Pre-loaded ' + userCount + ' users', 'info');
+  } catch (e) {
+    dbg('[init] ⚠️ Failed to pre-load users: ' + e.message, 'warn');
+    // Continue anyway with default admin
+  }
   
   // Fresh start — clear all old data on first load of v4.0
   if (localStorage.getItem('phx_version') !== '4.0') {
