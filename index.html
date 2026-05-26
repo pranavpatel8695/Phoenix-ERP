@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.1
+      Version 5.10.2
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.1 - Pure Appwrite-First', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.2 - Enhanced Error Logging', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.1'; // Pure Appwrite-First
+const APP_VERSION = '5.10.2'; // Enhanced Error Logging
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9126,8 +9126,9 @@ async function applyLeave() {
   showToast('⏳ Applying leave...', 'info');
   
   try {
-    await pushAttendance(newLeave);
-    dbg('[applyLeave] ✅ Leave synced to Appwrite');
+    dbg('[applyLeave] 🚀 Pushing to Appwrite...', 'info');
+    const result = await pushAttendance(newLeave);
+    dbg('[applyLeave] ✅ Leave synced to Appwrite, result: ' + JSON.stringify(result).substring(0, 100), 'info');
     
     // Only update cache AFTER Appwrite confirms
     const all = getAttendance();
@@ -9136,13 +9137,17 @@ async function applyLeave() {
     
     showToast('✅ Leave applied');
     renderCurrentTab();
+    pushConfig();
   } catch (err) {
-    dbg('[applyLeave] ❌ Appwrite failed: ' + err.message, 'error');
+    dbg('[applyLeave] ❌ Appwrite failed!', 'error');
+    dbg('[applyLeave] ❌ Error type: ' + err.constructor.name, 'error');
+    dbg('[applyLeave] ❌ Error message: ' + err.message, 'error');
+    dbg('[applyLeave] ❌ Error code: ' + err.code, 'error');
+    dbg('[applyLeave] ❌ Full error: ' + JSON.stringify(err), 'error');
+    
     showToast('❌ Failed to apply leave: ' + err.message);
     // Don't save locally - nothing saved on failure
   }
-  
-  pushConfig();
 }
 
 // ── MONTHLY REPORT ──
