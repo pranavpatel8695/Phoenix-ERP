@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.9
+      Version 5.9.10
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.9 - Copy Debug Log Feature', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.10 - Copy Log All Variants', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.9'; // Copy Debug Log Feature
+const APP_VERSION = '5.9.10'; // Copy Log All Variants
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -11347,6 +11347,7 @@ init();
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-right:4px">
     <div style="color:#FF9F0A;font-weight:bold;font-size:11px">📋 Debug Log</div>
     <div style="display:flex;gap:6px">
+      <button onclick="copyDebugLog()" style="background:#FF9F0A;border:none;color:#000;font-size:10px;font-weight:bold;padding:4px 10px;border-radius:6px;cursor:pointer">📋 Copy</button>
       <button onclick="_debugLog=[];updateDebugPanel()" style="background:rgba(255,159,10,0.2);border:1px solid rgba(255,159,10,0.4);border-radius:6px;color:#fff;font-size:10px;font-weight:bold;padding:4px 10px;cursor:pointer">Clear</button>
       <button onclick="document.getElementById('debugLog').style.display='none'" style="background:rgba(255,69,58,0.2);border:1px solid rgba(255,69,58,0.4);border-radius:6px;color:#fff;font-size:16px;font-weight:bold;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0">✕</button>
     </div>
