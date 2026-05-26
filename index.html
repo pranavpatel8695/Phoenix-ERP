@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.12
+      Version 5.9.13
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.12 - Verification Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.13 - Fast Project Removal', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.12'; // Verification Fix
+const APP_VERSION = '5.9.13'; // Fast Project Removal
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -8034,33 +8034,10 @@ async function removeProjectFromUser(username, proj) {
   try {
     dbg(`[removeProjectFromUser] ☁️ Pushing to Appwrite...`);
     const result = await pushUser(username, users[username]);
-    
-    // Verify the update by reading back from Appwrite
     dbg(`[removeProjectFromUser] ✅ Push succeeded, result: ${result?.$id}`);
-    dbg(`[removeProjectFromUser] 🔍 Verifying removal by fetching from Appwrite...`);
-    
-    // Wait a moment for Appwrite to propagate
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Fetch fresh data from Appwrite to verify
-    try {
-      const freshDoc = await _awDB.getDocument(AW.database, 'users_config', username);
-      const freshProjects = freshDoc.data ? JSON.parse(freshDoc.data).projects : [];
-      dbg(`[removeProjectFromUser] 📥 Fetched from Appwrite - projects: ${JSON.stringify(freshProjects)}`);
-      
-      if (freshProjects.includes(proj)) {
-        dbg(`[removeProjectFromUser] ❌ VERIFICATION FAILED! Project still in Appwrite!`, 'error');
-        showToast('⚠️ Removal may not have saved. Please refresh and try again.');
-      } else {
-        dbg(`[removeProjectFromUser] ✅ VERIFIED! Project successfully removed from Appwrite`);
-      }
-    } catch (verifyErr) {
-      dbg(`[removeProjectFromUser] ⚠️ Verification fetch failed: ${verifyErr.message}`, 'warn');
-    }
     
     // Update memory cache on success (NO localStorage!)
     _usersCache[username] = users[username];
-    
     dbg(`[removeProjectFromUser] ✅ Cache updated. Final projects: ${JSON.stringify(_usersCache[username].projects)}`);
   } catch (err) {
     dbg('[removeProjectFromUser] ❌ User data sync failed: ' + err.message, 'error');
