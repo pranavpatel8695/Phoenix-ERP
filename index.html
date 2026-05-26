@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.6
+      Version 5.9.7
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.6 - Multi-PM Display Priority Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.7 - Multi-PM Workflow Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.6'; // Multi-PM Display Priority Fix
+const APP_VERSION = '5.9.7'; // Multi-PM Workflow Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9288,8 +9288,14 @@ function renderAttendanceAdmin() {
     const pmEntry = Object.entries(usersMap).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
     return pmEntry?.[0] || '';
   };
-  const pending = active.filter(a=>a.pmStatus==='approved'&&a.adminStatus==='pending')
-    .concat(active.filter(a=>a.pmStatus==='pending'&&a.adminStatus==='pending'&&isPMsOwnRecord(a)));
+  const pending = active.filter(a => {
+    // For multi-PM leaves, only show to admin if ALL PMs have approved
+    if (a.atype === 'leave' && a.pmApprovals && Array.isArray(a.pmApprovals) && a.pmApprovals.length > 0) {
+      return a.allPMsApproved === true && a.adminStatus === 'pending';
+    }
+    // For regular attendance or old-style leaves
+    return a.pmStatus === 'approved' && a.adminStatus === 'pending';
+  }).concat(active.filter(a=>a.pmStatus==='pending'&&a.adminStatus==='pending'&&isPMsOwnRecord(a)));
   // Build map of current PM for each user (mirrors what PM's own team view shows)
   const userCurrentPM = {};
   Object.entries(usersMap).forEach(([u, v]) => {
@@ -9432,6 +9438,11 @@ function renderAttendanceAdmin() {
 }
 
 function renderAttendanceHistoryCard(a) {
+  // Debug: Check if pmApprovals exists
+  if (a.atype === 'leave') {
+    dbg('[renderAttendanceHistoryCard] Leave - pmApprovals: ' + (a.pmApprovals ? JSON.stringify(a.pmApprovals) : 'MISSING') + ', allPMsApproved: ' + a.allPMsApproved + ', pmStatus: ' + a.pmStatus, 'info');
+  }
+  
   const statColor = s => s==='approved'?'var(--green)':s==='rejected'?'var(--red)':'var(--orange)';
   const statLabel = s => s==='approved'?'✅ Approved':s==='rejected'?'❌ Rejected':'⏳ Pending';
   const users = getUsers();
