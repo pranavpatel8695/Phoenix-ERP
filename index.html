@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.2
+      Version 5.9.3
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.2 - Old Leave Compatibility Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.3 - History Card Date Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.2'; // Old Leave Compatibility Fix
+const APP_VERSION = '5.9.3'; // History Card Date Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9459,8 +9459,27 @@ function renderAttendanceHistoryCard(a) {
   return `<div class="card mb-2" style="padding:10px 12px">
     <div class="flex justify-between items-center">
       <div>
-        <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(a.leaveFrom+' to '+a.leaveTo):a.date}</span>${a.isBackfill?` <span style="font-size:9px;background:rgba(255,159,10,0.2);color:var(--orange);padding:1px 5px;border-radius:4px;font-weight:700">BACKDATED</span>`:''}</div>
-        ${a.atype==='leave'?`<div style="font-size:11px;color:var(--muted)">${a.leaveType||''} — ${a.reason||''}</div>`:''}
+        <div style="font-size:12px;font-weight:700">${a.atype==='leave'?'🏖️ Leave':a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'} <span style="font-weight:400;color:var(--muted)">${a.atype==='leave'?(() => {
+          // Handle both old (date only) and new (leaveFrom/leaveTo) formats
+          let fromDate = a.leaveFrom;
+          let toDate = a.leaveTo;
+          
+          // Fallback to 'date' field for old leave applications
+          if (!fromDate || fromDate === 'undefined') fromDate = a.date;
+          if (!toDate || toDate === 'undefined') toDate = a.date;
+          
+          // Last resort: timestamp
+          if (!fromDate || fromDate === 'undefined') fromDate = a.timestamp ? a.timestamp.slice(0,10) : null;
+          if (!toDate || toDate === 'undefined') toDate = fromDate;
+          
+          // If still undefined, show error
+          if (!fromDate || fromDate === 'undefined' || !toDate || toDate === 'undefined') {
+            return '⚠️ Date missing';
+          }
+          
+          return fromDate + ' to ' + toDate;
+        })():a.date}</span>${a.isBackfill?` <span style="font-size:9px;background:rgba(255,159,10,0.2);color:var(--orange);padding:1px 5px;border-radius:4px;font-weight:700">BACKDATED</span>`:''}</div>
+        ${a.atype==='leave'?`<div style="font-size:11px;color:var(--muted)">${a.leaveType||''} — ${a.reason && a.reason !== 'undefined' ? a.reason : ''}</div>`:''}
         ${a.markedByName?`<div style="font-size:10px;color:var(--muted)">Marked by: ${a.markedByName}</div>`:''}
       </div>
       ${statusBadge}
