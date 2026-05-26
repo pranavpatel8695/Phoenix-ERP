@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.11
+      Version 5.9.12
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.11 - Project Removal Verification', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.12 - Verification Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.11'; // Project Removal Verification
+const APP_VERSION = '5.9.12'; // Verification Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -8044,7 +8044,7 @@ async function removeProjectFromUser(username, proj) {
     
     // Fetch fresh data from Appwrite to verify
     try {
-      const freshDoc = await _awDB.getDocument(_dbId, 'users_config', username);
+      const freshDoc = await _awDB.getDocument(AW.database, 'users_config', username);
       const freshProjects = freshDoc.data ? JSON.parse(freshDoc.data).projects : [];
       dbg(`[removeProjectFromUser] 📥 Fetched from Appwrite - projects: ${JSON.stringify(freshProjects)}`);
       
