@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.0
+      Version 5.10.1
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.0 - Multi-PM Data Preservation Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.1 - Pure Appwrite-First', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.0'; // Multi-PM Data Preservation Fix
+const APP_VERSION = '5.10.1'; // Pure Appwrite-First
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9023,7 +9023,7 @@ function markAttendanceDate(status, date) {
   });
 }
 
-function markAttendance(status) {
+async function markAttendance(status) {
   const today = localToday();
   const all = getAttendance();
   if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { showToast('⚠️ Already marked'); return; }
@@ -9043,23 +9043,27 @@ function markAttendance(status) {
     adminStatus: 'pending', timestamp:new Date().toISOString() 
   };
   
-  // OPTIMISTIC UPDATE: Add to cache immediately for instant UI feedback
-  all.push(newRecord);
-  saveAttendance(all);
+  // PURE APPWRITE-FIRST: Push to Appwrite FIRST, wait for confirmation
   showToast('⏳ Marking attendance...', 'info');
-  renderCurrentTab();  // ← Update UI immediately!
   
-  // APPWRITE-FIRST: Push to Appwrite in background
-  pushAttendance(newRecord).then(() => {
-    dbg('[markAttendance] ✅ Attendance synced');
+  try {
+    await pushAttendance(newRecord);
+    dbg('[markAttendance] ✅ Attendance synced to Appwrite');
+    
+    // Only update cache AFTER Appwrite confirms
+    all.push(newRecord);
+    saveAttendance(all);
+    
     showToast('✅ Attendance marked');
-  }).catch(e => {
+    renderCurrentTab();
+  } catch (e) {
     dbg('[markAttendance] ❌ Appwrite failed: ' + e.message, 'error');
-    showToast('⚠️ Marked locally (will sync later)');
-  });
+    showToast('❌ Failed to mark attendance: ' + e.message);
+    // Don't save locally - nothing saved on failure
+  }
 }
 
-function applyLeave() {
+async function applyLeave() {
   const from = document.getElementById('lv-from')?.value;
   const to   = document.getElementById('lv-to')?.value   || from;
   const reason = document.getElementById('lv-reason')?.value;
@@ -9094,7 +9098,6 @@ function applyLeave() {
   const isPM = currentRole === 'pm';
   const allPMsApproved = pmApprovals.every(p => p.status === 'approved');
   
-  const all = getAttendance();
   const newLeave = { 
     id:'LV_'+Date.now(), 
     user:currentUser, 
@@ -9119,12 +9122,27 @@ function applyLeave() {
   
   dbg('[applyLeave] Final leave record: ' + JSON.stringify(newLeave).substring(0, 300), 'info');
   
-  all.push(newLeave);
-  saveAttendance(all); 
-  pushAttendance(newLeave).catch(()=>{}); 
+  // PURE APPWRITE-FIRST: Push to Appwrite FIRST, wait for confirmation
+  showToast('⏳ Applying leave...', 'info');
+  
+  try {
+    await pushAttendance(newLeave);
+    dbg('[applyLeave] ✅ Leave synced to Appwrite');
+    
+    // Only update cache AFTER Appwrite confirms
+    const all = getAttendance();
+    all.push(newLeave);
+    saveAttendance(all);
+    
+    showToast('✅ Leave applied');
+    renderCurrentTab();
+  } catch (err) {
+    dbg('[applyLeave] ❌ Appwrite failed: ' + err.message, 'error');
+    showToast('❌ Failed to apply leave: ' + err.message);
+    // Don't save locally - nothing saved on failure
+  }
+  
   pushConfig();
-  showToast('✅ Leave applied'); 
-  renderCurrentTab();
 }
 
 // ── MONTHLY REPORT ──
