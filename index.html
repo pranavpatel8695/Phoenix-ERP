@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.8
+      Version 5.9.9
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.8 - Multi-PM Detection Debug', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.9 - Copy Debug Log Feature', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.8'; // Multi-PM Detection Debug
+const APP_VERSION = '5.9.9'; // Copy Debug Log Feature
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -493,6 +493,41 @@ function updateDebugPanel() {
     const color = e.type === 'error' ? '#FF453A' : e.type === 'warn' ? '#FF9F0A' : '#30D158';
     return `<div style="margin-bottom:3px;color:${color}">[${e.time}] ${e.msg}</div>`;
   }).join('');
+}
+
+function copyDebugLog() {
+  // Get all debug log entries as plain text
+  const logText = _debugLog.slice().reverse().map(e => {
+    return `[${e.time}] ${e.msg}`;
+  }).join('\n');
+  
+  // Copy to clipboard
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(logText).then(() => {
+      showToast('✅ Debug log copied to clipboard!');
+    }).catch(err => {
+      // Fallback for older browsers
+      copyToClipboardFallback(logText);
+    });
+  } else {
+    copyToClipboardFallback(logText);
+  }
+}
+
+function copyToClipboardFallback(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    showToast('✅ Debug log copied!');
+  } catch (err) {
+    showToast('❌ Copy failed. Please select text manually.');
+  }
+  document.body.removeChild(textarea);
 }
 
 // ── STATE ───────────────────────────────────────────────────
@@ -5660,7 +5695,7 @@ function exportToPDF() {
   
 <!-- DEBUG LOG (admin only) -->
 <div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:1px solid #FF9F0A">
-  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
+  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="copyDebugLog()" style="float:right;background:#FF9F0A;border:none;color:#000;cursor:pointer;padding:2px 8px;border-radius:4px;font-size:10px;margin-left:8px;font-weight:bold">📋 Copy Log</button><button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
   <div id="debugLogContent"></div>
 </div>
 </body></html>`;
@@ -10184,7 +10219,7 @@ function exportMachReport(selMonth, selProj) {
   </div>
 <!-- DEBUG LOG (admin only) -->
 <div id="debugLog" style="display:none;position:fixed;bottom:80px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);font-family:monospace;font-size:10px;z-index:9999;padding:8px;border-top:1px solid #FF9F0A">
-  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
+  <div style="color:#FF9F0A;font-weight:bold;margin-bottom:4px">📋 Debug Log <button onclick="copyDebugLog()" style="float:right;background:#FF9F0A;border:none;color:#000;cursor:pointer;padding:2px 8px;border-radius:4px;font-size:10px;margin-left:8px;font-weight:bold">📋 Copy Log</button><button onclick="document.getElementById('debugLog').style.display='none'" style="float:right;background:none;border:none;color:#fff;cursor:pointer">✕</button></div>
   <div id="debugLogContent"></div>
 </div>
 </body></html>`;
