@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.5
+      Version 5.9.6
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.5 - Mobile Multi-PM Display', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.6 - Multi-PM Display Priority Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.5'; // Mobile Multi-PM Display
+const APP_VERSION = '5.9.6'; // Multi-PM Display Priority Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9449,12 +9449,13 @@ function renderAttendanceHistoryCard(a) {
   // Check if this is a multi-PM leave application
   const isMultiPMLeave = a.atype === 'leave' && a.pmApprovals && Array.isArray(a.pmApprovals) && a.pmApprovals.length > 0;
 
-  const statusBadge = markedByAdmin || pmMarkedAdminApproved
-    ? `<div style="font-size:10px;color:var(--green);font-weight:700;text-align:right;white-space:nowrap">✅ Approved</div>`
-    : markedByPM
-      ? `<div style="font-size:10px;text-align:right;white-space:nowrap"><div style="color:var(--green);font-weight:700">✅ PM</div><div style="color:var(--orange);margin-top:2px">⏳ Admin</div></div>`
-      : isMultiPMLeave
-        ? '' // Will show detailed approval chain instead
+  // IMPORTANT: Multi-PM leaves ALWAYS show full approval chain, even after approval/rejection
+  const statusBadge = isMultiPMLeave
+    ? '' // Will show detailed approval chain instead
+    : markedByAdmin || pmMarkedAdminApproved
+      ? `<div style="font-size:10px;color:var(--green);font-weight:700;text-align:right;white-space:nowrap">✅ Approved</div>`
+      : markedByPM
+        ? `<div style="font-size:10px;text-align:right;white-space:nowrap"><div style="color:var(--green);font-weight:700">✅ PM</div><div style="color:var(--orange);margin-top:2px">⏳ Admin</div></div>`
         : `<div style="font-size:10px;text-align:right;white-space:nowrap">
              <div style="color:${statColor(a.pmStatus)};font-weight:600">${a.pmStatus==='approved'?'✅':a.pmStatus==='rejected'?'❌':'⏳'} PM</div>
              ${a.pmStatus==='approved'?`<div style="color:${statColor(a.adminStatus)};margin-top:2px;font-weight:600">${a.adminStatus==='approved'?'✅':a.adminStatus==='rejected'?'❌':'⏳'} Admin</div>`:''}
