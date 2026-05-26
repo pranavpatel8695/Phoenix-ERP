@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.13
+      Version 5.10.0
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.13 - Fast Project Removal', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.0 - Multi-PM Data Preservation Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.13'; // Fast Project Removal
+const APP_VERSION = '5.10.0'; // Multi-PM Data Preservation Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -1330,7 +1330,7 @@ async function fetchAllOtherCollections() {
           try {
             // NEW FORMAT: Individual fields (Appwrite-First)
             if (d.recordId) {
-              return {
+              const record = {
                 id: d.recordId,
                 user: d.user || '',
                 userName: d.userName || d.user || '',
@@ -1345,8 +1345,26 @@ async function fetchAllOtherCollections() {
                 adminStatus: d.adminStatus || 'pending',
                 markedBy: d.markedBy || '',
                 markedByName: d.markedByName || '',
-                timestamp: d.timestamp || ''
+                timestamp: d.timestamp || '',
+                // Leave fields
+                leaveFrom: d.leaveFrom || '',
+                leaveTo: d.leaveTo || '',
+                leaveType: d.leaveType || '',
+                reason: d.reason || '',
+                // Multi-PM fields
+                allPMsApproved: d.allPMsApproved || false
               };
+              
+              // Parse pmApprovals from JSON string
+              if (d.pmApprovals && typeof d.pmApprovals === 'string') {
+                try {
+                  record.pmApprovals = JSON.parse(d.pmApprovals);
+                } catch(e) {
+                  dbg('[fetchOther] Failed to parse pmApprovals for ' + d.recordId, 'warn');
+                }
+              }
+              
+              return record;
             }
             // OLD FORMAT: JSON blob in 'data' field (backwards compatibility)
             else if (d.data) {
@@ -2517,7 +2535,15 @@ async function pushAttendance(record) {
     adminStatus: record.adminStatus || 'pending',
     markedBy: record.markedBy || '',
     markedByName: record.markedByName || '',
-    timestamp: record.timestamp || new Date().toISOString()
+    timestamp: record.timestamp || new Date().toISOString(),
+    // Multi-PM approval fields
+    pmApprovals: record.pmApprovals ? JSON.stringify(record.pmApprovals) : '',
+    allPMsApproved: record.allPMsApproved || false,
+    // Leave application fields
+    leaveFrom: record.leaveFrom || '',
+    leaveTo: record.leaveTo || '',
+    leaveType: record.leaveType || '',
+    reason: record.reason || ''
   };
   
   try {
