@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.9.4
+      Version 5.9.5
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.9.4 - Mobile-Friendly Leave Cards', 'info');
+    dbg('[VERSION] Phoenix ERP v5.9.5 - Mobile Multi-PM Display', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.9.4'; // Mobile-Friendly Leave Cards
+const APP_VERSION = '5.9.5'; // Mobile Multi-PM Display
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9442,19 +9442,23 @@ function renderAttendanceHistoryCard(a) {
   })();
   const markedByAdmin = (a.markedBy && users[a.markedBy]?.role==='admin')
     || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='approved');
-  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='pending')  // ← FIXED: Added adminStatus check
+  const markedByPM = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='pending')
     || (!a.markedBy && a.isBackfill && a.pmStatus==='approved' && a.adminStatus==='pending');
-  // If PM marked and admin approved
   const pmMarkedAdminApproved = (a.markedBy && users[a.markedBy]?.role==='pm' && a.adminStatus==='approved');
+  
+  // Check if this is a multi-PM leave application
+  const isMultiPMLeave = a.atype === 'leave' && a.pmApprovals && Array.isArray(a.pmApprovals) && a.pmApprovals.length > 0;
 
-  const statusBadge = markedByAdmin || pmMarkedAdminApproved  // ← Added pmMarkedAdminApproved
-    ? `<div style="font-size:10px;color:var(--green);font-weight:700;text-align:right;white-space:nowrap">✅ ${pmMarkedAdminApproved ? 'Approved' : 'Approved'}</div>`
+  const statusBadge = markedByAdmin || pmMarkedAdminApproved
+    ? `<div style="font-size:10px;color:var(--green);font-weight:700;text-align:right;white-space:nowrap">✅ Approved</div>`
     : markedByPM
       ? `<div style="font-size:10px;text-align:right;white-space:nowrap"><div style="color:var(--green);font-weight:700">✅ PM</div><div style="color:var(--orange);margin-top:2px">⏳ Admin</div></div>`
-      : `<div style="font-size:10px;text-align:right;white-space:nowrap">
-           <div style="color:${statColor(a.pmStatus)};font-weight:600">${a.pmStatus==='approved'?'✅':a.pmStatus==='rejected'?'❌':'⏳'} PM</div>
-           ${a.pmStatus==='approved'?`<div style="color:${statColor(a.adminStatus)};margin-top:2px;font-weight:600">${a.adminStatus==='approved'?'✅':a.adminStatus==='rejected'?'❌':'⏳'} Admin</div>`:''}
-         </div>`;
+      : isMultiPMLeave
+        ? '' // Will show detailed approval chain instead
+        : `<div style="font-size:10px;text-align:right;white-space:nowrap">
+             <div style="color:${statColor(a.pmStatus)};font-weight:600">${a.pmStatus==='approved'?'✅':a.pmStatus==='rejected'?'❌':'⏳'} PM</div>
+             ${a.pmStatus==='approved'?`<div style="color:${statColor(a.adminStatus)};margin-top:2px;font-weight:600">${a.adminStatus==='approved'?'✅':a.adminStatus==='rejected'?'❌':'⏳'} Admin</div>`:''}
+           </div>`;
 
   return `<div class="card mb-2" style="padding:10px 12px">
     <div class="flex justify-between items-start mb-1">
@@ -9464,32 +9468,45 @@ function renderAttendanceHistoryCard(a) {
           ${a.isBackfill?` <span style="font-size:9px;background:rgba(255,159,10,0.2);color:var(--orange);padding:1px 5px;border-radius:4px;font-weight:700">BACKDATED</span>`:''}
         </div>
         ${a.atype==='leave'?(() => {
-          // Handle both old (date only) and new (leaveFrom/leaveTo) formats
           let fromDate = a.leaveFrom;
           let toDate = a.leaveTo;
-          
-          // Fallback to 'date' field for old leave applications
           if (!fromDate || fromDate === 'undefined') fromDate = a.date;
           if (!toDate || toDate === 'undefined') toDate = a.date;
-          
-          // Last resort: timestamp
           if (!fromDate || fromDate === 'undefined') fromDate = a.timestamp ? a.timestamp.slice(0,10) : null;
           if (!toDate || toDate === 'undefined') toDate = fromDate;
-          
-          // If still undefined, show error
           if (!fromDate || fromDate === 'undefined' || !toDate || toDate === 'undefined') {
             return `<div style="font-size:11px;color:var(--red);margin-bottom:4px">⚠️ Date missing</div>`;
           }
-          
           return `<div style="font-size:12px;color:var(--text);margin-bottom:4px">📅 ${fromDate} to ${toDate}</div>`;
         })():`<div style="font-size:11px;color:var(--muted);margin-bottom:4px">${a.date}</div>`}
-        ${a.atype==='leave' && a.reason && a.reason !== 'undefined'?`<div style="font-size:11px;color:var(--muted);margin-bottom:2px">${a.reason}</div>`:''}
+        ${a.atype==='leave' && a.reason && a.reason !== 'undefined'?`<div style="font-size:11px;color:var(--muted);margin-bottom:4px">${a.reason}</div>`:''}
         ${a.markedByName?`<div style="font-size:10px;color:var(--muted)">Marked by: ${a.markedByName}</div>`:''}
       </div>
-      <div style="margin-left:8px;flex-shrink:0">
-        ${statusBadge}
-      </div>
+      ${!isMultiPMLeave ? `<div style="margin-left:8px;flex-shrink:0">${statusBadge}</div>` : ''}
     </div>
+    ${isMultiPMLeave ? `
+      <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:11px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0"></div>
+          <div style="color:var(--muted)">Submitted by</div>
+          <div style="font-weight:700;color:var(--text)">${a.userName||a.user}</div>
+        </div>
+        ${a.pmApprovals.map(pm => `
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="width:6px;height:6px;border-radius:50%;background:${statColor(pm.status)};flex-shrink:0"></div>
+            <div style="color:var(--muted)">PM</div>
+            <div style="font-weight:700;color:var(--text)">${pm.name}</div>
+            <div style="font-size:10px;font-weight:700;color:${statColor(pm.status)};margin-left:auto">${statLabel(pm.status)}</div>
+          </div>
+        `).join('')}
+        <div style="display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+          <div style="width:6px;height:6px;border-radius:50%;background:${a.allPMsApproved?statColor(a.adminStatus):'var(--border)'};flex-shrink:0"></div>
+          <div style="color:${a.allPMsApproved?'var(--muted)':'var(--border)'}">Admin</div>
+          <div style="font-weight:700;color:${a.allPMsApproved?'var(--text)':'var(--border)'}"> ${adminName}</div>
+          <div style="font-size:10px;font-weight:700;color:${a.allPMsApproved?statColor(a.adminStatus):'var(--border)'};margin-left:auto">${a.allPMsApproved?statLabel(a.adminStatus):'Waiting for PMs'}</div>
+        </div>
+      </div>
+    ` : ''}
   </div>`;
 }
 
