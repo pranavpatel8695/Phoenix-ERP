@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.2
+      Version 5.10.5
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.2 - Enhanced Error Logging', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.5 - TRUE Pure Appwrite-First', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.2'; // Enhanced Error Logging
+const APP_VERSION = '5.10.5'; // TRUE Pure Appwrite-First
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9023,77 +9023,86 @@ function markAttendanceDate(status, date) {
   });
 }
 
-async function markAttendance(status) {
+function markAttendance(status) {
+  dbg('[markAttendance] 🟢 STARTED!', 'info');
+  
   const today = localToday();
   const all = getAttendance();
-  if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { showToast('⚠️ Already marked'); return; }
+  if (all.find(a=>a.user===currentUser&&a.date===today&&a.atype==='attendance')) { 
+    showToast('⚠️ Already marked'); 
+    return; 
+  }
+  
   const myProj = getVisibleProjects()[0]||'';
   const users = getUsers();
   const pmEntry = Object.entries(users).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(myProj));
   const pmUser = pmEntry?.[0]||'';
   const pmName = pmEntry?.[1]?.name||pmUser;
-  // If current user IS the PM for this project, auto-approve pmStatus
   const isPM = currentRole === 'pm' || pmUser === currentUser;
   
   const newRecord = { 
-    id:'ATT_'+Date.now(), user:currentUser, userName:users[currentUser]?.name||currentUser,
-    project: myProj, atype:'attendance', date:today, status,
+    id:'ATT_'+Date.now(), 
+    user:currentUser, 
+    userName:users[currentUser]?.name||currentUser,
+    project: myProj, 
+    atype:'attendance', 
+    date:today, 
+    status,
     pmUser, pmName,
     pmStatus: isPM ? 'approved' : 'pending',
-    adminStatus: 'pending', timestamp:new Date().toISOString() 
+    adminStatus: 'pending', 
+    timestamp:new Date().toISOString() 
   };
   
-  // PURE APPWRITE-FIRST: Push to Appwrite FIRST, wait for confirmation
+  // PURE APPWRITE-FIRST: Wait for confirmation
   showToast('⏳ Marking attendance...', 'info');
+  dbg('[markAttendance] 🚀 PUSHING TO APPWRITE (WAITING FOR CONFIRMATION)...', 'info');
   
-  try {
-    await pushAttendance(newRecord);
-    dbg('[markAttendance] ✅ Attendance synced to Appwrite');
+  pushAttendance(newRecord).then(result => {
+    dbg('[markAttendance] ✅ APPWRITE CONFIRMED! Saving to cache...', 'info');
     
-    // Only update cache AFTER Appwrite confirms
+    // Only AFTER Appwrite confirms, save locally
     all.push(newRecord);
     saveAttendance(all);
     
-    showToast('✅ Attendance marked');
+    showToast('✅ Attendance marked & synced');
     renderCurrentTab();
-  } catch (e) {
-    dbg('[markAttendance] ❌ Appwrite failed: ' + e.message, 'error');
+    
+    dbg('[markAttendance] ✅ COMPLETE - Attendance saved locally after Appwrite confirmed', 'info');
+  }).catch(e => {
+    dbg('[markAttendance] ❌ APPWRITE FAILED: ' + e.message, 'error');
     showToast('❌ Failed to mark attendance: ' + e.message);
-    // Don't save locally - nothing saved on failure
-  }
+    // Nothing saved - no local cache update
+  });
 }
 
-async function applyLeave() {
+function applyLeave() {
+  dbg('[applyLeave] 🟢 FUNCTION STARTED!', 'info');
+  
   const from = document.getElementById('lv-from')?.value;
   const to   = document.getElementById('lv-to')?.value   || from;
   const reason = document.getElementById('lv-reason')?.value;
-  if (!from) { showToast('⚠️ Select from date'); return; }
+  
+  if (!from) { 
+    showToast('⚠️ Select from date'); 
+    return; 
+  }
   
   const users = getUsers();
   const myProj = getVisibleProjects()[0]||'';
-  
-  // Get ALL PMs for this user's projects
   const allPMs = getAllPMsForUser(currentUser);
-  
-  // DEBUG: Log what we found
-  dbg('[applyLeave] User: ' + currentUser + ', Projects: ' + JSON.stringify(users[currentUser]?.projects || []), 'info');
-  dbg('[applyLeave] Found ' + allPMs.length + ' PMs: ' + JSON.stringify(allPMs), 'info');
   
   if (allPMs.length === 0) {
     showToast('⚠️ No PM found for your projects!');
-    dbg('[applyLeave] ERROR: No PMs found! User projects: ' + JSON.stringify(users[currentUser]?.projects), 'error');
     return;
   }
   
-  // Create PM approvals array
   const pmApprovals = allPMs.map(pm => ({
     pm: pm.pm,
     name: pm.name,
     projects: pm.projects.join(', '),
-    status: pm.pm === currentUser ? 'approved' : 'pending'  // Auto-approve if user IS a PM
+    status: pm.pm === currentUser ? 'approved' : 'pending'
   }));
-  
-  dbg('[applyLeave] Created pmApprovals: ' + JSON.stringify(pmApprovals), 'info');
   
   const isPM = currentRole === 'pm';
   const allPMsApproved = pmApprovals.every(p => p.status === 'approved');
@@ -9109,10 +9118,8 @@ async function applyLeave() {
     leaveTo:to,
     leaveType:'Leave', 
     reason,
-    // Multi-PM approval system
     pmApprovals: pmApprovals,
     allPMsApproved: allPMsApproved,
-    // Old format for backwards compatibility
     pmUser: allPMs[0]?.pm || '',
     pmName: allPMs[0]?.name || '',
     pmStatus: isPM ? 'approved' : 'pending',
@@ -9120,34 +9127,28 @@ async function applyLeave() {
     timestamp:new Date().toISOString() 
   };
   
-  dbg('[applyLeave] Final leave record: ' + JSON.stringify(newLeave).substring(0, 300), 'info');
-  
-  // PURE APPWRITE-FIRST: Push to Appwrite FIRST, wait for confirmation
+  // PURE APPWRITE-FIRST: Wait for Appwrite confirmation
   showToast('⏳ Applying leave...', 'info');
+  dbg('[applyLeave] 🚀 PUSHING TO APPWRITE (WAITING FOR CONFIRMATION)...', 'info');
   
-  try {
-    dbg('[applyLeave] 🚀 Pushing to Appwrite...', 'info');
-    const result = await pushAttendance(newLeave);
-    dbg('[applyLeave] ✅ Leave synced to Appwrite, result: ' + JSON.stringify(result).substring(0, 100), 'info');
+  pushAttendance(newLeave).then(result => {
+    dbg('[applyLeave] ✅ APPWRITE CONFIRMED! Saving to cache...', 'info');
     
-    // Only update cache AFTER Appwrite confirms
+    // Only AFTER Appwrite confirms, save locally
     const all = getAttendance();
     all.push(newLeave);
     saveAttendance(all);
     
-    showToast('✅ Leave applied');
+    showToast('✅ Leave applied & synced');
     renderCurrentTab();
     pushConfig();
-  } catch (err) {
-    dbg('[applyLeave] ❌ Appwrite failed!', 'error');
-    dbg('[applyLeave] ❌ Error type: ' + err.constructor.name, 'error');
-    dbg('[applyLeave] ❌ Error message: ' + err.message, 'error');
-    dbg('[applyLeave] ❌ Error code: ' + err.code, 'error');
-    dbg('[applyLeave] ❌ Full error: ' + JSON.stringify(err), 'error');
     
+    dbg('[applyLeave] ✅ COMPLETE - Leave saved locally after Appwrite confirmed', 'info');
+  }).catch(err => {
+    dbg('[applyLeave] ❌ APPWRITE FAILED: ' + err.message, 'error');
     showToast('❌ Failed to apply leave: ' + err.message);
-    // Don't save locally - nothing saved on failure
-  }
+    // Nothing saved - no local cache update
+  });
 }
 
 // ── MONTHLY REPORT ──
