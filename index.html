@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.10
+      Version 5.10.12
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.10 - Mobile Attendance Alignment', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.12 - Leave Validation', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.10'; // Mobile Attendance Alignment
+const APP_VERSION = '5.10.12'; // Leave Validation
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9038,19 +9038,57 @@ function markAttendance(status) {
 }
 
 function applyLeave() {
-  console.log('APPLYLEAVE BUTTON CLICKED!');  // ← Browser console
   dbg('[applyLeave] 🟢 FUNCTION STARTED!', 'info');
   
   const from = document.getElementById('lv-from')?.value;
   const to   = document.getElementById('lv-to')?.value   || from;
   const reason = document.getElementById('lv-reason')?.value;
   
-  console.log('From:', from, 'To:', to, 'Reason:', reason);
   dbg('[applyLeave] 📝 From: ' + from + ' To: ' + to + ' Reason: ' + reason, 'info');
   
   if (!from) { 
     showToast('⚠️ Select from date'); 
     return; 
+  }
+  
+  const today = localToday();
+
+  // VALIDATION 1: No past dates
+  if (from < today) {
+    showToast('⚠️ Cannot apply leave for past dates');
+    dbg('[applyLeave] ❌ Rejected: from date ' + from + ' is in the past (today: ' + today + ')', 'warn');
+    return;
+  }
+  if (to < today) {
+    showToast('⚠️ Cannot apply leave for past dates');
+    dbg('[applyLeave] ❌ Rejected: to date ' + to + ' is in the past (today: ' + today + ')', 'warn');
+    return;
+  }
+
+  // VALIDATION 2: To date cannot be before from date
+  if (to < from) {
+    showToast('⚠️ "To" date cannot be before "From" date');
+    return;
+  }
+
+  // VALIDATION 3: No duplicate leave for overlapping dates by same user
+  const existing = getAttendance().filter(a => a.user === currentUser && a.atype === 'leave');
+  const fromD = new Date(from);
+  const toD   = new Date(to);
+  
+  const duplicate = existing.find(a => {
+    const exFrom = new Date(a.leaveFrom || a.date);
+    const exTo   = new Date(a.leaveTo   || a.date);
+    // Check date overlap: new range overlaps existing range
+    return fromD <= exTo && toD >= exFrom;
+  });
+  
+  if (duplicate) {
+    const dupFrom = duplicate.leaveFrom || duplicate.date;
+    const dupTo   = duplicate.leaveTo   || duplicate.date;
+    showToast('⚠️ Leave already applied for ' + dupFrom + (dupTo !== dupFrom ? ' to ' + dupTo : ''));
+    dbg('[applyLeave] ❌ Duplicate: overlaps existing leave ' + dupFrom + ' to ' + dupTo, 'warn');
+    return;
   }
   
   const users = getUsers();
@@ -9254,19 +9292,36 @@ function renderAttendancePM() {
   html += `<div class="card mb-3" style="padding:12px">
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Today — ${today}</div>
     ${todayRec
-      ? `<div style="font-size:14px;font-weight:700">${todayRec.status==='present'?'🟢 Present':todayRec.status==='absent'?'🔴 Absent':'🟡 Half Day'}</div>
-         <span style="font-size:11px;color:${statColor(todayRec.pmStatus)}">${statLabel(todayRec.pmStatus)} (PM)</span>`
+      ? `<div style="display:flex;justify-content:space-between;align-items:center">
+           <div style="font-size:14px;font-weight:700">${todayRec.status==='present'?'🟢 Present':todayRec.status==='absent'?'🔴 Absent':'🟡 Half Day'}</div>
+           <div style="font-size:11px;font-weight:700;color:${statColor(todayRec.adminStatus)}">${todayRec.adminStatus==='approved'?'✅ Approved':todayRec.adminStatus==='rejected'?'❌ Rejected':'⏳ Admin Pending'}</div>
+         </div>`
       : `<div class="flex gap-2">
           <button class="btn btn-primary flex-1" onclick="markAttendance('present')">🟢 Present</button>
           <button class="btn btn-ghost flex-1" onclick="markAttendance('absent')">🔴 Absent</button>
          </div>`}
   </div>`;
 
-  // Own history
-  const myHistory = myRecs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+  // Own history - show simplified status for PM's own records
+  const myHistory = myRecs.filter(a => a.atype === 'attendance').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   if (myHistory.length) {
     html += `<div class="card-title mb-2">📋 My History</div>`;
-    html += myHistory.map(a => renderAttendanceHistoryCard(a)).join('');
+    html += myHistory.map(a => `
+      <div class="card mb-2" style="padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:13px;font-weight:700;margin-bottom:3px">
+              ${a.status==='present'?'🟢 Present':a.status==='absent'?'🔴 Absent':'🟡 Half Day'}
+              ${a.isBackfill?`<span style="font-size:9px;background:rgba(255,159,10,0.2);color:var(--orange);padding:1px 5px;border-radius:4px;margin-left:4px">BACKDATED</span>`:''}
+            </div>
+            <div style="font-size:11px;color:var(--muted)">${a.date}</div>
+          </div>
+          <div style="font-size:11px;font-weight:700;color:${statColor(a.adminStatus)}">
+            ${a.adminStatus==='approved'?'✅ Approved':a.adminStatus==='rejected'?'❌ Rejected':'⏳ Pending'}
+          </div>
+        </div>
+      </div>
+    `).join('');
   }
 
   // Team section
