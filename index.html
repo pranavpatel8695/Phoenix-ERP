@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.6
+      Version 5.10.7
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.6 - Button Click Debug', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.7 - JSON Blob Format Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.6'; // Button Click Debug
+const APP_VERSION = '5.10.7'; // JSON Blob Format Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2508,74 +2508,10 @@ async function deleteUserFromAW(username) {
 
 // ── ATTENDANCE CRUD (Appwrite-First v5.4.0) ──────────────────────
 
-// Push single attendance record to attendance collection (Appwrite-First)
+// Push single attendance record to attendance collection (JSON blob format)
 async function pushAttendance(record) {
-  const migrationCompleted = LS.get('phx_migration_completed', false);
-  if (!migrationCompleted) {
-    // Fallback to old pattern if migration not complete
-    return saveDoc(AW.collections.attendance, record.id, record);
-  }
-  
-  // Create doc ID from record ID
-  const docId = String(record.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
-  
-  // Prepare data - save individual fields (not JSON blob)
-  const data = {
-    recordId: record.id,
-    user: record.user || '',
-    userName: record.userName || record.user || '',
-    project: record.project || '',
-    atype: record.atype || 'attendance',
-    date: record.date || '',
-    status: record.status || '',
-    pmUser: record.pmUser || '',
-    pmName: record.pmName || '',
-    isBackfill: record.isBackfill || false,
-    pmStatus: record.pmStatus || 'pending',
-    adminStatus: record.adminStatus || 'pending',
-    markedBy: record.markedBy || '',
-    markedByName: record.markedByName || '',
-    timestamp: record.timestamp || new Date().toISOString(),
-    // Multi-PM approval fields
-    pmApprovals: record.pmApprovals ? JSON.stringify(record.pmApprovals) : '',
-    allPMsApproved: record.allPMsApproved || false,
-    // Leave application fields
-    leaveFrom: record.leaveFrom || '',
-    leaveTo: record.leaveTo || '',
-    leaveType: record.leaveType || '',
-    reason: record.reason || ''
-  };
-  
-  try {
-    const result = await _awDB.createDocument(
-      AW.database,
-      AW.collections.attendance,
-      docId,
-      data,
-      ['read("any")', 'update("any")', 'delete("any")']
-    );
-    dbg(`[pushAttendance] ✅ ${record.id}`);
-    return result;
-  } catch (err) {
-    if (err.code === 409) {
-      // Document exists, update it
-      const result = await _awDB.updateDocument(
-        AW.database,
-        AW.collections.attendance,
-        docId,
-        data
-      );
-      dbg(`[pushAttendance] ✅ updated ${record.id}`);
-      return result;
-    }
-    // If attribute error (new fields don't exist), fall back to old format
-    if (err.message && (err.message.includes('attribute') || err.message.includes('Attribute'))) {
-      dbg(`[pushAttendance] ⚠️ New attributes not found, using old format`, 'warn');
-      return saveDoc(AW.collections.attendance, record.id, record);
-    }
-    dbg(`[pushAttendance] ❌ ${record.id}: ${err.message}`, 'error');
-    throw err;
-  }
+  // Use JSON blob format - works with current Appwrite schema (data field only)
+  return saveDoc(AW.collections.attendance, record.id, record);
 }
 
 // Delete attendance record from Appwrite
