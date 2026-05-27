@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.7
+      Version 5.10.8
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.7 - JSON Blob Format Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.8 - recordId Fix + Error Propagation', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.7'; // JSON Blob Format Fix
+const APP_VERSION = '5.10.8'; // recordId Fix + Error Propagation
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -762,8 +762,7 @@ async function awCreate(collectionId, docId, data) {
     return result;
   } catch(e) {
     dbg(`[awCreate] ❌ ${collectionId}/${docId}: ${e.message}`, 'error');
-    console.error('awCreate error:', e);
-    return null;
+    throw e;  // ← THROW so callers know it failed
   }
 }
 
@@ -778,11 +777,10 @@ async function awUpdate(collectionId, docId, data) {
   catch(e) {
     if (e.code === 404) {
       dbg(`[awUpdate] 404 → creating ${collectionId}/${docId}`);
-      return await awCreate(collectionId, docId, data);
+      return await awCreate(collectionId, docId, data);  // ← throws on failure now
     }
     dbg(`[awUpdate] ❌ ${collectionId}/${docId}: ${e.message}`, 'error');
-    console.error('awUpdate error:', e);
-    return null;
+    throw e;  // ← THROW so callers know it failed
   }
 }
 
@@ -2510,8 +2508,14 @@ async function deleteUserFromAW(username) {
 
 // Push single attendance record to attendance collection (JSON blob format)
 async function pushAttendance(record) {
-  // Use JSON blob format - works with current Appwrite schema (data field only)
-  return saveDoc(AW.collections.attendance, record.id, record);
+  const docId = String(record.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+  // Include BOTH required recordId field AND data blob
+  const data = { 
+    recordId: record.id,          // ← Required by Appwrite schema
+    data: JSON.stringify(record)  // ← Full record as JSON blob
+  };
+  dbg('[pushAttendance] 🚀 Saving ' + record.id, 'info');
+  return awUpdate(AW.collections.attendance, docId, data);
 }
 
 // Delete attendance record from Appwrite
