@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.16
+      Version 5.10.17
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.16 - Admin Module Reset Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.17 - Restore Previous Module', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.16'; // Admin Module Reset Fix
+const APP_VERSION = '5.10.17'; // Restore Previous Module
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -534,6 +534,7 @@ function copyToClipboardFallback(text) {
 let currentUser = null;
 let currentRole = null; // 'admin' | 'pm' | 'supervisor'
 let currentModule = 'pipeline'; // 'pipeline' | 'civil' | 'attendance'
+let previousModule = 'pipeline'; // Saves last non-attendance module
 let activeTab = 'home';
 let _syncing = false;
 let _pushing = false;  // Lock to prevent concurrent pushConfig calls
@@ -3257,10 +3258,10 @@ function renderCurrentTab() {
   const main = document.getElementById('main');
   
   // For admin: attendance module should NOT override submit/reports tabs
-  // Reset to pipeline so correct content renders
+  // Restore previous module (pipeline/civil) so correct content renders
   if (currentRole === 'admin' && currentModule === 'attendance' && 
       (activeTab === 'submit' || activeTab === 'reports')) {
-    currentModule = 'pipeline';
+    currentModule = previousModule || 'pipeline';
   }
   
   switch(activeTab) {
@@ -3358,7 +3359,7 @@ function renderHome() {
         <div class="name">Civil Work</div>
         <div class="count">${allReports.filter(r=>r.module==='civil').length} reports</div>
       </div>
-      <div class="module-card${currentModule==='attendance'?' selected':''}" onclick="currentModule='attendance';renderCurrentTab()" style="${currentModule==='attendance'?'border-color:var(--cyan);background:rgba(90,200,250,0.05)':''}">
+      <div class="module-card${currentModule==='attendance'?' selected':''}" onclick="previousModule = currentModule !== 'attendance' ? currentModule : previousModule; currentModule='attendance';renderCurrentTab()" style="${currentModule==='attendance'?'border-color:var(--cyan);background:rgba(90,200,250,0.05)':''}">
         <div class="icon">🕐</div>
         <div class="name">Attendance</div>
         <div class="count">${getAttendance().length} records</div>
