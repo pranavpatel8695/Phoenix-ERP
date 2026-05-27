@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.14
+      Version 5.10.15
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.14 - Tab Navigation Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.15 - Admin Tab Navigation Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.14'; // Tab Navigation Fix
+const APP_VERSION = '5.10.15'; // Admin Tab Navigation Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -3247,13 +3247,6 @@ function showUserMenu() {
 // ── TABS ─────────────────────────────────────────────────────
 function switchTab(tab) {
   activeTab = tab;
-  
-  // If switching to submit/reports/tracker, exit attendance module
-  // so the actual submit/reports/tracker tabs open correctly
-  if ((tab === 'submit' || tab === 'reports' || tab === 'tracker') && currentModule === 'attendance') {
-    currentModule = 'pipeline';
-  }
-  
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tab);
   });
@@ -3265,7 +3258,7 @@ function renderCurrentTab() {
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
     case 'submit':
-      if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); }
+      if (currentModule==='attendance' && currentRole !== 'admin') { main.innerHTML=renderAttendanceTab(); }
       else if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); }
       else if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
@@ -3276,7 +3269,7 @@ function renderCurrentTab() {
       }
       break;
     case 'reports':
-      if(currentModule==='attendance'){main.innerHTML=renderAttendanceTab();break;}
+      if(currentModule==='attendance' && currentRole !== 'admin'){main.innerHTML=renderAttendanceTab();break;}
       if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;}
       if(currentModule==='store'){
         main.innerHTML=renderStoreTab();
