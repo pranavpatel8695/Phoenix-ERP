@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.5
+      Version 5.10.6
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.5 - TRUE Pure Appwrite-First', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.6 - Button Click Debug', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.5'; // TRUE Pure Appwrite-First
+const APP_VERSION = '5.10.6'; // Button Click Debug
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9077,11 +9077,15 @@ function markAttendance(status) {
 }
 
 function applyLeave() {
+  console.log('APPLYLEAVE BUTTON CLICKED!');  // ← Browser console
   dbg('[applyLeave] 🟢 FUNCTION STARTED!', 'info');
   
   const from = document.getElementById('lv-from')?.value;
   const to   = document.getElementById('lv-to')?.value   || from;
   const reason = document.getElementById('lv-reason')?.value;
+  
+  console.log('From:', from, 'To:', to, 'Reason:', reason);
+  dbg('[applyLeave] 📝 From: ' + from + ' To: ' + to + ' Reason: ' + reason, 'info');
   
   if (!from) { 
     showToast('⚠️ Select from date'); 
