@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.8
+      Version 5.10.9
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.8 - recordId Fix + Error Propagation', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.9 - All Fields in pushAttendance', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.8'; // recordId Fix + Error Propagation
+const APP_VERSION = '5.10.9'; // All Fields in pushAttendance
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2506,15 +2506,36 @@ async function deleteUserFromAW(username) {
 
 // ── ATTENDANCE CRUD (Appwrite-First v5.4.0) ──────────────────────
 
-// Push single attendance record to attendance collection (JSON blob format)
+// Push single attendance record to attendance collection
 async function pushAttendance(record) {
   const docId = String(record.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
-  // Include BOTH required recordId field AND data blob
+  
+  // Send all individual fields that Appwrite schema requires
   const data = { 
-    recordId: record.id,          // ← Required by Appwrite schema
-    data: JSON.stringify(record)  // ← Full record as JSON blob
+    recordId: record.id || '',
+    user: record.user || '',
+    userName: record.userName || record.user || '',
+    project: record.project || '',
+    atype: record.atype || 'attendance',
+    date: record.date || '',
+    status: record.status || '',
+    pmUser: record.pmUser || '',
+    pmName: record.pmName || '',
+    isBackfill: record.isBackfill || false,
+    pmStatus: record.pmStatus || 'pending',
+    adminStatus: record.adminStatus || 'pending',
+    markedBy: record.markedBy || '',
+    markedByName: record.markedByName || '',
+    timestamp: record.timestamp || new Date().toISOString(),
+    pmApprovals: record.pmApprovals ? JSON.stringify(record.pmApprovals) : '',
+    allPMsApproved: record.allPMsApproved || false,
+    leaveFrom: record.leaveFrom || '',
+    leaveTo: record.leaveTo || '',
+    leaveType: record.leaveType || '',
+    reason: record.reason || ''
   };
-  dbg('[pushAttendance] 🚀 Saving ' + record.id, 'info');
+  
+  dbg('[pushAttendance] 🚀 Saving ' + record.id + ' (fields: ' + Object.keys(data).join(', ') + ')', 'info');
   return awUpdate(AW.collections.attendance, docId, data);
 }
 
