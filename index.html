@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.12
+      Version 5.10.13
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.12 - Leave Validation', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.13 - Bifurcated Admin View', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.12'; // Leave Validation
+const APP_VERSION = '5.10.13'; // Bifurcated Admin View
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9411,33 +9411,48 @@ function renderAttendanceAdmin() {
     const pmEntry = Object.entries(usersMap).find(([,u])=>u.role==='pm'&&(u.projects||[]).includes(a.project));
     return pmEntry?.[0] || '';
   };
-  const pending = active.filter(a => {
-    // For multi-PM leaves, only show to admin if ALL PMs have approved
-    if (a.atype === 'leave' && a.pmApprovals && Array.isArray(a.pmApprovals) && a.pmApprovals.length > 0) {
+  // ── BIFURCATED FILTERS ──────────────────────────────────────────────────────
+
+  // LEAVE APPLICATIONS
+  const leavePendingAdmin = active.filter(a => {
+    if (a.atype !== 'leave') return false;
+    if (a.pmApprovals && Array.isArray(a.pmApprovals) && a.pmApprovals.length > 0) {
       return a.allPMsApproved === true && a.adminStatus === 'pending';
     }
-    // For regular attendance or old-style leaves
     return a.pmStatus === 'approved' && a.adminStatus === 'pending';
-  }).concat(active.filter(a=>a.pmStatus==='pending'&&a.adminStatus==='pending'&&isPMsOwnRecord(a)));
-  // Build map of current PM for each user (mirrors what PM's own team view shows)
-  const userCurrentPM = {};
-  Object.entries(usersMap).forEach(([u, v]) => {
-    if (isEngineer(v.role) && !deleted.includes(u)) {
-      const pmEntry = Object.entries(usersMap).find(([,pm]) =>
-        pm.role==='pm' && (pm.projects||[]).some(p=>(v.projects||[]).includes(p))
-      );
-      if (pmEntry) userCurrentPM[u] = pmEntry[0];
-    }
   });
-  // Only count records where: pmStatus=pending, user still exists, user is still under a PM today
-  const pmPending = active.filter(a =>
-    a.pmStatus==='pending' &&
-    !deleted.includes(a.user) &&
+
+  const leaveAwaitingPM = active.filter(a => {
+    if (a.atype !== 'leave') return false;
+    if (a.pmApprovals && Array.isArray(a.pmApprovals) && a.pmApprovals.length > 0) {
+      return a.allPMsApproved === false && a.adminStatus === 'pending';
+    }
+    return a.pmStatus === 'pending' && a.adminStatus === 'pending';
+  });
+
+  const leaveDone = active.filter(a =>
+    a.atype === 'leave' && a.adminStatus !== 'pending'
+  ).sort((a,b) => (b.leaveFrom||b.date||'').localeCompare(a.leaveFrom||a.date||'')).slice(0,20);
+
+  // DAILY ATTENDANCE
+  const attPendingAdmin = active.filter(a =>
+    a.atype === 'attendance' &&
+    (a.pmStatus === 'approved' || isPMsOwnRecord(a)) &&
+    a.adminStatus === 'pending'
+  );
+
+  const attAwaitingPM = active.filter(a =>
+    a.atype === 'attendance' &&
+    a.pmStatus === 'pending' &&
+    a.adminStatus === 'pending' &&
     !isPMsOwnRecord(a) &&
     usersMap[a.user] &&
-    userCurrentPM[a.user] // user is currently assigned to a PM
+    userCurrentPM[a.user]
   );
-  const done = active.filter(a=>a.adminStatus!=='pending').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
+
+  const attDone = active.filter(a =>
+    a.atype === 'attendance' && a.adminStatus !== 'pending'
+  ).sort((a,b) => b.date.localeCompare(a.date)).slice(0,30);
 
   // Generate last 12 months for export selector
   const exportMonths = [];
@@ -9534,29 +9549,81 @@ function renderAttendanceAdmin() {
     html += monthlyAttendanceSummary(selUser, active);
   }
 
-  if (pmPending.length) {
-    const users2 = getUsers();
-    const perPM = {};
-    pmPending.forEach(a => {
-      // Use current PM for this user (not stored pmUser which may be outdated)
-      const currentPMKey = userCurrentPM[a.user] || a.pmUser || 'unknown';
-      const pmDisplayName = users2[currentPMKey]?.name || a.pmName || currentPMKey;
-      if (!perPM[pmDisplayName]) perPM[pmDisplayName] = 0;
-      perPM[pmDisplayName]++;
-    });
-    const summary = Object.entries(perPM).map(([pm, count]) => `${count} record(s) → <strong>${pm}</strong>`).join(' · ');
-    html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--orange)">⏳ ${pmPending.length} record(s) awaiting PM approval — ${summary}</div>`;
+  // ── 🏖️ LEAVE APPLICATIONS SECTION ─────────────────────────────────────────
+  html += `<div class="section-title mt-3 mb-2">🏖️ Leave Applications</div>`;
+
+  // Leaves awaiting admin approval (all PMs approved)
+  if (leavePendingAdmin.length) {
+    html += `<div class="card-title mb-2" style="color:var(--blue)">📋 Awaiting Your Approval (${leavePendingAdmin.length})</div>`;
+    html += leavePendingAdmin.map(a => attendanceCard(a, 'admin')).join('');
   }
 
-  if (pending.length) {
-    html += `<div class="card-title mb-2" style="color:var(--blue)">📋 Awaiting Final Approval (${pending.length})</div>`;
-    html += pending.map(a => attendanceCard(a, 'admin')).join('');
+  // Leaves still awaiting PM approval (info only)
+  if (leaveAwaitingPM.length) {
+    // Group by PM
+    const perPM = {};
+    leaveAwaitingPM.forEach(a => {
+      if (a.pmApprovals && Array.isArray(a.pmApprovals)) {
+        a.pmApprovals.filter(p => p.status === 'pending').forEach(p => {
+          if (!perPM[p.name]) perPM[p.name] = 0;
+          perPM[p.name]++;
+        });
+      } else {
+        const pmName = a.pmName || usersMap[a.pmUser]?.name || 'PM';
+        if (!perPM[pmName]) perPM[pmName] = 0;
+        perPM[pmName]++;
+      }
+    });
+    const summary = Object.entries(perPM).map(([pm, c]) => `<strong>${pm}</strong>: ${c}`).join(' · ');
+    html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:var(--orange)">
+      ⏳ ${leaveAwaitingPM.length} leave(s) awaiting PM approval — ${summary}
+    </div>`;
   }
-  if (done.length) {
-    html += `<div class="card-title mb-2 mt-3">✅ Approved / Rejected</div>`;
-    html += done.map(a => attendanceCard(a, 'admin')).join('');
+
+  // Leaves done
+  if (leaveDone.length) {
+    html += `<div class="card-title mb-2 mt-2" style="color:var(--muted)">✅ Reviewed Leave Applications (${leaveDone.length})</div>`;
+    html += leaveDone.map(a => attendanceCard(a, 'admin')).join('');
   }
-  if (!active.length) html += `<div class="empty-state"><div class="icon">📋</div><p>No attendance records yet.</p></div>`;
+
+  if (!leavePendingAdmin.length && !leaveAwaitingPM.length && !leaveDone.length) {
+    html += `<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">No leave applications yet.</div>`;
+  }
+
+  // ── 📅 DAILY ATTENDANCE SECTION ────────────────────────────────────────────
+  html += `<div class="section-title mt-4 mb-2">📅 Daily Attendance</div>`;
+
+  // Attendance awaiting admin approval
+  if (attPendingAdmin.length) {
+    html += `<div class="card-title mb-2" style="color:var(--blue)">📋 Awaiting Your Approval (${attPendingAdmin.length})</div>`;
+    html += attPendingAdmin.map(a => attendanceCard(a, 'admin')).join('');
+  }
+
+  // Attendance awaiting PM approval (info only)
+  if (attAwaitingPM.length) {
+    const perPM2 = {};
+    attAwaitingPM.forEach(a => {
+      const pmKey = userCurrentPM[a.user] || a.pmUser || 'unknown';
+      const pmName = usersMap[pmKey]?.name || a.pmName || pmKey;
+      if (!perPM2[pmName]) perPM2[pmName] = 0;
+      perPM2[pmName]++;
+    });
+    const summary2 = Object.entries(perPM2).map(([pm, c]) => `<strong>${pm}</strong>: ${c}`).join(' · ');
+    html += `<div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:var(--orange)">
+      ⏳ ${attAwaitingPM.length} attendance record(s) awaiting PM approval — ${summary2}
+    </div>`;
+  }
+
+  // Attendance done
+  if (attDone.length) {
+    html += `<div class="card-title mb-2 mt-2" style="color:var(--muted)">✅ Reviewed Attendance (${attDone.length})</div>`;
+    html += attDone.map(a => attendanceCard(a, 'admin')).join('');
+  }
+
+  if (!attPendingAdmin.length && !attAwaitingPM.length && !attDone.length) {
+    html += `<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">No attendance records yet.</div>`;
+  }
+
   return html;
 }
 
