@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.27
+      Version 5.10.28
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.27 - Store Transfers Tab Removed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.28 - Duplicate Variable Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.27'; // Store Transfers Tab Removed
+const APP_VERSION = '5.10.28'; // Duplicate Variable Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -10868,7 +10868,6 @@ const isAdmin = () => currentRole === 'admin';
 
 // Global variables
 let _storeFilterSite = 'all';
-let _transferFilterSite = 'all';
 let _storePhotoData = null;
 
 function renderStoreTab() {
