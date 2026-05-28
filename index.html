@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.23
+      Version 5.10.25
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.23 - userCurrentPM Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.25 - Clear Failure Messages', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.23'; // userCurrentPM Fix
+const APP_VERSION = '5.10.25'; // Clear Failure Messages
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -6278,7 +6278,7 @@ async function deleteReport(id) {
         _reportsCache = getReports();
         _reportsCache.push(r);
         renderCurrentTab();  // ← Rollback UI
-        showToast('❌ Failed to delete from server');
+        showToast('❌ Failed to delete. Check internet and try again.');
         setSyncStatus('offline');
       }
     } catch (err) {
@@ -7977,7 +7977,7 @@ async function addProjectToUser(username) {
     users[username].projects = originalProjects;
     _usersCache[username] = users[username];
     
-    showToast('❌ Failed to add: ' + err.message);
+    showToast('❌ Failed to add. Check internet and try again.');
     document.getElementById('main').innerHTML = renderUsersTab();
     return; // ← Stop here if push failed
   }
@@ -8047,7 +8047,7 @@ async function removeProjectFromUser(username, proj) {
     _usersCache[username] = users[username];
     
     dbg(`[removeProjectFromUser] 🔄 Rolled back to: ${JSON.stringify(originalProjects)}`);
-    showToast('❌ Failed to remove: ' + err.message);
+    showToast('❌ Failed to remove. Check internet and try again.');
     document.getElementById('main').innerHTML = renderUsersTab();
     return; // ← Stop here if push failed
   }
@@ -9055,7 +9055,7 @@ function markAttendance(status) {
     dbg('[markAttendance] ✅ COMPLETE - Attendance saved locally after Appwrite confirmed', 'info');
   }).catch(e => {
     dbg('[markAttendance] ❌ APPWRITE FAILED: ' + e.message, 'error');
-    showToast('❌ Failed to mark attendance: ' + e.message);
+    showToast('❌ Failed to mark attendance. Check internet and try again.');
     // Nothing saved - no local cache update
   });
 }
@@ -9172,7 +9172,7 @@ function applyLeave() {
     dbg('[applyLeave] ✅ COMPLETE - Leave saved locally after Appwrite confirmed', 'info');
   }).catch(err => {
     dbg('[applyLeave] ❌ APPWRITE FAILED: ' + err.message, 'error');
-    showToast('❌ Failed to apply leave: ' + err.message);
+    showToast('❌ Failed to apply leave. Check internet and try again.');
     // Nothing saved - no local cache update
   });
 }
@@ -9979,7 +9979,7 @@ async function reviewAttendance(id, role, decision) {
     }
     saveAttendance(all);
     
-    showToast('❌ Failed: ' + e.message);
+    showToast('❌ Failed. Check internet and try again.');
     renderCurrentTab();  // ← Rollback UI
   }
 }
@@ -10209,7 +10209,7 @@ async function deleteMachine(id) {
         document.getElementById('settingsContent').innerHTML = renderSettingsMachinery();
         showToast('🗑️ Machine deleted');
       } catch (err) {
-        showToast('❌ Failed to delete: ' + err.message);
+        showToast('❌ Failed to delete. Check internet and try again.');
         console.error('[deleteMachine] Error:', err);
       }
     }
@@ -10592,7 +10592,7 @@ async function saveMachine(editId) {
     closeFormModal();
     renderCurrentTab();
   } catch (err) {
-    showToast('❌ Failed to save: ' + err.message);
+    showToast('❌ Failed to save. Check internet and try again.');
     console.error('[saveMachine] Error:', err);
   }
 }
@@ -10700,7 +10700,7 @@ async function saveMachLog() {
     closeFormModal();
     renderCurrentTab();
   } catch (err) {
-    showToast('❌ Failed to save: ' + err.message);
+    showToast('❌ Failed to save. Check internet and try again.');
     console.error('[saveMachLog] Error:', err);
   }
 }
@@ -11224,49 +11224,44 @@ function saveStoreItem(editId) {
     item.updatedBy = currentUser;
     item.updatedByName = users[currentUser]?.name || currentUser;
     
-    // OPTIMISTIC UPDATE: Update cache immediately
-    saveStoreItems(items);
+    // PURE AW-FIRST: Push to Appwrite FIRST
     closeFormModal();
     showToast('⏳ Updating item...', 'info');
-    renderCurrentTab();  // ← Update UI immediately!
     
-    // Push to Appwrite in background
     pushStoreItem(item).then(() => {
+      // Only save locally AFTER Appwrite confirms
+      saveStoreItems(items);
       showToast('✅ Item updated');
+      renderCurrentTab();
     }).catch(e => {
       dbg('[saveStoreItem] ❌ Update failed: ' + e.message, 'error');
-      showToast('⚠️ Updated locally (will sync later)');
+      showToast('❌ Failed to update. Check internet and try again.');
     });
+    
   } else {
     // Add new item
     const newItem = {
       id: 'SI_' + Date.now(),
-      description,
-      qty,
-      unit,
-      location,
-      site,
-      photo,
-      condition,
+      description, qty, unit, location, site, photo, condition,
       addedBy: currentUser,
       addedByName: users[currentUser]?.name || currentUser,
       addedDate: new Date().toISOString(),
       lastUpdated: new Date().toISOString()
     };
     
-    // OPTIMISTIC UPDATE: Add to cache immediately
-    items.push(newItem);
-    saveStoreItems(items);
+    // PURE AW-FIRST: Push to Appwrite FIRST
     closeFormModal();
     showToast('⏳ Adding item...', 'info');
-    renderCurrentTab();  // ← Update UI immediately!
     
-    // Push to Appwrite in background
     pushStoreItem(newItem).then(() => {
+      // Only save locally AFTER Appwrite confirms
+      items.push(newItem);
+      saveStoreItems(items);
       showToast('✅ Item added');
+      renderCurrentTab();
     }).catch(e => {
       dbg('[saveStoreItem] ❌ Add failed: ' + e.message, 'error');
-      showToast('⚠️ Added locally (will sync later)');
+      showToast('❌ Failed to add. Check internet and try again.');
     });
   }
 }
@@ -11396,16 +11391,7 @@ function saveTransfer(itemId) {
     items.push(destItem);
   }
   
-  // Remove source item if qty is 0
-  const updatedItems = items.filter(i=>!(i.id===itemId && i.qty <= 0));
-  
-  // OPTIMISTIC UPDATE: Update cache immediately
-  saveStoreItems(updatedItems);
-  closeFormModal();
-  showToast(`⏳ Transferring ${qty} ${sourceItem.unit}...`, 'info');
-  renderCurrentTab();  // ← Update UI immediately!
-  
-  // Create transfer record
+  // PURE AW-FIRST: Push to Appwrite FIRST, then save locally
   const transfer = {
     id: 'STX_' + Date.now(),
     type: 'transfer',
@@ -11424,20 +11410,37 @@ function saveTransfer(itemId) {
     timestamp: new Date().toISOString()
   };
   
-  const txns = getStoreTxns();
-  txns.push(transfer);
-  saveStoreTxns(txns);
+  closeFormModal();
+  showToast(`⏳ Transferring ${qty} ${sourceItem.unit}...`, 'info');
   
-  // Push updates to Appwrite in background
   Promise.all([
     sourceItem.qty > 0 ? pushStoreItem(sourceItem) : deleteStoreItemFromAW(itemId),
     pushStoreItem(destItem),
     pushStoreTxn(transfer)
   ]).then(() => {
+    // Only save locally AFTER Appwrite confirms ALL pushes
+    const updatedItems2 = getStoreItems();
+    const srcIdx = updatedItems2.findIndex(i=>i.id===itemId);
+    if (sourceItem.qty > 0) {
+      if (srcIdx > -1) updatedItems2[srcIdx] = sourceItem;
+    } else {
+      updatedItems2.splice(srcIdx, 1);
+    }
+    const destIdx = updatedItems2.findIndex(i=>i.id===destItem.id);
+    if (destIdx > -1) updatedItems2[destIdx] = destItem;
+    else updatedItems2.push(destItem);
+    saveStoreItems(updatedItems2);
+    
+    const txns = getStoreTxns();
+    txns.push(transfer);
+    saveStoreTxns(txns);
+    
     showToast(`✅ Transferred ${qty} ${sourceItem.unit} to ${toSite}`);
+    renderCurrentTab();
   }).catch(e => {
     dbg('[saveTransfer] ❌ Transfer failed: ' + e.message, 'error');
-    showToast('⚠️ Transferred locally (will sync later)');
+    showToast('❌ Failed to transfer. Check internet and try again.');
+    // Nothing saved locally - Appwrite failed
   });
 }
 
@@ -11449,33 +11452,31 @@ function deleteStoreItem(id) {
     '🗑️ Delete Store Item?',
     `Delete "${item.description}"?<br><br>Quantity: ${item.qty} ${item.unit}<br>Site: ${item.site}`,
     async () => {
-      const items = getStoreItems();
-      
-      // OPTIMISTIC UPDATE: Remove immediately
-      const updated = items.filter(i=>i.id!==id);
-      saveStoreItems(updated);
+      // PURE AW-FIRST: Delete from Appwrite FIRST
       closeFormModal();
       showToast('⏳ Deleting item...', 'info');
-      renderCurrentTab();  // ← Update UI immediately!
       
-      // Track deletion
-      const deletedItems = LS.get('phx_deleted_store_items', []);
-      if (!deletedItems.includes(id)) {
-        deletedItems.push(id);
-        LS.set('phx_deleted_store_items', deletedItems);
-      }
-      
-      // Delete from Appwrite in background
       try {
         await deleteStoreItemFromAW(id);
+        
+        // Only remove locally AFTER Appwrite confirms
+        const items = getStoreItems();
+        const updated = items.filter(i=>i.id!==id);
+        saveStoreItems(updated);
+        
+        // Track deletion
+        const deletedItems = LS.get('phx_deleted_store_items', []);
+        if (!deletedItems.includes(id)) {
+          deletedItems.push(id);
+          LS.set('phx_deleted_store_items', deletedItems);
+        }
+        
         showToast('✅ Item deleted');
-      } catch(e) {
-        // ROLLBACK: Restore if delete failed
-        items.push(item);
-        saveStoreItems(items);
         renderCurrentTab();
+      } catch(e) {
         dbg('[deleteStoreItem] ❌ Delete failed: ' + e.message, 'error');
-        showToast('❌ Failed to delete: ' + e.message);
+        showToast('❌ Failed to delete. Check internet and try again.');
+        // Nothing removed locally - Appwrite failed
       }
     }
   );
