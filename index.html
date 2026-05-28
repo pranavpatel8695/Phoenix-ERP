@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.28
+      Version 5.10.29
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.28 - Duplicate Variable Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.29 - Pipeline Pure AW-First', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.28'; // Duplicate Variable Fix
+const APP_VERSION = '5.10.29'; // Pipeline Pure AW-First
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -5380,34 +5380,36 @@ function submitReport(type) {
   // Keep photos inline in local report (strip only for Appwrite upload)
   const dataLean = { ...data, photosStart: [], photosEnd: [], photos: [] };
 
-  // Save to memory cache (Appwrite-first for reports)
-  const reports = getReports();
-  if (_editId) {
-    const idx = reports.findIndex(r => String(r.id) === String(_editId));
-    if (idx > -1) { dataLean.id = _editId; reports[idx] = dataLean; }
-    else { reports.push(dataLean); }
-  } else {
-    reports.push(dataLean);
-  }
-  _reportsCache = reports;  // Update cache directly
-
+  // PURE AW-FIRST: Push to Appwrite FIRST, wait for confirmation
   closeFormModal();
   showToast(_editId ? '⏳ Updating report...' : '⏳ Submitting report...', 'info');
-  renderCurrentTab();  // ← Update UI immediately!
-
-  // Save to Appwrite in background
   setSyncStatus('syncing');
+
   saveReportToAW(data).then(ok => {
-    setSyncStatus(ok ? 'synced' : 'offline');
     if (ok) {
+      // Only save to cache AFTER Appwrite confirms
+      const reports = getReports();
+      if (_editId) {
+        const idx = reports.findIndex(r => String(r.id) === String(_editId));
+        if (idx > -1) { dataLean.id = _editId; reports[idx] = dataLean; }
+        else { reports.push(dataLean); }
+      } else {
+        reports.push(dataLean);
+      }
+      _reportsCache = reports;
+
+      setSyncStatus('synced');
       showToast(_editId ? '✅ Report updated' : '✅ Report submitted');
+      renderCurrentTab();
     } else {
-      showToast('⚠️ Saved locally — will sync when online');
+      setSyncStatus('offline');
+      showToast('❌ Failed to submit. Check internet and try again.');
     }
   }).catch(err => {
-    console.error('[submitReport] Appwrite error:', err);
+    dbg('[submitReport] ❌ ' + err.message, 'error');
     setSyncStatus('offline');
-    showToast('⚠️ Saved locally — will sync when online');
+    showToast('❌ Failed to submit. Check internet and try again.');
+    // Nothing saved - no cache update
   });
 }
 
@@ -6260,35 +6262,27 @@ async function deleteReport(id) {
     </div>`, 
     async () => {
     try {
-      // OPTIMISTIC UPDATE: Remove from UI immediately
+      // PURE AW-FIRST: Delete from Appwrite FIRST
       showToast('⏳ Deleting report...', 'info');
-      _reportsCache = getReports().filter(r => String(r.id) !== String(id));
-      deletePhotosForReport(id);
-      renderCurrentTab();  // ← Update UI immediately!
-      
-      // APPWRITE-FIRST: Delete from Appwrite in background
       setSyncStatus('syncing');
+
       const ok = await deleteReportFromAW(r);
       
       if (ok) {
+        // Only remove from cache AFTER Appwrite confirms
+        _reportsCache = getReports().filter(r => String(r.id) !== String(id));
+        deletePhotosForReport(id);
         showToast('✅ Report deleted');
         setSyncStatus('synced');
+        renderCurrentTab();
       } else {
-        // ROLLBACK: Restore if delete failed
-        _reportsCache = getReports();
-        _reportsCache.push(r);
-        renderCurrentTab();  // ← Rollback UI
         showToast('❌ Failed to delete. Check internet and try again.');
         setSyncStatus('offline');
       }
     } catch (err) {
-      // ROLLBACK: Restore on error
-      _reportsCache = getReports();
-      _reportsCache.push(r);
-      renderCurrentTab();  // ← Rollback UI
-      showToast('❌ Delete failed: ' + err.message);
+      dbg('[deleteReport] ❌ ' + err.message, 'error');
+      showToast('❌ Failed to delete. Check internet and try again.');
       setSyncStatus('offline');
-      console.error('[deleteReport] Error:', err);
     }
   });
 }
