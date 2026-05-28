@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.29
+      Version 5.10.30
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.29 - Pipeline Pure AW-First', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.30 - Store Photo Compression 300KB', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.29'; // Pipeline Pure AW-First
+const APP_VERSION = '5.10.30'; // Store Photo Compression 300KB
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -11579,9 +11579,16 @@ function handleStorePhotoUpload(input) {
   const file = input.files[0];
   const reader = new FileReader();
   reader.onload = e => {
-    _storePhotoData = e.target.result;
-    document.getElementById('si-photo-prev').innerHTML = 
-      `<div class="photo-thumb"><img src="${_storePhotoData}" style="width:72px;height:72px;object-fit:cover;border-radius:8px"></div>`;
+    // Compress to max 300KB before storing
+    compressPhoto(e.target.result, 300).then(compressed => {
+      _storePhotoData = compressed;
+      const sizeKB = Math.round(compressed.length * 0.75 / 1024);
+      document.getElementById('si-photo-prev').innerHTML = 
+        `<div class="photo-thumb">
+          <img src="${compressed}" style="width:72px;height:72px;object-fit:cover;border-radius:8px">
+          <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">${sizeKB}KB</div>
+        </div>`;
+    });
   };
   reader.readAsDataURL(file);
 }
