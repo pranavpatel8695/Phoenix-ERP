@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.25
+      Version 5.10.26
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.25 - Clear Failure Messages', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.26 - Store Activity Log', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.25'; // Clear Failure Messages
+const APP_VERSION = '5.10.26'; // Store Activity Log
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -10859,6 +10859,7 @@ document.addEventListener('keydown', e => {
 // ── STORE MODULE ─────────────────────────────────────────────
 
 let _storeTab = 'inventory';
+let _logFilterSite = 'all';
 const canManageStore = () => currentRole === 'admin' || currentRole === 'store_manager';
 const isAdmin = () => currentRole === 'admin';
 
@@ -10873,6 +10874,7 @@ function renderStoreTab() {
   const tabs = [
     ['inventory','📦 Inventory'],
     ['transfers','⇄ Transfers'],
+    ['log','📋 Log'],
   ];
   const tabBar = tabs.map(([k,l])=>`<div class="tab-item${_storeTab===k?' active':''}" onclick="_storeTab='${k}';renderCurrentTab()" style="font-size:12px">${l}</div>`).join('');
 
@@ -10892,6 +10894,7 @@ function renderStoreTab() {
 
   if (_storeTab==='inventory')    html += renderStoreInventory();
   if (_storeTab==='transfers')    html += renderStoreTransfers();
+  if (_storeTab==='log')          html += renderStoreLog();
   return html;
 }
 
@@ -11044,7 +11047,97 @@ function renderStoreTransfers() {
   return html;
 }
 
-// ── STORE ITEM FORMS ──
+// ── STORE LOG ──────────────────────────────────────────────────
+
+function pushStoreLog(action, item, extra) {
+  // Save a log entry as a store txn with type='log'
+  const users = getUsers();
+  const log = {
+    id: 'SLG_' + Date.now(),
+    type: 'log',
+    action: action,                                      // 'add' | 'edit' | 'delete' | 'transfer'
+    itemDescription: item?.description || '',
+    itemId: item?.id || '',
+    site: item?.site || extra?.fromSite || '',
+    qty: item?.qty ?? '',
+    unit: item?.unit || '',
+    by: currentUser,
+    byName: users[currentUser]?.name || currentUser,
+    timestamp: new Date().toISOString(),
+    details: extra || {}
+  };
+  // Push to Appwrite in background (log is non-critical)
+  const txns = getStoreTxns();
+  txns.push(log);
+  saveStoreTxns(txns);
+  pushStoreTxn(log).catch(e => dbg('[pushStoreLog] ❌ ' + e.message, 'warn'));
+}
+
+function renderStoreLog() {
+  const allLogs = getStoreTxns()
+    .filter(t => t.type === 'log' || t.type === 'transfer')
+    .sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
+
+  if (!allLogs.length) {
+    return '<div class="empty-state"><div class="icon">📋</div><p>No activity yet.</p><p style="font-size:12px;color:var(--muted)">All store actions will be recorded here.</p></div>';
+  }
+
+  const actionConfig = {
+    add:      { icon: '➕', label: 'Added',     color: 'var(--green)' },
+    edit:     { icon: '✏️', label: 'Updated',   color: 'var(--blue)' },
+    delete:   { icon: '🗑️', label: 'Deleted',   color: 'var(--red)' },
+    transfer: { icon: '⇄',  label: 'Transferred', color: 'var(--cyan)' },
+  };
+
+  // Filter by site
+  const sites = [...new Set(allLogs.map(l => l.site || l.fromSite).filter(Boolean))].sort();
+  const selSite = _logFilterSite || 'all';
+  const filtered = selSite === 'all' ? allLogs : allLogs.filter(l => (l.site||l.fromSite)===selSite || l.toSite===selSite);
+
+  let html = `<div class="flex gap-2 mb-3">
+    <select onchange="_logFilterSite=this.value;renderCurrentTab()" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px">
+      <option value="all"${selSite==='all'?' selected':''}>All Sites (${allLogs.length} entries)</option>
+      ${sites.map(s=>`<option value="${s}"${selSite===s?' selected':''}>${s}</option>`).join('')}
+    </select>
+  </div>`;
+
+  html += filtered.slice(0, 100).map(l => {
+    const cfg = actionConfig[l.action || l.type] || { icon: '📋', label: l.action||l.type, color: 'var(--muted)' };
+    const dateStr = new Date(l.timestamp).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+
+    // Build detail line based on action type
+    let detail = '';
+    if (l.action === 'add') {
+      detail = `Added <strong>${l.qty} ${l.unit}</strong> to <strong>${l.site}</strong>`;
+    } else if (l.action === 'edit') {
+      detail = `Updated at <strong>${l.site}</strong>`;
+      if (l.details?.qtyBefore !== undefined) detail += ` · Qty: ${l.details.qtyBefore} → ${l.details.qtyAfter}`;
+    } else if (l.action === 'delete') {
+      detail = `Deleted from <strong>${l.site}</strong>`;
+      if (l.qty) detail += ` · Was: ${l.qty} ${l.unit}`;
+    } else if (l.action === 'transfer' || l.type === 'transfer') {
+      detail = `<strong>${l.qty} ${l.unit}</strong> from <strong style="color:var(--orange)">${l.fromSite||l.site}</strong> → <strong style="color:var(--blue)">${l.toSite||l.details?.toSite||''}</strong>`;
+    }
+
+    return `<div class="card mb-2" style="padding:10px 12px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:28px;height:28px;border-radius:8px;background:${cfg.color}22;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${cfg.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div style="font-size:12px;font-weight:700;color:${cfg.color}">${cfg.label}</div>
+            <div style="font-size:10px;color:var(--muted);flex-shrink:0">${dateStr}</div>
+          </div>
+          <div style="font-size:12px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.itemDescription}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${detail}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">👤 ${l.byName || l.transferredByName || l.by}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return html;
+}
+
 
 function openAddStoreItem() {
   _storePhotoData = null;
@@ -11231,6 +11324,7 @@ function saveStoreItem(editId) {
     pushStoreItem(item).then(() => {
       // Only save locally AFTER Appwrite confirms
       saveStoreItems(items);
+      pushStoreLog('edit', item, { qtyBefore: qty, qtyAfter: item.qty });
       showToast('✅ Item updated');
       renderCurrentTab();
     }).catch(e => {
@@ -11257,6 +11351,7 @@ function saveStoreItem(editId) {
       // Only save locally AFTER Appwrite confirms
       items.push(newItem);
       saveStoreItems(items);
+      pushStoreLog('add', newItem);
       showToast('✅ Item added');
       renderCurrentTab();
     }).catch(e => {
@@ -11436,6 +11531,7 @@ function saveTransfer(itemId) {
     saveStoreTxns(txns);
     
     showToast(`✅ Transferred ${qty} ${sourceItem.unit} to ${toSite}`);
+    pushStoreLog('transfer', sourceItem, { toSite, qty, unit: sourceItem.unit });
     renderCurrentTab();
   }).catch(e => {
     dbg('[saveTransfer] ❌ Transfer failed: ' + e.message, 'error');
@@ -11472,6 +11568,7 @@ function deleteStoreItem(id) {
         }
         
         showToast('✅ Item deleted');
+        pushStoreLog('delete', item);
         renderCurrentTab();
       } catch(e) {
         dbg('[deleteStoreItem] ❌ Delete failed: ' + e.message, 'error');
