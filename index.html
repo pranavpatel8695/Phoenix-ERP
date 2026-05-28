@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.30
+      Version 5.10.31
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.30 - Store Photo Compression 300KB', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.31 - Store Txn txnId Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.30'; // Store Photo Compression 300KB
+const APP_VERSION = '5.10.31'; // Store Txn txnId Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2671,61 +2671,14 @@ function saveStoreTxns(txns) {
 
 // Push store transaction to storeTxns collection (Appwrite-First)
 async function pushStoreTxn(txn) {
-  // Simple: Save entire transaction to Appwrite
-  return saveDoc(AW.collections.storeTxns, txn.id, txn);
-  
-  // Create doc ID from transaction ID
   const docId = String(txn.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
-  
-  // Prepare data - save individual fields (not JSON blob)
+  // Send txnId (required by schema) + full data blob
   const data = {
-    txnId: txn.id,
-    type: txn.type || 'issue',
-    itemId: txn.itemId || '',
-    itemDescription: txn.itemDescription || '',
-    fromSite: txn.fromSite || '',
-    fromLocation: txn.fromLocation || '',
-    toSite: txn.toSite || '',
-    toLocation: txn.toLocation || '',
-    qty: txn.qty || 0,
-    unit: txn.unit || '',
-    date: txn.date || new Date().toISOString().slice(0,10),
-    remarks: txn.remarks || '',
-    user: txn.transferredBy || txn.issuedBy || txn.returnedBy || '',
-    userName: txn.transferredByName || txn.issuedByName || txn.returnedByName || '',
-    timestamp: txn.timestamp || new Date().toISOString()
+    txnId: txn.id || txn.txnId || docId,
+    data: JSON.stringify(txn)
   };
-  
-  try {
-    const result = await _awDB.createDocument(
-      AW.database,
-      AW.collections.storeTxns,
-      docId,
-      data,
-      ['read("any")', 'update("any")', 'delete("any")']
-    );
-    dbg(`[pushStoreTxn] ✅ ${txn.id}`);
-    return result;
-  } catch (err) {
-    if (err.code === 409) {
-      // Document exists, update it
-      const result = await _awDB.updateDocument(
-        AW.database,
-        AW.collections.storeTxns,
-        docId,
-        data
-      );
-      dbg(`[pushStoreTxn] ✅ updated ${txn.id}`);
-      return result;
-    }
-    // If attribute error (new fields don't exist), fall back to old format
-    if (err.message && (err.message.includes('attribute') || err.message.includes('Attribute'))) {
-      dbg(`[pushStoreTxn] ⚠️ New attributes not found, using old format`, 'warn');
-      return saveDoc(AW.collections.storeTxns, txn.id, txn);
-    }
-    dbg(`[pushStoreTxn] ❌ ${txn.id}: ${err.message}`, 'error');
-    throw err;
-  }
+  dbg('[pushStoreTxn] 🚀 Saving ' + txn.id);
+  return awUpdate(AW.collections.storeTxns, docId, data);
 }
 
 // Delete store transaction
@@ -11049,8 +11002,9 @@ function pushStoreLog(action, item, extra) {
   const users = getUsers();
   const log = {
     id: 'SLG_' + Date.now(),
+    txnId: 'SLG_' + Date.now(),                         // ← Required by store_txns schema
     type: 'log',
-    action: action,                                      // 'add' | 'edit' | 'delete' | 'transfer'
+    action: action,
     itemDescription: item?.description || '',
     itemId: item?.id || '',
     site: item?.site || extra?.fromSite || '',
