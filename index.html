@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.20
+      Version 5.10.21
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.20 - Attendance Module Correct Routing', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.21 - Tab Debug Trace', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.20'; // Attendance Module Correct Routing
+const APP_VERSION = '5.10.21'; // Tab Debug Trace
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -3248,6 +3248,7 @@ function showUserMenu() {
 // ── TABS ─────────────────────────────────────────────────────
 function switchTab(tab) {
   activeTab = tab;
+  dbg('[switchTab] tab=' + tab + ' currentModule=' + currentModule, 'info');
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tab);
   });
@@ -3256,6 +3257,7 @@ function switchTab(tab) {
 
 function renderCurrentTab() {
   const main = document.getElementById('main');
+  dbg('[renderCurrentTab] activeTab=' + activeTab + ' currentModule=' + currentModule, 'info');
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
     case 'submit':
