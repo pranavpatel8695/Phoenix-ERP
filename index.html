@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.21
+      Version 5.10.22
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.21 - Tab Debug Trace', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.22 - Attendance Error Catch', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.21'; // Tab Debug Trace
+const APP_VERSION = '5.10.22'; // Attendance Error Catch
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -3261,7 +3261,13 @@ function renderCurrentTab() {
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
     case 'submit':
-      if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); break; }
+      if (currentModule==='attendance') { 
+        dbg('[renderCurrentTab] → renderAttendanceTab (submit)', 'info');
+        const attHtml = renderAttendanceTab();
+        dbg('[renderCurrentTab] renderAttendanceTab returned length: ' + (attHtml||'').length, 'info');
+        main.innerHTML = attHtml;
+        break; 
+      }
       if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); break; }
       if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
@@ -3271,7 +3277,13 @@ function renderCurrentTab() {
       main.innerHTML=renderSubmitTab();
       break;
     case 'reports':
-      if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); break; }
+      if (currentModule==='attendance') { 
+        dbg('[renderCurrentTab] → renderAttendanceTab (reports)', 'info');
+        const attHtml2 = renderAttendanceTab();
+        dbg('[renderCurrentTab] renderAttendanceTab returned length: ' + (attHtml2||'').length, 'info');
+        main.innerHTML = attHtml2;
+        break; 
+      }
       if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); break; }
       if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
@@ -8723,9 +8735,19 @@ async function migrateLocalDataToAppwrite() {
 // ── ATTENDANCE MODULE ────────────────────────────────────────
 
 function renderAttendanceTab() {
-  if (isEngineer(currentRole)) return renderAttendanceEngineer();
-  if (currentRole === 'pm')        return renderAttendancePM();
-  return renderAttendanceAdmin();
+  try {
+    dbg('[renderAttendanceTab] role=' + currentRole, 'info');
+    if (isEngineer(currentRole)) return renderAttendanceEngineer();
+    if (currentRole === 'pm')    return renderAttendancePM();
+    return renderAttendanceAdmin();
+  } catch(e) {
+    dbg('[renderAttendanceTab] ❌ ERROR: ' + e.message, 'error');
+    console.error('[renderAttendanceTab] Error:', e);
+    return `<div class="card" style="color:var(--red)">
+      ❌ Attendance Error: ${e.message}<br>
+      <small>Check debug log for details</small>
+    </div>`;
+  }
 }
 
 // ── ENGINEER VIEW ──
