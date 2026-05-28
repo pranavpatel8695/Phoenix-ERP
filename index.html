@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.26
+      Version 5.10.27
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.26 - Store Activity Log', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.27 - Store Transfers Tab Removed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.26'; // Store Activity Log
+const APP_VERSION = '5.10.27'; // Store Transfers Tab Removed
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -10860,6 +10860,7 @@ document.addEventListener('keydown', e => {
 
 let _storeTab = 'inventory';
 let _logFilterSite = 'all';
+let _transferFilterSite = 'all';
 const canManageStore = () => currentRole === 'admin' || currentRole === 'store_manager';
 const isAdmin = () => currentRole === 'admin';
 
@@ -10871,9 +10872,11 @@ let _transferFilterSite = 'all';
 let _storePhotoData = null;
 
 function renderStoreTab() {
+  // Guard: if storeTab is 'transfers' (removed), reset to log
+  if (_storeTab === 'transfers') _storeTab = 'log';
+
   const tabs = [
     ['inventory','📦 Inventory'],
-    ['transfers','⇄ Transfers'],
     ['log','📋 Log'],
   ];
   const tabBar = tabs.map(([k,l])=>`<div class="tab-item${_storeTab===k?' active':''}" onclick="_storeTab='${k}';renderCurrentTab()" style="font-size:12px">${l}</div>`).join('');
@@ -10893,7 +10896,6 @@ function renderStoreTab() {
   <div class="tab-bar mb-3">${tabBar}</div>`;
 
   if (_storeTab==='inventory')    html += renderStoreInventory();
-  if (_storeTab==='transfers')    html += renderStoreTransfers();
   if (_storeTab==='log')          html += renderStoreLog();
   return html;
 }
