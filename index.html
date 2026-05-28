@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.31
+      Version 5.10.33
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.31 - Store Txn txnId Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.33 - Store Txn Schema Match', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.31'; // Store Txn txnId Fix
+const APP_VERSION = '5.10.33'; // Store Txn Schema Match
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2672,12 +2672,31 @@ function saveStoreTxns(txns) {
 // Push store transaction to storeTxns collection (Appwrite-First)
 async function pushStoreTxn(txn) {
   const docId = String(txn.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
-  // Send txnId (required by schema) + full data blob
+  // Match EXACT Appwrite store_txns schema
   const data = {
-    txnId: txn.id || txn.txnId || docId,
-    data: JSON.stringify(txn)
+    txnid:           txn.id || txn.txnId || docId,          // required - string
+    type:            txn.type || 'transfer',                  // required - string
+    qty:             parseFloat(txn.qty) || 0,               // required - double!
+    unit:            txn.unit || 'Nos.',                     // required - string
+    date:            txn.date || new Date().toISOString().slice(0,10), // required - string
+    timestamp:       txn.timestamp || new Date().toISOString(),        // required - string
+    // Optional fields
+    data:            JSON.stringify(txn),                    // full record blob
+    itemid:          txn.itemId || '',
+    itemDescription: txn.itemDescription || '',
+    fromSite:        txn.fromSite || txn.site || '',
+    fromLocation:    txn.fromLocation || '',
+    toSite:          txn.toSite || '',
+    toLocation:      txn.toLocation || '',
+    remarks:         txn.remarks || '',
+    user:            txn.transferredBy || txn.by || txn.user || '',
+    userName:        txn.transferredByName || txn.byName || txn.userName || '',
+    action:          txn.action || '',
+    by:              txn.by || txn.transferredBy || '',
+    byName:          txn.byName || txn.transferredByName || '',
+    details:         txn.details ? JSON.stringify(txn.details) : ''
   };
-  dbg('[pushStoreTxn] 🚀 Saving ' + txn.id);
+  dbg('[pushStoreTxn] 🚀 Saving ' + txn.id + ' type=' + data.type + ' qty=' + data.qty);
   return awUpdate(AW.collections.storeTxns, docId, data);
 }
 
