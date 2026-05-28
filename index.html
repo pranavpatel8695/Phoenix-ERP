@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.34
+      Version 5.10.37
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.34 - txnId Case Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.37 - Details Field Restored', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.34'; // txnId Case Fix
+const APP_VERSION = '5.10.37'; // Details Field Restored
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -2572,67 +2572,9 @@ function saveAttendance(records) {
 
 // Push single store item to storeItems collection (Appwrite-First)
 async function pushStoreItem(item) {
-  // Simple: Save entire item (including photo) to Appwrite
-  // Collection must have 'data' attribute with size >= 1000000 chars
+  // Store items saved as JSON blob in 'data' field
+  // Photos are compressed to 300KB before saving
   return saveDoc(AW.collections.storeItems, item.id, item);
-  
-  const migrationCompleted = LS.get('phx_migration_completed', false);
-  if (!migrationCompleted) {
-    // Fallback to old pattern if migration not complete
-    return saveDoc(AW.collections.storeItems, item.id, item);
-  }
-  
-  // Create doc ID from item ID
-  const docId = String(item.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
-  
-  // Prepare data - save individual fields (not JSON blob)
-  const data = {
-    itemId: item.id,
-    description: item.description || '',
-    qty: item.qty || 0,
-    unit: item.unit || '',
-    location: item.location || '',
-    site: item.site || '',
-    condition: item.condition || 'good',
-    photo: item.photo || '',
-    addedBy: item.addedBy || '',
-    addedByName: item.addedByName || '',
-    addedDate: item.addedDate || new Date().toISOString(),
-    lastUpdated: item.lastUpdated || new Date().toISOString(),
-    updatedBy: item.updatedBy || '',
-    updatedByName: item.updatedByName || ''
-  };
-  
-  try {
-    const result = await _awDB.createDocument(
-      AW.database,
-      AW.collections.storeItems,
-      docId,
-      data,
-      ['read("any")', 'update("any")', 'delete("any")']
-    );
-    dbg(`[pushStoreItem] ✅ ${item.id}`);
-    return result;
-  } catch (err) {
-    if (err.code === 409) {
-      // Document exists, update it
-      const result = await _awDB.updateDocument(
-        AW.database,
-        AW.collections.storeItems,
-        docId,
-        data
-      );
-      dbg(`[pushStoreItem] ✅ updated ${item.id}`);
-      return result;
-    }
-    // If attribute error (new fields don't exist), fall back to old format
-    if (err.message && (err.message.includes('attribute') || err.message.includes('Attribute'))) {
-      dbg(`[pushStoreItem] ⚠️ New attributes not found, using old format`, 'warn');
-      return saveDoc(AW.collections.storeItems, item.id, item);
-    }
-    dbg(`[pushStoreItem] ❌ ${item.id}: ${err.message}`, 'error');
-    throw err;
-  }
 }
 
 // Delete store item from Appwrite
@@ -2674,15 +2616,16 @@ async function pushStoreTxn(txn) {
   const docId = String(txn.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
   // Match EXACT Appwrite store_txns schema
   const data = {
-    txnId:           txn.id || txn.txnId || docId,          // required - string (camelCase!)
-    type:            txn.type || 'transfer',                  // required - string
-    qty:             parseFloat(txn.qty) || 0,               // required - double!
-    unit:            txn.unit || 'Nos.',                     // required - string
-    date:            txn.date || new Date().toISOString().slice(0,10), // required - string
-    timestamp:       txn.timestamp || new Date().toISOString(),        // required - string
-    // Optional fields
-    data:            JSON.stringify(txn),                    // full record blob
-    itemid:          txn.itemId || '',
+    // Required fields
+    txnId:           txn.id || txn.txnId || docId,               // required string
+    type:            txn.type || 'transfer',                       // required string
+    qty:             parseFloat(txn.qty) || 0,                    // required double
+    unit:            txn.unit || 'Nos.',                          // required string
+    date:            txn.date || new Date().toISOString().slice(0,10), // required string
+    timestamp:       txn.timestamp || new Date().toISOString(),    // required string
+    // Optional fields - exact names from Appwrite schema
+    data:            JSON.stringify(txn),                         // full blob
+    itemId:          txn.itemId || '',
     itemDescription: txn.itemDescription || '',
     fromSite:        txn.fromSite || txn.site || '',
     fromLocation:    txn.fromLocation || '',
