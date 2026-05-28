@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.19
+      Version 5.10.20
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.19 - Attendance Module Civil Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.20 - Attendance Module Correct Routing', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.19'; // Attendance Module Civil Fix
+const APP_VERSION = '5.10.20'; // Attendance Module Correct Routing
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -3259,20 +3259,19 @@ function renderCurrentTab() {
   switch(activeTab) {
     case 'home':     main.innerHTML = renderHome(); break;
     case 'submit':
-      if (currentModule==='attendance' && currentRole !== 'admin') { main.innerHTML=renderAttendanceTab(); }
-      else if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); }
-      else if (currentModule==='store') {
+      if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); break; }
+      if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); break; }
+      if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
         fetchConfig().then(()=>{ if(activeTab==='submit'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
+        break;
       }
-      else {
-        main.innerHTML=renderSubmitTab();
-      }
+      main.innerHTML=renderSubmitTab();
       break;
     case 'reports':
-      if(currentModule==='attendance' && currentRole !== 'admin'){main.innerHTML=renderAttendanceTab();break;}
-      if(currentModule==='machinery'){main.innerHTML=renderMachineryTab();break;}
-      if(currentModule==='store'){
+      if (currentModule==='attendance') { main.innerHTML=renderAttendanceTab(); break; }
+      if (currentModule==='machinery') { main.innerHTML=renderMachineryTab(); break; }
+      if (currentModule==='store') {
         main.innerHTML=renderStoreTab();
         fetchConfig().then(()=>{ if(activeTab==='reports'&&currentModule==='store') main.innerHTML=renderStoreTab(); });
         break;
@@ -3351,7 +3350,7 @@ function renderHome() {
         <div class="name">Civil Work</div>
         <div class="count">${allReports.filter(r=>r.module==='civil').length} reports</div>
       </div>
-      <div class="module-card${currentModule==='attendance'?' selected':''}" onclick="if(currentRole==='admin'){currentModule='attendance';activeTab='attendance';document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.tab==='attendance'));renderCurrentTab();}else{previousModule=currentModule!=='attendance'?currentModule:previousModule;currentModule='attendance';renderCurrentTab();}" style="${currentModule==='attendance'?'border-color:var(--cyan);background:rgba(90,200,250,0.05)':''}">
+      <div class="module-card${currentModule==='attendance'?' selected':''}" onclick="currentModule='attendance';renderCurrentTab()" style="${currentModule==='attendance'?'border-color:var(--cyan);background:rgba(90,200,250,0.05)':''}">
         <div class="icon">🕐</div>
         <div class="name">Attendance</div>
         <div class="count">${getAttendance().length} records</div>
@@ -3508,9 +3507,8 @@ function renderSubmitTab() {
     { id:'civil_other',   icon:'📝', label:'Other',        color:'var(--muted)' },
   ];
 
-  const effectiveModule = (currentModule === 'attendance') ? 'pipeline' : currentModule;
-  const types = effectiveModule === 'pipeline' ? pipeTypes : civilTypes;
-  const moduleLabel = effectiveModule === 'pipeline' ? '🔩 Pipeline Work' : '🏗️ Civil Work';
+  const types = currentModule === 'pipeline' ? pipeTypes : civilTypes;
+  const moduleLabel = currentModule === 'pipeline' ? '🔩 Pipeline Work' : '🏗️ Civil Work';
 
   let html = `
     <div class="section-header">
@@ -5760,12 +5758,11 @@ function renderReportsTab() {
   let reports = allReports.filter(r => vp.includes(r.project));
   dbg(`[renderReportsTab] After project filter: ${reports.length} reports`);
 
-  // Filter by module - treat 'attendance' as 'pipeline' for reports
-  const effectiveModule = (currentModule === 'attendance') ? 'pipeline' : currentModule;
-  if (effectiveModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
-  else if (effectiveModule === 'civil') reports = reports.filter(r => r.module === 'civil');
+  // Filter by module
+  if (currentModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
+  else if (currentModule === 'civil') reports = reports.filter(r => r.module === 'civil');
   
-  dbg(`[renderReportsTab] After module filter (${currentModule}→${effectiveModule}): ${reports.length} reports`);
+  dbg(`[renderReportsTab] After module filter (${currentModule}): ${reports.length} reports`);
 
   reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
@@ -5785,7 +5782,7 @@ function renderReportsTab() {
       <div class="chip active" id="rpt-count">${reports.length} total</div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:0 2px" id="rpt-type-filters">
-      ${buildTypeFilterBtns(effectiveModule)}
+      ${buildTypeFilterBtns(currentModule)}
     </div>`;
 
   // Project filter
