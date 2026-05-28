@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.18
+      Version 5.10.19
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.18 - Admin Attendance Dedicated Tab', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.19 - Attendance Module Civil Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.18'; // Admin Attendance Dedicated Tab
+const APP_VERSION = '5.10.19'; // Attendance Module Civil Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -3508,8 +3508,9 @@ function renderSubmitTab() {
     { id:'civil_other',   icon:'📝', label:'Other',        color:'var(--muted)' },
   ];
 
-  const types = currentModule === 'pipeline' ? pipeTypes : civilTypes;
-  const moduleLabel = currentModule === 'pipeline' ? '🔩 Pipeline Work' : '🏗️ Civil Work';
+  const effectiveModule = (currentModule === 'attendance') ? 'pipeline' : currentModule;
+  const types = effectiveModule === 'pipeline' ? pipeTypes : civilTypes;
+  const moduleLabel = effectiveModule === 'pipeline' ? '🔩 Pipeline Work' : '🏗️ Civil Work';
 
   let html = `
     <div class="section-header">
@@ -5759,12 +5760,12 @@ function renderReportsTab() {
   let reports = allReports.filter(r => vp.includes(r.project));
   dbg(`[renderReportsTab] After project filter: ${reports.length} reports`);
 
-  // Filter by module
-  if (currentModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
-  else if (currentModule === 'civil') reports = reports.filter(r => r.module === 'civil');
-  else reports = reports.filter(r => r.module === 'civil');
+  // Filter by module - treat 'attendance' as 'pipeline' for reports
+  const effectiveModule = (currentModule === 'attendance') ? 'pipeline' : currentModule;
+  if (effectiveModule === 'pipeline') reports = reports.filter(r => !r.module || r.module === 'pipeline');
+  else if (effectiveModule === 'civil') reports = reports.filter(r => r.module === 'civil');
   
-  dbg(`[renderReportsTab] After module filter (${currentModule}): ${reports.length} reports`);
+  dbg(`[renderReportsTab] After module filter (${currentModule}→${effectiveModule}): ${reports.length} reports`);
 
   reports.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
@@ -5784,7 +5785,7 @@ function renderReportsTab() {
       <div class="chip active" id="rpt-count">${reports.length} total</div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:0 2px" id="rpt-type-filters">
-      ${buildTypeFilterBtns(currentModule)}
+      ${buildTypeFilterBtns(effectiveModule)}
     </div>`;
 
   // Project filter
