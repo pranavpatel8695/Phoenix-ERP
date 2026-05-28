@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.22
+      Version 5.10.23
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.22 - Attendance Error Catch', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.23 - userCurrentPM Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.22'; // Attendance Error Catch
+const APP_VERSION = '5.10.23'; // userCurrentPM Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -9435,6 +9435,17 @@ function renderAttendanceAdmin() {
     return pmEntry?.[0] || '';
   };
   // ── BIFURCATED FILTERS ──────────────────────────────────────────────────────
+
+  // Build map of current PM for each user
+  const userCurrentPM = {};
+  Object.entries(usersMap).forEach(([u, v]) => {
+    if (isEngineer(v.role) && !deleted.includes(u)) {
+      const pmEntry = Object.entries(usersMap).find(([,pm]) =>
+        pm.role==='pm' && (pm.projects||[]).some(p=>(v.projects||[]).includes(p))
+      );
+      if (pmEntry) userCurrentPM[u] = pmEntry[0];
+    }
+  });
 
   // LEAVE APPLICATIONS
   const leavePendingAdmin = active.filter(a => {
