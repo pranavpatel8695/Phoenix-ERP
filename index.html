@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.37
+      Version 5.10.38
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.37 - Details Field Restored', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.38 - Store Log Full Info', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.37'; // Details Field Restored
+const APP_VERSION = '5.10.38'; // Store Log Full Info
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -1438,27 +1438,37 @@ async function fetchAllOtherCollections() {
           try {
             // NEW FORMAT: Individual fields (Appwrite-First)
             if (d.txnId) {
+              // Parse data blob for extra fields if available
+              let blob = {};
+              if (d.data) { try { blob = JSON.parse(d.data); } catch(e) {} }
+              
               return {
                 id: d.txnId,
-                type: d.type || 'issue',
-                itemId: d.itemId || '',
-                itemDescription: d.itemDescription || '',
-                fromSite: d.fromSite || '',
-                fromLocation: d.fromLocation || '',
-                toSite: d.toSite || '',
-                toLocation: d.toLocation || '',
-                qty: d.qty || 0,
-                unit: d.unit || '',
-                date: d.date || '',
-                remarks: d.remarks || '',
-                // Support different transaction types
-                transferredBy: d.user || '',
-                transferredByName: d.userName || '',
-                issuedBy: d.user || '',
-                issuedByName: d.userName || '',
-                returnedBy: d.user || '',
-                returnedByName: d.userName || '',
-                timestamp: d.timestamp || ''
+                type: d.type || blob.type || 'issue',
+                itemId: d.itemId || blob.itemId || '',
+                itemDescription: d.itemDescription || blob.itemDescription || '',
+                fromSite: d.fromSite || blob.fromSite || blob.site || '',
+                site: d.fromSite || blob.site || blob.fromSite || '',
+                fromLocation: d.fromLocation || blob.fromLocation || '',
+                toSite: d.toSite || blob.toSite || '',
+                toLocation: d.toLocation || blob.toLocation || '',
+                qty: d.qty || blob.qty || 0,
+                unit: d.unit || blob.unit || '',
+                date: d.date || blob.date || '',
+                remarks: d.remarks || blob.remarks || '',
+                transferredBy: d.user || blob.transferredBy || blob.by || '',
+                transferredByName: d.userName || blob.transferredByName || blob.byName || '',
+                issuedBy: d.user || blob.issuedBy || '',
+                issuedByName: d.userName || blob.issuedByName || '',
+                returnedBy: d.user || blob.returnedBy || '',
+                returnedByName: d.userName || blob.returnedByName || '',
+                timestamp: d.timestamp || blob.timestamp || '',
+                // Log fields
+                action: d.action || blob.action || '',
+                by: d.by || blob.by || blob.transferredBy || '',
+                byName: d.byName || blob.byName || blob.transferredByName || '',
+                details: d.details ? (typeof d.details === 'string' ? JSON.parse(d.details||'{}') : d.details) : (blob.details || {}),
+                data: d.data || ''
               };
             }
             // OLD FORMAT: JSON blob in 'data' field (backwards compatibility)
@@ -11013,34 +11023,50 @@ function renderStoreLog() {
   </div>`;
 
   html += filtered.slice(0, 100).map(l => {
-    const cfg = actionConfig[l.action || l.type] || { icon: '📋', label: l.action||l.type, color: 'var(--muted)' };
-    const dateStr = new Date(l.timestamp).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-
-    // Build detail line based on action type
-    let detail = '';
-    if (l.action === 'add') {
-      detail = `Added <strong>${l.qty} ${l.unit}</strong> to <strong>${l.site}</strong>`;
-    } else if (l.action === 'edit') {
-      detail = `Updated at <strong>${l.site}</strong>`;
-      if (l.details?.qtyBefore !== undefined) detail += ` · Qty: ${l.details.qtyBefore} → ${l.details.qtyAfter}`;
-    } else if (l.action === 'delete') {
-      detail = `Deleted from <strong>${l.site}</strong>`;
-      if (l.qty) detail += ` · Was: ${l.qty} ${l.unit}`;
-    } else if (l.action === 'transfer' || l.type === 'transfer') {
-      detail = `<strong>${l.qty} ${l.unit}</strong> from <strong style="color:var(--orange)">${l.fromSite||l.site}</strong> → <strong style="color:var(--blue)">${l.toSite||l.details?.toSite||''}</strong>`;
+    // Parse blob if action missing from top-level (older records)
+    let record = l;
+    if (!l.action && l.data) {
+      try { record = { ...JSON.parse(l.data), ...l }; } catch(e) {}
     }
+    
+    const action = record.action || (record.type === 'transfer' ? 'transfer' : '');
+    const cfg = actionConfig[action] || { icon: '📋', label: action || record.type || 'Log', color: 'var(--muted)' };
+    const dateStr = new Date(record.timestamp).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+
+    // Build detail line
+    let detail = '';
+    const site = record.site || record.fromSite || '';
+    const qty = record.qty || '';
+    const unit = record.unit || '';
+    
+    if (action === 'add') {
+      detail = `Added <strong>${qty} ${unit}</strong> to <strong>${site}</strong>`;
+    } else if (action === 'edit') {
+      detail = `Updated at <strong>${site}</strong>`;
+      const det = record.details || {};
+      if (det.qtyBefore !== undefined) detail += ` · Qty: ${det.qtyBefore} → ${det.qtyAfter}`;
+    } else if (action === 'delete') {
+      detail = `Deleted from <strong>${site}</strong>`;
+      if (qty) detail += ` · Was: ${qty} ${unit}`;
+    } else if (action === 'transfer') {
+      const toSite = record.toSite || (record.details?.toSite) || '';
+      detail = `<strong>${qty} ${unit}</strong> · <strong style="color:var(--orange)">${site}</strong> → <strong style="color:var(--blue)">${toSite}</strong>`;
+    }
+
+    const byName = record.byName || record.transferredByName || record.by || 'Unknown';
+    const itemDesc = record.itemDescription || '';
 
     return `<div class="card mb-2" style="padding:10px 12px">
       <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="width:28px;height:28px;border-radius:8px;background:${cfg.color}22;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${cfg.icon}</div>
+        <div style="width:32px;height:32px;border-radius:8px;background:${cfg.color}22;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${cfg.icon}</div>
         <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:2px">
             <div style="font-size:12px;font-weight:700;color:${cfg.color}">${cfg.label}</div>
             <div style="font-size:10px;color:var(--muted);flex-shrink:0">${dateStr}</div>
           </div>
-          <div style="font-size:12px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.itemDescription}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${detail}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">👤 ${l.byName || l.transferredByName || l.by}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${itemDesc}</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:2px">${detail}</div>
+          <div style="font-size:10px;color:var(--muted)">👤 ${byName}</div>
         </div>
       </div>
     </div>`;
