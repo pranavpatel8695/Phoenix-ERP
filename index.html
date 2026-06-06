@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.40
+      Version 5.10.41
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.40 - Store Duplicate Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.41 - Transfer Log Duplicate & Qty Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.40'; // Store Duplicate Fix
+const APP_VERSION = '5.10.41'; // Transfer Log Duplicate & Qty Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -10970,18 +10970,20 @@ function renderStoreTransfers() {
 // ── STORE LOG ──────────────────────────────────────────────────
 
 function pushStoreLog(action, item, extra) {
-  // Save a log entry as a store txn with type='log'
   const users = getUsers();
+  // For transfers, use extra.qty (transferred amount), not item.qty (remaining amount)
+  const logQty = (action === 'transfer' && extra?.qty !== undefined) ? extra.qty : (item?.qty ?? 0);
+  
   const log = {
     id: 'SLG_' + Date.now(),
-    txnId: 'SLG_' + Date.now(),                         // ← Required by store_txns schema
+    txnId: 'SLG_' + Date.now(),
     type: 'log',
     action: action,
     itemDescription: item?.description || '',
     itemId: item?.id || '',
     site: item?.site || extra?.fromSite || '',
-    qty: item?.qty ?? '',
-    unit: item?.unit || '',
+    qty: logQty,
+    unit: item?.unit || extra?.unit || '',
     by: currentUser,
     byName: users[currentUser]?.name || currentUser,
     timestamp: new Date().toISOString(),
@@ -10999,7 +11001,7 @@ function pushStoreLog(action, item, extra) {
 
 function renderStoreLog() {
   const allLogs = getStoreTxns()
-    .filter(t => t.type === 'log' || t.type === 'transfer')
+    .filter(t => t.type === 'log')  // Only dedicated log entries - transfer txns excluded to avoid duplicates
     .sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
   if (!allLogs.length) {
