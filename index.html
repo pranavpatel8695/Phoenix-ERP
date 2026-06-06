@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.38
+      Version 5.10.39
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.38 - Store Log Full Info', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.39 - Store Location Removed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.38'; // Store Log Full Info
+const APP_VERSION = '5.10.39'; // Store Location Removed
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -11106,18 +11106,12 @@ function openAddStoreItem() {
       </div>
     </div>
     
-    <div class="form-row">
-      <div class="field-group">
-        <label>Location</label>
-        <input type="text" id="si-loc" placeholder="e.g., Warehouse A, Section 2">
-      </div>
-      <div class="field-group">
+    <div class="field-group">
         <label>Site (Project) *</label>
         <select id="si-site">
           ${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}
         </select>
       </div>
-    </div>
     
     <div class="field-group">
       <label>Condition *</label>
@@ -11177,18 +11171,12 @@ function openEditStoreItem(id) {
       </div>
     </div>
     
-    <div class="form-row">
-      <div class="field-group">
-        <label>Location</label>
-        <input type="text" id="si-loc" value="${item.location||''}">
-      </div>
-      <div class="field-group">
+    <div class="field-group">
         <label>Site (Project) *</label>
         <select id="si-site">
           ${projects.map(p=>`<option value="${p}"${p===item.site?' selected':''}>${p}</option>`).join('')}
         </select>
       </div>
-    </div>
     
     <div class="field-group">
       <label>Condition *</label>
@@ -11224,7 +11212,6 @@ function saveStoreItem(editId) {
   const description = document.getElementById('si-desc')?.value.trim();
   const qty = parseFloat(document.getElementById('si-qty')?.value) || 0;
   const unit = document.getElementById('si-unit')?.value.trim();
-  const location = document.getElementById('si-loc')?.value.trim();
   const site = document.getElementById('si-site')?.value;
   const condition = document.getElementById('si-condition')?.value;
   const photo = _storePhotoData || '';
@@ -11245,7 +11232,6 @@ function saveStoreItem(editId) {
     item.description = description;
     item.qty = qty;
     item.unit = unit;
-    item.location = location;
     item.site = site;
     item.condition = condition;
     if (photo) item.photo = photo;
@@ -11273,7 +11259,7 @@ function saveStoreItem(editId) {
     // Add new item
     const newItem = {
       id: 'SI_' + Date.now(),
-      description, qty, unit, location, site, photo, condition,
+      description, qty, unit, site, photo, condition,
       addedBy: currentUser,
       addedByName: users[currentUser]?.name || currentUser,
       addedDate: new Date().toISOString(),
