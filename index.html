@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.41
+      Version 5.10.42
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.41 - Transfer Log Duplicate & Qty Fix', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.42 - Store Location Fully Removed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.41'; // Transfer Log Duplicate & Qty Fix
+const APP_VERSION = '5.10.42'; // Store Location Fully Removed
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -10888,7 +10888,7 @@ function renderStoreItemCard(item, canManage) {
   // Header: Description + Qty
   card += '<div class="flex justify-between items-start mb-2">';
   card += `<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--text)">${item.description}</div>`;
-  card += `<div style="font-size:10px;color:var(--muted);margin-top:2px">📍 ${item.location || 'No location'}</div></div>`;
+  card += `<div style="font-size:10px;color:var(--muted);margin-top:2px">📦 ${item.site || 'No site'}</div></div>`;
   card += `<div style="text-align:right;margin-left:10px"><div style="font-size:20px;font-weight:700;color:var(--green)">${item.qty}</div>`;
   card += `<div style="font-size:10px;color:var(--muted)">${item.unit}</div></div></div>`;
   
@@ -10948,8 +10948,8 @@ function renderStoreTransfers() {
         <div style="flex:1">
           <div style="font-size:13px;font-weight:700;color:var(--text)">${t.itemDescription}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">
-            <div>📤 From: <strong style="color:var(--orange)">${t.fromSite}</strong> · ${t.fromLocation || 'No location'}</div>
-            <div style="margin-top:2px">📥 To: <strong style="color:var(--blue)">${t.toSite}</strong> · ${t.toLocation || 'No location'}</div>
+            <div>📤 From: <strong style="color:var(--orange)">${t.fromSite}</strong></div>
+            <div style="margin-top:2px">📥 To: <strong style="color:var(--blue)">${t.toSite}</strong></div>
           </div>
           ${t.remarks ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">💬 ${t.remarks}</div>` : ''}
           <div style="font-size:10px;color:var(--muted);margin-top:4px">
@@ -11313,7 +11313,7 @@ function openTransferItem(itemId) {
     <div style="background:rgba(255,159,10,0.1);border-radius:8px;padding:10px;margin-bottom:12px">
       <div style="font-size:11px;color:var(--muted)">From</div>
       <div style="font-size:12px;font-weight:700;color:var(--text)">📁 ${item.site}</div>
-      <div style="font-size:11px;color:var(--muted)">📍 ${item.location || 'No location'}</div>
+      <div style="font-size:11px;color:var(--muted)">📦 ${item.site || ''}</div>
     </div>
     
     <div class="form-row">
@@ -11323,10 +11323,6 @@ function openTransferItem(itemId) {
           <option value="">Select destination</option>
           ${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}
         </select>
-      </div>
-      <div class="field-group">
-        <label>To Location</label>
-        <input type="text" id="tr-loc" placeholder="e.g., Warehouse B">
       </div>
     </div>
     
@@ -11354,7 +11350,6 @@ function openTransferItem(itemId) {
 
 function saveTransfer(itemId) {
   const toSite = document.getElementById('tr-site')?.value;
-  const toLocation = document.getElementById('tr-loc')?.value.trim();
   const qty = parseFloat(document.getElementById('tr-qty')?.value) || 0;
   const date = document.getElementById('tr-date')?.value || localToday();
   const remarks = document.getElementById('tr-remarks')?.value.trim();
@@ -11405,7 +11400,7 @@ function saveTransfer(itemId) {
       description: sourceItem.description,
       qty: qty,
       unit: sourceItem.unit,
-      location: toLocation,
+      location: '',
       site: toSite,
       condition: sourceItem.condition,
       photo: sourceItem.photo || '',
@@ -11424,9 +11419,7 @@ function saveTransfer(itemId) {
     itemId: itemId,
     itemDescription: sourceItem.description,
     fromSite: sourceItem.site,
-    fromLocation: sourceItem.location || '',
     toSite: toSite,
-    toLocation: toLocation,
     qty: qty,
     unit: sourceItem.unit,
     date: date,
