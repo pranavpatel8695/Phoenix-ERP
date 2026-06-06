@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.39
+      Version 5.10.40
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.39 - Store Location Removed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.40 - Store Duplicate Fix', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.39'; // Store Location Removed
+const APP_VERSION = '5.10.40'; // Store Duplicate Fix
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -10988,9 +10988,12 @@ function pushStoreLog(action, item, extra) {
     details: extra || {}
   };
   // Push to Appwrite in background (log is non-critical)
+  // Only add to local cache if not already there (Realtime may add it)
   const txns = getStoreTxns();
-  txns.push(log);
-  saveStoreTxns(txns);
+  if (!txns.find(t => String(t.id) === String(log.id))) {
+    txns.push(log);
+    saveStoreTxns(txns);
+  }
   pushStoreTxn(log).catch(e => dbg('[pushStoreLog] ❌ ' + e.message, 'warn'));
 }
 
@@ -11271,9 +11274,12 @@ function saveStoreItem(editId) {
     showToast('⏳ Adding item...', 'info');
     
     pushStoreItem(newItem).then(() => {
-      // Only save locally AFTER Appwrite confirms
-      items.push(newItem);
-      saveStoreItems(items);
+      // Only add to cache if Realtime hasn't already added it
+      const current = getStoreItems();
+      if (!current.find(i => String(i.id) === String(newItem.id))) {
+        current.push(newItem);
+        saveStoreItems(current);
+      }
       pushStoreLog('add', newItem);
       showToast('✅ Item added');
       renderCurrentTab();
@@ -11436,30 +11442,33 @@ function saveTransfer(itemId) {
     pushStoreItem(destItem),
     pushStoreTxn(transfer)
   ]).then(() => {
-    // Only save locally AFTER Appwrite confirms ALL pushes
+    // Deduplicate: Realtime may have already updated cache
     const updatedItems2 = getStoreItems();
     const srcIdx = updatedItems2.findIndex(i=>i.id===itemId);
     if (sourceItem.qty > 0) {
       if (srcIdx > -1) updatedItems2[srcIdx] = sourceItem;
+      else updatedItems2.push(sourceItem);
     } else {
-      updatedItems2.splice(srcIdx, 1);
+      if (srcIdx > -1) updatedItems2.splice(srcIdx, 1);
     }
     const destIdx = updatedItems2.findIndex(i=>i.id===destItem.id);
     if (destIdx > -1) updatedItems2[destIdx] = destItem;
     else updatedItems2.push(destItem);
     saveStoreItems(updatedItems2);
-    
-    const txns = getStoreTxns();
-    txns.push(transfer);
-    saveStoreTxns(txns);
-    
+
+    // Only add txn if Realtime hasn't already added it
+    const currentTxns = getStoreTxns();
+    if (!currentTxns.find(t => String(t.id) === String(transfer.id))) {
+      currentTxns.push(transfer);
+      saveStoreTxns(currentTxns);
+    }
+
     showToast(`✅ Transferred ${qty} ${sourceItem.unit} to ${toSite}`);
     pushStoreLog('transfer', sourceItem, { toSite, qty, unit: sourceItem.unit });
     renderCurrentTab();
   }).catch(e => {
     dbg('[saveTransfer] ❌ Transfer failed: ' + e.message, 'error');
     showToast('❌ Failed to transfer. Check internet and try again.');
-    // Nothing saved locally - Appwrite failed
   });
 }
 
