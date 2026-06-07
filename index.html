@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.43
+      Version 5.10.44
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.43 - Cleanup Attendance Fixed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.44 - Cleanup Error Diagnosis', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.43'; // Cleanup Attendance Fixed
+const APP_VERSION = '5.10.44'; // Cleanup Error Diagnosis
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -786,8 +786,13 @@ async function awUpdate(collectionId, docId, data) {
 }
 
 async function awDelete(collectionId, docId) {
-  try { await _awDB.deleteDocument(AW.database, collectionId, docId); return true; }
-  catch(e) { console.warn('awDelete error:', e); return false; }
+  try { 
+    await _awDB.deleteDocument(AW.database, collectionId, docId); 
+    return true; 
+  } catch(e) { 
+    dbg('[awDelete] ❌ ' + collectionId + '/' + docId + ': ' + e.message + ' (code:' + e.code + ')', 'warn');
+    return false; 
+  }
 }
 
 // ── SAVE TO APPWRITE (with localStorage cache) ────────────────────────────────
@@ -3126,7 +3131,7 @@ async function cleanupOldAttendance() {
             dbg(`[cleanupOldAttendance] Deleting ${recordsToDelete.length} records from ${monthName} ${year}`);
             
             // Delete sequentially in batches of 10 to avoid rate limits
-            const BATCH_SIZE = 10;
+            const BATCH_SIZE = 5;  // smaller batches
             let deletedIds = [];
             let failedCount = 0;
             
@@ -3138,16 +3143,15 @@ async function cleanupOldAttendance() {
                 const ok = await awDelete(AW.collections.attendance, docId);
                 if (ok) {
                   deletedIds.push(record.id);
-                  dbg(`[cleanupOldAttendance] ✅ Deleted: ${record.id}`);
                 } else {
                   failedCount++;
-                  dbg(`[cleanupOldAttendance] ❌ Failed: ${record.id}`, 'warn');
+                  dbg(`[cleanupOldAttendance] ❌ Failed: ${record.id} (docId: ${docId})`, 'warn');
                 }
               }));
               
-              // Small delay between batches to avoid rate limits
+              // 500ms delay between batches
               if (i + BATCH_SIZE < recordsToDelete.length) {
-                await new Promise(r => setTimeout(r, 300));
+                await new Promise(r => setTimeout(r, 500));
               }
             }
             
