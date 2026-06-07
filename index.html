@@ -222,7 +222,7 @@ body{font-family:'Noto Serif',Georgia,serif;background:var(--bg);color:var(--tex
       onclick="alert('Users in cache:\\n' + Object.keys(_usersCache).join(', '));" 
       title="Click to see all loaded users"></div>
     <div style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);">
-      Version 5.10.42
+      Version 5.10.43
     </div>
     <div id="loginError" class="hidden text-sm text-red text-center mt-3"></div>
   </div>
@@ -365,14 +365,14 @@ function initSDK() {
       .setProject(AW.project);
     _awDB = new Appwrite.Databases(_awClient);
     dbg('[SDK] ✅ ready');
-    dbg('[VERSION] Phoenix ERP v5.10.42 - Store Location Fully Removed', 'info');
+    dbg('[VERSION] Phoenix ERP v5.10.43 - Cleanup Attendance Fixed', 'info');
     return true;
   } catch(e) {
     console.error('[Appwrite] SDK failed:', e.message);
     return false;
   }
 }
-const APP_VERSION = '5.10.42'; // Store Location Fully Removed
+const APP_VERSION = '5.10.43'; // Cleanup Attendance Fixed
 
 // ── AUTO-UPDATE SYSTEM ─────────────────────────────────────────────
 // Automatically updates users to latest version
@@ -3122,25 +3122,48 @@ async function cleanupOldAttendance() {
         `Delete ${recordsToDelete.length} attendance records from ${monthName} ${year}? This cannot be undone and will sync across all devices.`,
         async () => {
           try {
-            // Delete from Appwrite
-            const deletePromises = recordsToDelete.map(record => {
-              const awId = record._awId || record.id;
-              return awDelete(AW.collections.attendance, awId)
-                .catch(e => dbg('[cleanupOldAttendance] Failed to delete from AW: ' + awId, 'warn'));
-            });
+            showToast(`⏳ Deleting ${recordsToDelete.length} records...`, 'info');
+            dbg(`[cleanupOldAttendance] Deleting ${recordsToDelete.length} records from ${monthName} ${year}`);
             
-            await Promise.all(deletePromises);
+            // Delete sequentially in batches of 10 to avoid rate limits
+            const BATCH_SIZE = 10;
+            let deletedIds = [];
+            let failedCount = 0;
             
-            // Update localStorage
-            saveAttendance(recordsToKeep);
-            
-            dbg(`[cleanupOldAttendance] Deleted ${recordsToDelete.length} records from ${monthName} ${year}`);
-            showToast(`✅ Deleted ${recordsToDelete.length} attendance records from ${monthName} ${year}!`);
-            
-            // Refresh if on attendance tab
-            if (currentTab === 'attendance') {
-              renderCurrentTab();
+            for (let i = 0; i < recordsToDelete.length; i += BATCH_SIZE) {
+              const batch = recordsToDelete.slice(i, i + BATCH_SIZE);
+              
+              await Promise.all(batch.map(async record => {
+                const docId = String(record.id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 36);
+                const ok = await awDelete(AW.collections.attendance, docId);
+                if (ok) {
+                  deletedIds.push(record.id);
+                  dbg(`[cleanupOldAttendance] ✅ Deleted: ${record.id}`);
+                } else {
+                  failedCount++;
+                  dbg(`[cleanupOldAttendance] ❌ Failed: ${record.id}`, 'warn');
+                }
+              }));
+              
+              // Small delay between batches to avoid rate limits
+              if (i + BATCH_SIZE < recordsToDelete.length) {
+                await new Promise(r => setTimeout(r, 300));
+              }
             }
+            
+            // Only remove SUCCESSFULLY deleted records from local cache
+            const remaining = allAttendance.filter(a => !deletedIds.includes(a.id));
+            saveAttendance(remaining);
+            
+            dbg(`[cleanupOldAttendance] Done: ${deletedIds.length} deleted, ${failedCount} failed`);
+            
+            if (failedCount === 0) {
+              showToast(`✅ Deleted ${deletedIds.length} records from ${monthName} ${year}!`);
+            } else {
+              showToast(`⚠️ Deleted ${deletedIds.length}, failed ${failedCount}. Retry for remaining.`);
+            }
+            
+            renderCurrentTab();
           } catch (error) {
             dbg('[cleanupOldAttendance] Error: ' + error.message, 'error');
             showToast('❌ Error deleting records. Check debug log.');
